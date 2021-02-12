@@ -1,0 +1,6 @@
+.terraform
+.idea
+.run
+*.iml
+bin
+.env
