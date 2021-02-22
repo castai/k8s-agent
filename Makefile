@@ -5,5 +5,8 @@ build:
 push:
 	docker push castai/agent:0.0.1
 
+deploy:
+	cat deployment.yaml | envsubst | kubectl apply -f -
+
 release: build push
 
