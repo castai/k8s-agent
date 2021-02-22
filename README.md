@@ -2,8 +2,9 @@
 
 This is non-prod ready **POC** (playing with exporting the relevant data)
 - To make use of this, related code changes are done at the following projects:
-  - telemetry
-  - autoscaler
+  - kubecast/telemetry
+  - kubecast/autoscaler
+  - console-ui
 
 ## Commands
 
