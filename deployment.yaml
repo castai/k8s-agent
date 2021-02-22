@@ -19,11 +19,11 @@ spec:
           imagePullPolicy: Always
           env:
             - name: TELEMETRY_CUSTOMER_ID
-              value: "$(TELEMETRY_CUSTOMER_ID)"
+              value: ${TELEMETRY_CUSTOMER_ID}
             - name: TELEMETRY_API_URL
-              value: "$(TELEMETRY_API_URL)"
+              value: ${TELEMETRY_API_URL}
             - name: TELEMETRY_API_KEY
-              value: "$(TELEMETRY_API_KEY)"
+              value: ${TELEMETRY_API_KEY}
 ---
 # hack - figure out proper role configs
 apiVersion: rbac.authorization.k8s.io/v1
