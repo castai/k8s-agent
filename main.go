@@ -20,6 +20,7 @@ type TelemetryData struct {
 	ClusterProvider string `json:"clusterProvider"`
 	CustomerID string `json:"customerId"`
 	ClusterName string `json:"clusterName"`
+	ClusterVersion string `json:"clusterVersion"`
 	ClusterRegion string `json:"clusterRegion"`
 	NodeList *v1.NodeList `json:"nodeList"`
 	PodList *v1.PodList `json:"podList"`
@@ -103,14 +104,25 @@ func main() {
 		clusterName := node1.Labels["alpha.eksctl.io/cluster-name"]
 		clusterRegion := node1.Labels["topology.kubernetes.io/region"]
 
-		err = sendTelemetry(log, &TelemetryData{
+
+
+		t := &TelemetryData{
 			ClusterProvider: "EKS",
 			ClusterName: clusterName,
 			ClusterRegion: clusterRegion,
 			CustomerID: os.Getenv("TELEMETRY_CUSTOMER_ID"),
 			NodeList: nodes,
 			PodList:  pods,
-		})
+		}
+
+		version, err := clientset.ServerVersion()
+		if err != nil {
+			log.Errorf("failed to get cluster version: %v", version)
+		}
+
+		t.ClusterVersion = version.GitVersion
+
+		err = sendTelemetry(log, t)
 
 		if err != nil {
 			log.Errorf("failed to send data: %v", err)
