@@ -53,7 +53,11 @@ func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
 	if err != nil {
 		return err
 	}
-	log.Infof("nodes[%d], pods[%d] sent", len(t.NodeList.Items), len(t.PodList.Items))
+	log.Infof(
+		"request[Cap=%d] with nodes[%d], pods[%d] sent",
+		len(t.NodeList.Items),
+		len(t.PodList.Items),
+		request.Cap())
 	return nil
 }
 
