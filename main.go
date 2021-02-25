@@ -25,16 +25,17 @@ type TelemetryData struct {
 	PodList *v1.PodList `json:"podList"`
 }
 
-func sendTelemetry(clusterName string, telemetry *TelemetryData) error {
-	b, err := json.Marshal(telemetry)
+func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
+	b, err := json.Marshal(t)
 	if err != nil {
 		return err
 	}
 
+	request  := bytes.NewBuffer(b)
 	req, err := http.NewRequest(
 		"POST",
 		os.Getenv("TELEMETRY_API_URL"),
-		bytes.NewBuffer(b),
+		request,
 	)
 
 	if err != nil {
@@ -44,7 +45,6 @@ func sendTelemetry(clusterName string, telemetry *TelemetryData) error {
 	req.Header.Set("X-API-Key", os.Getenv("TELEMETRY_API_KEY"))
 	req.Header.Set("Content-Type", "application/json")
 
-
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
@@ -53,7 +53,7 @@ func sendTelemetry(clusterName string, telemetry *TelemetryData) error {
 	if err != nil {
 		return err
 	}
-
+	log.Infof("nodes[%d], pods[%d] sent", len(t.NodeList.Items), len(t.PodList.Items))
 	return nil
 }
 
@@ -95,14 +95,11 @@ func main() {
 			log.Errorf("failed: %v", err)
 		}
 
-
-		log.Infof("nodes[%d], pods[%d] in the cluster", len(nodes.Items), len(pods.Items))
-
 		node1 := nodes.Items[0]
 		clusterName := node1.Labels["alpha.eksctl.io/cluster-name"]
 		clusterRegion := node1.Labels["topology.kubernetes.io/region"]
 
-		err = sendTelemetry(clusterName, &TelemetryData{
+		err = sendTelemetry(log, &TelemetryData{
 			ClusterProvider: "EKS",
 			ClusterName: clusterName,
 			ClusterRegion: clusterRegion,
