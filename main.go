@@ -50,15 +50,16 @@ func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
 		Timeout: 10 * time.Second,
 	}
 
-	_, err = client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
 	log.Infof(
-		"request[Cap=%d] with nodes[%d], pods[%d] sent",
+		"request[Cap=%d] with nodes[%d], pods[%d] sent, responseCode=%v",
 		request.Cap(),
 		len(t.NodeList.Items),
-		len(t.PodList.Items))
+		len(t.PodList.Items),
+		resp.StatusCode)
 	return nil
 }
 
@@ -79,7 +80,7 @@ func main() {
 		panic(err)
 	}
 
-	const interval = 10 * time.Second
+	const interval = 30 * time.Second
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
