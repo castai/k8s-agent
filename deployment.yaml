@@ -18,8 +18,8 @@ spec:
           image: castai/agent:0.0.1
           imagePullPolicy: Always
           env:
-            - name: TELEMETRY_CUSTOMER_ID
-              value: ${TELEMETRY_CUSTOMER_ID}
+            - name: CUSTOMER_TOKEN
+              value: ${CUSTOMER_TOKEN}
             - name: TELEMETRY_API_URL
               value: ${TELEMETRY_API_URL}
             - name: TELEMETRY_API_KEY
