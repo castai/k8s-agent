@@ -19,6 +19,10 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+type Request struct {
+	Payload []byte `json:"payload"`
+}
+
 type TelemetryData struct {
 	CustomerToken   string       `json:"customerToken"`
 	ClusterProvider string       `json:"clusterProvider"`
@@ -30,7 +34,12 @@ type TelemetryData struct {
 }
 
 func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
-	b, err := json.Marshal(t)
+	tb, err := json.Marshal(t)
+	if err != nil {
+		return err
+	}
+
+	b, err := json.Marshal(&Request{Payload: tb})
 	if err != nil {
 		return err
 	}
@@ -80,7 +89,7 @@ func main() {
 		panic(err.Error())
 	}
 
-	const interval = 30 * time.Second
+	const interval = 15 * time.Second
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
