@@ -17,8 +17,8 @@ import (
 )
 
 type TelemetryData struct {
+	CustomerToken string `json:"customerToken"`
 	ClusterProvider string `json:"clusterProvider"`
-	CustomerID string `json:"customerId"`
 	ClusterName string `json:"clusterName"`
 	ClusterVersion string `json:"clusterVersion"`
 	ClusterRegion string `json:"clusterRegion"`
@@ -110,7 +110,7 @@ func main() {
 			ClusterProvider: "EKS",
 			ClusterName: clusterName,
 			ClusterRegion: clusterRegion,
-			CustomerID: os.Getenv("TELEMETRY_CUSTOMER_ID"),
+			CustomerToken: os.Getenv("CUSTOMER_TOKEN"),
 			NodeList: nodes,
 			PodList:  pods,
 		}
