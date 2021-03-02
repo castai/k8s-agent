@@ -35,7 +35,7 @@ func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
 	request := bytes.NewBuffer(b)
 	req, err := http.NewRequest(
 		"POST",
-		os.Getenv("TELEMETRY_API_URL"),
+		os.Getenv("API_URL"),
 		request,
 	)
 
@@ -43,7 +43,7 @@ func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
 		return err
 	}
 
-	req.Header.Set("X-API-Key", os.Getenv("TELEMETRY_API_KEY"))
+	req.Header.Set("X-API-Key", os.Getenv("API_KEY"))
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{
