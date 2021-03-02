@@ -132,7 +132,7 @@ func main() {
 func kubeConfigFromEnv() (*rest.Config, error) {
 	kubepath := os.Getenv("KUBECONFIG")
 	if kubepath == "" {
-		return nil, fmt.Errorf("KUBECONFIG not set")
+		return nil, nil
 	}
 
 	data, err := ioutil.ReadFile(kubepath)
@@ -150,7 +150,11 @@ func kubeConfigFromEnv() (*rest.Config, error) {
 
 func retrieveKubeConfig() (*rest.Config, error) {
 	kubeconfig, err := kubeConfigFromEnv()
-	if kubeconfig != nil && err == nil {
+	if err != nil {
+		return nil, err
+	}
+
+	if kubeconfig != nil  {
 		return kubeconfig, nil
 	}
 
