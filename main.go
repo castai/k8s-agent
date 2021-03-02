@@ -17,13 +17,13 @@ import (
 )
 
 type TelemetryData struct {
-	CustomerToken string `json:"customerToken"`
-	ClusterProvider string `json:"clusterProvider"`
-	ClusterName string `json:"clusterName"`
-	ClusterVersion string `json:"clusterVersion"`
-	ClusterRegion string `json:"clusterRegion"`
-	NodeList *v1.NodeList `json:"nodeList"`
-	PodList *v1.PodList `json:"podList"`
+	CustomerToken   string       `json:"customerToken"`
+	ClusterProvider string       `json:"clusterProvider"`
+	ClusterName     string       `json:"clusterName"`
+	ClusterVersion  string       `json:"clusterVersion"`
+	ClusterRegion   string       `json:"clusterRegion"`
+	NodeList        *v1.NodeList `json:"nodeList"`
+	PodList         *v1.PodList  `json:"podList"`
 }
 
 func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
@@ -32,7 +32,7 @@ func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
 		return err
 	}
 
-	request  := bytes.NewBuffer(b)
+	request := bytes.NewBuffer(b)
 	req, err := http.NewRequest(
 		"POST",
 		os.Getenv("TELEMETRY_API_URL"),
@@ -104,15 +104,13 @@ func main() {
 		clusterName := node1.Labels["alpha.eksctl.io/cluster-name"]
 		clusterRegion := node1.Labels["topology.kubernetes.io/region"]
 
-
-
 		t := &TelemetryData{
 			ClusterProvider: "EKS",
-			ClusterName: clusterName,
-			ClusterRegion: clusterRegion,
-			CustomerToken: os.Getenv("CUSTOMER_TOKEN"),
-			NodeList: nodes,
-			PodList:  pods,
+			ClusterName:     clusterName,
+			ClusterRegion:   clusterRegion,
+			CustomerToken:   os.Getenv("CUSTOMER_TOKEN"),
+			NodeList:        nodes,
+			PodList:         pods,
 		}
 
 		version, err := clientset.ServerVersion()
