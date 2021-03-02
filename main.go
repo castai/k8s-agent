@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"time"
@@ -11,6 +13,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/json"
+	"k8s.io/client-go/tools/clientcmd"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -67,17 +70,14 @@ func main() {
 	log := logrus.New()
 	log.Info("starting the agent")
 	ctx := context.Background()
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		panic(err.Error())
-	}
-	clientset, err := kubernetes.NewForConfig(config)
+	config, err := retrieveKubeConfig()
 	if err != nil {
 		panic(err.Error())
 	}
 
+	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		panic(err)
+		panic(err.Error())
 	}
 
 	const interval = 30 * time.Second
@@ -127,4 +127,37 @@ func main() {
 			log.Errorf("failed to send data: %v", err)
 		}
 	}
+}
+
+func kubeConfigFromEnv() (*rest.Config, error) {
+	kubepath := os.Getenv("KUBECONFIG")
+	if kubepath == "" {
+		return nil, fmt.Errorf("KUBECONFIG not set")
+	}
+
+	data, err := ioutil.ReadFile(kubepath)
+	if err != nil {
+		return nil, fmt.Errorf("reading KUBECONFIG: %w", err)
+	}
+
+	restConfig, err := clientcmd.RESTConfigFromKubeConfig(data)
+	if err != nil {
+		return nil, fmt.Errorf("building REST config from KUBECONFIG: %w", err)
+	}
+
+	return restConfig, nil
+}
+
+func retrieveKubeConfig() (*rest.Config, error) {
+	kubeconfig, err := kubeConfigFromEnv()
+	if kubeconfig != nil && err == nil {
+		return kubeconfig, nil
+	}
+
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	return config, nil
 }
