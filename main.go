@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"time"
@@ -11,13 +13,17 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/json"
+	"k8s.io/client-go/tools/clientcmd"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
 
+type Request struct {
+	Payload []byte `json:"payload"`
+}
+
 type TelemetryData struct {
-	CustomerToken   string       `json:"customerToken"`
 	ClusterProvider string       `json:"clusterProvider"`
 	ClusterName     string       `json:"clusterName"`
 	ClusterVersion  string       `json:"clusterVersion"`
@@ -27,7 +33,12 @@ type TelemetryData struct {
 }
 
 func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
-	b, err := json.Marshal(t)
+	tb, err := json.Marshal(t)
+	if err != nil {
+		return err
+	}
+
+	b, err := json.Marshal(&Request{Payload: tb})
 	if err != nil {
 		return err
 	}
@@ -35,7 +46,7 @@ func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
 	request := bytes.NewBuffer(b)
 	req, err := http.NewRequest(
 		"POST",
-		os.Getenv("TELEMETRY_API_URL"),
+		os.Getenv("API_URL"),
 		request,
 	)
 
@@ -43,7 +54,7 @@ func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
 		return err
 	}
 
-	req.Header.Set("X-API-Key", os.Getenv("TELEMETRY_API_KEY"))
+	req.Header.Set("X-API-Key", os.Getenv("API_KEY"))
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{
@@ -67,20 +78,17 @@ func main() {
 	log := logrus.New()
 	log.Info("starting the agent")
 	ctx := context.Background()
-	config, err := rest.InClusterConfig()
+	config, err := retrieveKubeConfig()
 	if err != nil {
 		panic(err.Error())
 	}
+
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(err.Error())
 	}
 
-	if err != nil {
-		panic(err)
-	}
-
-	const interval = 30 * time.Second
+	const interval = 15 * time.Second
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -109,7 +117,6 @@ func main() {
 			ClusterProvider: "EKS",
 			ClusterName:     clusterName,
 			ClusterRegion:   clusterRegion,
-			CustomerToken:   os.Getenv("CUSTOMER_TOKEN"),
 			NodeList:        nodes,
 			PodList:         pods,
 		}
@@ -127,4 +134,41 @@ func main() {
 			log.Errorf("failed to send data: %v", err)
 		}
 	}
+}
+
+func kubeConfigFromEnv() (*rest.Config, error) {
+	kubepath := os.Getenv("KUBECONFIG")
+	if kubepath == "" {
+		return nil, nil
+	}
+
+	data, err := ioutil.ReadFile(kubepath)
+	if err != nil {
+		return nil, fmt.Errorf("reading KUBECONFIG: %w", err)
+	}
+
+	restConfig, err := clientcmd.RESTConfigFromKubeConfig(data)
+	if err != nil {
+		return nil, fmt.Errorf("building REST config from KUBECONFIG: %w", err)
+	}
+
+	return restConfig, nil
+}
+
+func retrieveKubeConfig() (*rest.Config, error) {
+	kubeconfig, err := kubeConfigFromEnv()
+	if err != nil {
+		return nil, err
+	}
+
+	if kubeconfig != nil  {
+		return kubeconfig, nil
+	}
+
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	return config, nil
 }

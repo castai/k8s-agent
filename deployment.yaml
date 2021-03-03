@@ -18,12 +18,10 @@ spec:
           image: castai/agent:0.0.1
           imagePullPolicy: Always
           env:
-            - name: CUSTOMER_TOKEN
-              value: ${CUSTOMER_TOKEN}
-            - name: TELEMETRY_API_URL
-              value: ${TELEMETRY_API_URL}
-            - name: TELEMETRY_API_KEY
-              value: ${TELEMETRY_API_KEY}
+            - name: API_KEY
+              value: ${API_KEY}
+            - name: API_URL
+              value: ${API_URL}
 ---
 # hack - figure out proper role configs
 apiVersion: rbac.authorization.k8s.io/v1
@@ -32,9 +30,7 @@ metadata:
   name: castagent-rbac
 subjects:
   - kind: ServiceAccount
-    # Reference to upper's `metadata.name`
     name: default
-    # Reference to upper's `metadata.namespace`
     namespace: default
 roleRef:
   kind: ClusterRole
