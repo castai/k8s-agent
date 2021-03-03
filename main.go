@@ -24,7 +24,6 @@ type Request struct {
 }
 
 type TelemetryData struct {
-	CustomerToken   string       `json:"customerToken"`
 	ClusterProvider string       `json:"clusterProvider"`
 	ClusterName     string       `json:"clusterName"`
 	ClusterVersion  string       `json:"clusterVersion"`
@@ -118,7 +117,6 @@ func main() {
 			ClusterProvider: "EKS",
 			ClusterName:     clusterName,
 			ClusterRegion:   clusterRegion,
-			CustomerToken:   os.Getenv("CUSTOMER_TOKEN"),
 			NodeList:        nodes,
 			PodList:         pods,
 		}
