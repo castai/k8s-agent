@@ -3,16 +3,18 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws/ec2metadata"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/client-go/tools/clientcmd"
 
 	"k8s.io/client-go/kubernetes"
@@ -24,54 +26,13 @@ type Request struct {
 }
 
 type TelemetryData struct {
+	AccountID       string       `json:"accountId"`
 	ClusterProvider string       `json:"clusterProvider"`
 	ClusterName     string       `json:"clusterName"`
 	ClusterVersion  string       `json:"clusterVersion"`
 	ClusterRegion   string       `json:"clusterRegion"`
 	NodeList        *v1.NodeList `json:"nodeList"`
 	PodList         *v1.PodList  `json:"podList"`
-}
-
-func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
-	tb, err := json.Marshal(t)
-	if err != nil {
-		return err
-	}
-
-	b, err := json.Marshal(&Request{Payload: tb})
-	if err != nil {
-		return err
-	}
-
-	request := bytes.NewBuffer(b)
-	req, err := http.NewRequest(
-		"POST",
-		os.Getenv("API_URL"),
-		request,
-	)
-
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("X-API-Key", os.Getenv("API_KEY"))
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	log.Infof(
-		"request[Cap=%d] with nodes[%d], pods[%d] sent, responseCode=%v",
-		request.Cap(),
-		len(t.NodeList.Items),
-		len(t.PodList.Items),
-		resp.StatusCode)
-	return nil
 }
 
 func main() {
@@ -91,6 +52,11 @@ func main() {
 	const interval = 15 * time.Second
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+
+	awsAccountId, err := retrieveAwsAccountId()
+	if err != nil {
+		panic(err)
+	}
 
 	for {
 		select {
@@ -114,6 +80,7 @@ func main() {
 		clusterRegion := node1.Labels["topology.kubernetes.io/region"]
 
 		t := &TelemetryData{
+			AccountID:       awsAccountId,
 			ClusterProvider: "EKS",
 			ClusterName:     clusterName,
 			ClusterRegion:   clusterRegion,
@@ -161,7 +128,7 @@ func retrieveKubeConfig() (*rest.Config, error) {
 		return nil, err
 	}
 
-	if kubeconfig != nil  {
+	if kubeconfig != nil {
 		return kubeconfig, nil
 	}
 
@@ -171,4 +138,67 @@ func retrieveKubeConfig() (*rest.Config, error) {
 	}
 
 	return config, nil
+}
+
+func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
+	tb, err := json.Marshal(t)
+	if err != nil {
+		return err
+	}
+
+	b, err := json.Marshal(&Request{Payload: tb})
+	if err != nil {
+		return err
+	}
+
+	request := bytes.NewBuffer(b)
+	req, err := http.NewRequest(
+		http.MethodPost,
+		os.Getenv("API_URL"),
+		request,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("X-API-Key", os.Getenv("API_KEY"))
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	log.Infof(
+		"request[Cap=%d] with nodes[%d], pods[%d] sent, responseCode=%v",
+		request.Cap(),
+		len(t.NodeList.Items),
+		len(t.PodList.Items),
+		resp.StatusCode)
+	return nil
+}
+
+func retrieveAwsAccountId() (string, error) {
+	if accountId := os.Getenv("AWS_ACCOUNT_ID"); accountId != "" {
+		return accountId, nil
+	}
+
+	s, err := session.NewSession()
+	if err != nil {
+		return "", fmt.Errorf("could not create AWS SDK session: %w", err)
+	}
+
+	meta := ec2metadata.New(s)
+	doc, err := meta.GetInstanceIdentityDocument()
+	if err != nil {
+		return "", fmt.Errorf("failed to get instance identity document: %w", err)
+	}
+
+	return doc.AccountID, nil
 }
