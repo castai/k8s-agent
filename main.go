@@ -3,16 +3,18 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws/ec2metadata"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/client-go/tools/clientcmd"
 
 	"k8s.io/client-go/kubernetes"
@@ -32,48 +34,6 @@ type TelemetryData struct {
 	PodList         *v1.PodList  `json:"podList"`
 }
 
-func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
-	tb, err := json.Marshal(t)
-	if err != nil {
-		return err
-	}
-
-	b, err := json.Marshal(&Request{Payload: tb})
-	if err != nil {
-		return err
-	}
-
-	request := bytes.NewBuffer(b)
-	req, err := http.NewRequest(
-		"POST",
-		os.Getenv("API_URL"),
-		request,
-	)
-
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("X-API-Key", os.Getenv("API_KEY"))
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	log.Infof(
-		"request[Cap=%d] with nodes[%d], pods[%d] sent, responseCode=%v",
-		request.Cap(),
-		len(t.NodeList.Items),
-		len(t.PodList.Items),
-		resp.StatusCode)
-	return nil
-}
-
 func main() {
 	log := logrus.New()
 	log.Info("starting the agent")
@@ -91,6 +51,19 @@ func main() {
 	const interval = 15 * time.Second
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+
+	s, err := session.NewSession()
+	if err != nil {
+		panic(err)
+	}
+
+	meta := ec2metadata.New(s)
+	doc, err := meta.GetInstanceIdentityDocument()
+	if err != nil {
+		panic(err)
+	}
+
+	log.Infof("accountId: %v", doc.AccountID)
 
 	for {
 		select {
@@ -171,4 +144,48 @@ func retrieveKubeConfig() (*rest.Config, error) {
 	}
 
 	return config, nil
+}
+
+func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
+	tb, err := json.Marshal(t)
+	if err != nil {
+		return err
+	}
+
+	b, err := json.Marshal(&Request{Payload: tb})
+	if err != nil {
+		return err
+	}
+
+	request := bytes.NewBuffer(b)
+	req, err := http.NewRequest(
+		http.MethodPost,
+		os.Getenv("API_URL"),
+		request,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("X-API-Key", os.Getenv("API_KEY"))
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	log.Infof(
+		"request[Cap=%d] with nodes[%d], pods[%d] sent, responseCode=%v",
+		request.Cap(),
+		len(t.NodeList.Items),
+		len(t.PodList.Items),
+		resp.StatusCode)
+	return nil
 }

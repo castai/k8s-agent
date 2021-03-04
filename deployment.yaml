@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: application
-          image: castai/agent:0.0.1
+          image: castai/agent:0.0.1.zilvinas
           imagePullPolicy: Always
           env:
             - name: API_KEY
