@@ -1,9 +1,9 @@
 build:
 	GOOS=linux go build -o bin/castai-agent
-	docker build -t castai/agent:0.0.1.zilvinas .
+	docker build -t castai/agent:0.0.1 .
 
 push:
-	docker push castai/agent:0.0.1.zilvinas
+	docker push castai/agent:0.0.1
 
 deploy:
 	cat deployment.yaml | envsubst | kubectl apply -f -
