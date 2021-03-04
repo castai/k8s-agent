@@ -154,7 +154,7 @@ func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
 	request := bytes.NewBuffer(b)
 	req, err := http.NewRequest(
 		http.MethodPost,
-		os.Getenv("API_URL"),
+		fmt.Sprintf("https://%s/v1/register-external-cluster", os.Getenv("API_URL")),
 		request,
 	)
 
