@@ -185,6 +185,10 @@ func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
 }
 
 func retrieveAwsAccountId() (string, error) {
+	if accountId := os.Getenv("AWS_ACCOUNT_ID"); accountId != "" {
+		return accountId, nil
+	}
+
 	s, err := session.NewSession()
 	if err != nil {
 		return "", fmt.Errorf("could not create AWS SDK session: %w", err)
