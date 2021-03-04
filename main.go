@@ -26,6 +26,7 @@ type Request struct {
 }
 
 type TelemetryData struct {
+	AccountID       string       `json:"accountId"`
 	ClusterProvider string       `json:"clusterProvider"`
 	ClusterName     string       `json:"clusterName"`
 	ClusterVersion  string       `json:"clusterVersion"`
@@ -52,18 +53,10 @@ func main() {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	s, err := session.NewSession()
+	awsAccountId, err := retrieveAwsAccountId()
 	if err != nil {
 		panic(err)
 	}
-
-	meta := ec2metadata.New(s)
-	doc, err := meta.GetInstanceIdentityDocument()
-	if err != nil {
-		panic(err)
-	}
-
-	log.Infof("accountId: %v", doc.AccountID)
 
 	for {
 		select {
@@ -87,6 +80,7 @@ func main() {
 		clusterRegion := node1.Labels["topology.kubernetes.io/region"]
 
 		t := &TelemetryData{
+			AccountID:       awsAccountId,
 			ClusterProvider: "EKS",
 			ClusterName:     clusterName,
 			ClusterRegion:   clusterRegion,
@@ -134,7 +128,7 @@ func retrieveKubeConfig() (*rest.Config, error) {
 		return nil, err
 	}
 
-	if kubeconfig != nil  {
+	if kubeconfig != nil {
 		return kubeconfig, nil
 	}
 
@@ -188,4 +182,19 @@ func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
 		len(t.PodList.Items),
 		resp.StatusCode)
 	return nil
+}
+
+func retrieveAwsAccountId() (string, error) {
+	s, err := session.NewSession()
+	if err != nil {
+		return "", fmt.Errorf("could not create AWS SDK session: %w", err)
+	}
+
+	meta := ec2metadata.New(s)
+	doc, err := meta.GetInstanceIdentityDocument()
+	if err != nil {
+		return "", fmt.Errorf("failed to get instance identity document: %w", err)
+	}
+
+	return doc.AccountID, nil
 }
