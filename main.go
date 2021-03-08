@@ -35,6 +35,29 @@ type TelemetryData struct {
 	PodList         *v1.PodList  `json:"podList"`
 }
 
+type EKSParams struct {
+	cluster_name string
+	region       string
+	account_id   string
+}
+
+type RegisterClusterRequest struct {
+	name            string
+	organization_id string
+	eks             EKSParams
+}
+
+type Cluster struct {
+	id              string
+	name            string
+	organization_id string
+	eks             EKSParams
+}
+
+type RegisterClusterResponse struct {
+	cluster Cluster
+}
+
 func main() {
 	log := logrus.New()
 	log.Info("starting the agent")
@@ -138,6 +161,45 @@ func retrieveKubeConfig() (*rest.Config, error) {
 	}
 
 	return config, nil
+}
+
+func registerCluster(log *logrus.Logger, registerRequest RegisterClusterRequest) (*RegisterClusterResponse, error) {
+	r, err := json.Marshal(registerRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	request := bytes.NewBuffer(r)
+	req, err := http.NewRequest(
+		http.MethodPost,
+		fmt.Sprintf("https://%s/v1/kubernetes/external-clusters", os.Getenv("API_URL")),
+		request,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("X-API-Key", os.Getenv("API_KEY"))
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var dest RegisterClusterResponse
+	if err := json.NewDecoder(resp.Body).Decode(&dest); err != nil {
+		return nil, err
+	}
+
+	log.Infof("cluster[%s] registered with id: %s", dest.cluster.name, dest.cluster.id)
+	return &dest, nil
 }
 
 func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
