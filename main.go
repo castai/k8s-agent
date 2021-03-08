@@ -42,27 +42,27 @@ type TelemetryData struct {
 }
 
 type EKSParams struct {
-	cluster_name    string
-	organization_id string
-	region          string
-	account_id      string
+	ClusterName    string `json:"cluster_name"`
+	OrganizationID string `json:"organization_id"`
+	Region         string `json:"region"`
+	AccountID      string `json:"account_id"`
 }
 
 type RegisterClusterRequest struct {
-	name            string
-	organization_id string
-	eks             EKSParams
+	Name           string    `json:"name"`
+	OrganizationID string    `json:"organization_id"`
+	EKS            EKSParams `json:"eks"`
 }
 
 type Cluster struct {
-	id              string
-	name            string
-	organization_id string
-	eks             EKSParams
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	OrganizationID string    `json:"organization_id"`
+	EKS            EKSParams `json:"eks"`
 }
 
 type RegisterClusterResponse struct {
-	cluster Cluster
+	Cluster Cluster `json:"cluster"`
 }
 
 func main() {
@@ -99,11 +99,11 @@ func main() {
 	clusterRegion := node1.Labels["topology.kubernetes.io/region"]
 
 	c, err := registerCluster(log, &RegisterClusterRequest{
-		name: clusterName,
-		eks: EKSParams{
-			account_id:   awsAccountId,
-			region:       clusterRegion,
-			cluster_name: clusterName,
+		Name: clusterName,
+		EKS: EKSParams{
+			AccountID:   awsAccountId,
+			Region:      clusterRegion,
+			ClusterName: clusterName,
 		},
 	})
 
@@ -128,8 +128,8 @@ func main() {
 		}
 
 		t := &TelemetryData{
-			OrganizationID:  c.cluster.organization_id,
-			ClusterID:       c.cluster.id,
+			OrganizationID:  c.Cluster.OrganizationID,
+			ClusterID:       c.Cluster.ID,
 			AccountID:       awsAccountId,
 			ClusterProvider: "EKS",
 			ClusterName:     clusterName,
@@ -223,7 +223,7 @@ func registerCluster(log *logrus.Logger, registerRequest *RegisterClusterRequest
 		return nil, err
 	}
 
-	log.Infof("cluster[%s] registered with id: %s", dest.cluster.name, dest.cluster.id)
+	log.Infof("cluster[%s] registered with id: %s", dest.Cluster.Name, dest.Cluster.ID)
 	return &dest, nil
 }
 
