@@ -28,6 +28,7 @@ type Request struct {
 type TelemetryData struct {
 	ClusterID       string       `json:"clusterId"`
 	AccountID       string       `json:"accountId"`
+	OrganizationID  string       `json:"organizationId"`
 	ClusterProvider string       `json:"clusterProvider"`
 	ClusterName     string       `json:"clusterName"`
 	ClusterVersion  string       `json:"clusterVersion"`
@@ -37,9 +38,10 @@ type TelemetryData struct {
 }
 
 type EKSParams struct {
-	cluster_name string
-	region       string
-	account_id   string
+	cluster_name    string
+	organization_id string
+	region          string
+	account_id      string
 }
 
 type RegisterClusterRequest struct {
@@ -122,6 +124,7 @@ func main() {
 		}
 
 		t := &TelemetryData{
+			OrganizationID:  c.cluster.organization_id,
 			ClusterID:       c.cluster.id,
 			AccountID:       awsAccountId,
 			ClusterProvider: "EKS",
