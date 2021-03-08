@@ -216,6 +216,10 @@ func registerCluster(log *logrus.Logger, registerRequest *RegisterClusterRequest
 	if err != nil {
 		return nil, err
 	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to register cluster with StatusCode[%d]", resp.StatusCode)
+	}
 	defer resp.Body.Close()
 
 	var dest RegisterClusterResponse
@@ -258,6 +262,10 @@ func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
 	if err != nil {
 		return err
 	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to send snapshot with StatusCode[%d]", resp.StatusCode)
+	}
+
 	defer resp.Body.Close()
 
 	log.Infof(
