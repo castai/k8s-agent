@@ -21,6 +21,10 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+const (
+	TIMEOUT = 10 * time.Second
+)
+
 type Request struct {
 	Payload []byte `json:"payload"`
 }
@@ -206,9 +210,7 @@ func registerCluster(log *logrus.Logger, registerRequest *RegisterClusterRequest
 	req.Header.Set("X-API-Key", os.Getenv("API_KEY"))
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
+	client := &http.Client{Timeout: TIMEOUT}
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -250,9 +252,7 @@ func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
 	req.Header.Set("X-API-Key", os.Getenv("API_KEY"))
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
+	client := &http.Client{Timeout: TIMEOUT}
 
 	resp, err := client.Do(req)
 	if err != nil {
