@@ -34,10 +34,6 @@ func NewDefaultClient() *resty.Client {
 	return client
 }
 
-const (
-	TIMEOUT = 10 * time.Second
-)
-
 type Request struct {
 	Payload []byte `json:"payload"`
 }
