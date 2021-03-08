@@ -126,16 +126,21 @@ func main() {
 		select {
 		case <-ticker.C:
 		case <-ctx.Done():
+			return
 		}
 
+		// TODO: move into separate collector function
 		nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 		if err != nil {
-			log.Errorf("failed: %v", err)
+			log.Errorf("failed listing nodes: %v", err)
+			continue
 		}
+
 
 		pods, err := clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
 		if err != nil {
-			log.Errorf("failed: %v", err)
+			log.Errorf("failed listing pods: %v", err)
+			continue
 		}
 
 		t := &TelemetryData{
