@@ -42,27 +42,27 @@ type TelemetryData struct {
 }
 
 type EKSParams struct {
-	ClusterName    string `json:"cluster_name"`
-	OrganizationID string `json:"organization_id"`
+	ClusterName    string `json:"clusterName"`
+	OrganizationID string `json:"organizationId"`
 	Region         string `json:"region"`
-	AccountID      string `json:"account_id"`
+	AccountID      string `json:"accountId"`
 }
 
 type RegisterClusterRequest struct {
 	Name           string    `json:"name"`
-	OrganizationID string    `json:"organization_id"`
+	OrganizationID string    `json:"organizationId"`
 	EKS            EKSParams `json:"eks"`
 }
 
 type Cluster struct {
 	ID             string    `json:"id"`
 	Name           string    `json:"name"`
-	OrganizationID string    `json:"organization_id"`
+	OrganizationID string    `json:"organizationId"`
 	EKS            EKSParams `json:"eks"`
 }
 
 type RegisterClusterResponse struct {
-	Cluster Cluster `json:"cluster"`
+	Cluster
 }
 
 func main() {
@@ -227,7 +227,7 @@ func registerCluster(log *logrus.Logger, registerRequest *RegisterClusterRequest
 		return nil, err
 	}
 
-	log.Infof("cluster[%s] registered with id: %s", dest.Cluster.Name, dest.Cluster.ID)
+	log.Infof("cluster[%s] registered: %+v", dest.Cluster.Name, dest)
 	return &dest, nil
 }
 
