@@ -1,17 +1,16 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"net/http"
 	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/go-resty/resty/v2"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,18 +20,58 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+const (
+	defaultRetryCount = 3
+	defaultTimeout    = 10 * time.Second
+)
+
+func NewDefaultClient() *resty.Client {
+	client := resty.New()
+	client.SetRetryCount(defaultRetryCount)
+	client.SetTimeout(defaultTimeout)
+	client.Header.Set("X-API-Key", os.Getenv("API_KEY"))
+	client.Header.Set("Content-Type", "application/json")
+	return client
+}
+
 type Request struct {
 	Payload []byte `json:"payload"`
 }
 
 type TelemetryData struct {
+	ClusterID       string       `json:"clusterId"`
 	AccountID       string       `json:"accountId"`
+	OrganizationID  string       `json:"organizationId"`
 	ClusterProvider string       `json:"clusterProvider"`
 	ClusterName     string       `json:"clusterName"`
 	ClusterVersion  string       `json:"clusterVersion"`
 	ClusterRegion   string       `json:"clusterRegion"`
 	NodeList        *v1.NodeList `json:"nodeList"`
 	PodList         *v1.PodList  `json:"podList"`
+}
+
+type EKSParams struct {
+	ClusterName    string `json:"clusterName"`
+	OrganizationID string `json:"organizationId"`
+	Region         string `json:"region"`
+	AccountID      string `json:"accountId"`
+}
+
+type RegisterClusterRequest struct {
+	Name           string    `json:"name"`
+	OrganizationID string    `json:"organizationId"`
+	EKS            EKSParams `json:"eks"`
+}
+
+type Cluster struct {
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	OrganizationID string    `json:"organizationId"`
+	EKS            EKSParams `json:"eks"`
+}
+
+type RegisterClusterResponse struct {
+	Cluster
 }
 
 func main() {
@@ -49,6 +88,8 @@ func main() {
 		panic(err.Error())
 	}
 
+	restclient := NewDefaultClient()
+
 	const interval = 15 * time.Second
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -58,28 +99,53 @@ func main() {
 		panic(err)
 	}
 
+	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		log.Errorf("failed: %v", err)
+		panic(err)
+	}
+
+	node1 := nodes.Items[0]
+	clusterName := node1.Labels["alpha.eksctl.io/cluster-name"]
+	clusterRegion := node1.Labels["topology.kubernetes.io/region"]
+
+	c, err := registerCluster(log, restclient, &RegisterClusterRequest{
+		Name: clusterName,
+		EKS: EKSParams{
+			AccountID:   awsAccountId,
+			Region:      clusterRegion,
+			ClusterName: clusterName,
+		},
+	})
+
+	if err != nil {
+		panic(err)
+	}
+
 	for {
 		select {
 		case <-ticker.C:
 		case <-ctx.Done():
+			return
 		}
 
+		// TODO: move into separate collector function
 		nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 		if err != nil {
-			log.Errorf("failed: %v", err)
-			panic(err)
+			log.Errorf("failed listing nodes: %v", err)
+			continue
 		}
+
 
 		pods, err := clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
 		if err != nil {
-			log.Errorf("failed: %v", err)
+			log.Errorf("failed listing pods: %v", err)
+			continue
 		}
 
-		node1 := nodes.Items[0]
-		clusterName := node1.Labels["alpha.eksctl.io/cluster-name"]
-		clusterRegion := node1.Labels["topology.kubernetes.io/region"]
-
 		t := &TelemetryData{
+			OrganizationID:  c.Cluster.OrganizationID,
+			ClusterID:       c.Cluster.ID,
 			AccountID:       awsAccountId,
 			ClusterProvider: "EKS",
 			ClusterName:     clusterName,
@@ -94,8 +160,7 @@ func main() {
 		}
 
 		t.ClusterVersion = version.GitVersion
-
-		err = sendTelemetry(log, t)
+		err = sendTelemetry(log, restclient, t)
 
 		if err != nil {
 			log.Errorf("failed to send data: %v", err)
@@ -140,47 +205,48 @@ func retrieveKubeConfig() (*rest.Config, error) {
 	return config, nil
 }
 
-func sendTelemetry(log *logrus.Logger, t *TelemetryData) error {
+func registerCluster(log *logrus.Logger, client *resty.Client, registerRequest *RegisterClusterRequest) (*RegisterClusterResponse, error) {
+	resp, err := client.R().
+		SetBody(registerRequest).
+		SetResult(&RegisterClusterResponse{}).
+		Post(fmt.Sprintf("https://%s/v1/kubernetes/external-clusters", os.Getenv("API_URL")))
+
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.IsError() {
+		return nil, fmt.Errorf("failed to register cluster with StatusCode[%d]", resp.StatusCode())
+	}
+
+	log.Infof("cluster registered: %+v", resp.Result())
+	return resp.Result().(*RegisterClusterResponse), nil
+}
+
+func sendTelemetry(log *logrus.Logger, client *resty.Client, t *TelemetryData) error {
 	tb, err := json.Marshal(t)
 	if err != nil {
 		return err
 	}
 
-	b, err := json.Marshal(&Request{Payload: tb})
-	if err != nil {
-		return err
-	}
-
-	request := bytes.NewBuffer(b)
-	req, err := http.NewRequest(
-		http.MethodPost,
-		fmt.Sprintf("https://%s/v1/agent/eks-snapshot", os.Getenv("API_URL")),
-		request,
-	)
+	resp, err := client.R().
+		SetBody(&Request{Payload: tb}).
+		SetResult(&RegisterClusterResponse{}).
+		Post(fmt.Sprintf("https://%s/v1/agent/eks-snapshot", os.Getenv("API_URL")))
 
 	if err != nil {
 		return err
 	}
 
-	req.Header.Set("X-API-Key", os.Getenv("API_KEY"))
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{
-		Timeout: 10 * time.Second,
+	if resp.IsError() {
+		return fmt.Errorf("failed to send snapshot with StatusCode[%d]", resp.StatusCode())
 	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
 
 	log.Infof(
-		"request[Cap=%d] with nodes[%d], pods[%d] sent, responseCode=%v",
-		request.Cap(),
+		"request with nodes[%d], pods[%d] sent, responseCode=%d",
 		len(t.NodeList.Items),
 		len(t.PodList.Items),
-		resp.StatusCode)
+		resp.StatusCode())
 	return nil
 }
 
