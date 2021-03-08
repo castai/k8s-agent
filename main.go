@@ -26,6 +26,7 @@ type Request struct {
 }
 
 type TelemetryData struct {
+	ClusterID       string       `json:"clusterId"`
 	AccountID       string       `json:"accountId"`
 	ClusterProvider string       `json:"clusterProvider"`
 	ClusterName     string       `json:"clusterName"`
@@ -81,6 +82,29 @@ func main() {
 		panic(err)
 	}
 
+	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		log.Errorf("failed: %v", err)
+		panic(err)
+	}
+
+	node1 := nodes.Items[0]
+	clusterName := node1.Labels["alpha.eksctl.io/cluster-name"]
+	clusterRegion := node1.Labels["topology.kubernetes.io/region"]
+
+	c, err := registerCluster(log, &RegisterClusterRequest{
+		name: clusterName,
+		eks: EKSParams{
+			account_id:   awsAccountId,
+			region:       clusterRegion,
+			cluster_name: clusterName,
+		},
+	})
+
+	if err != nil {
+		panic(err)
+	}
+
 	for {
 		select {
 		case <-ticker.C:
@@ -90,7 +114,6 @@ func main() {
 		nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 		if err != nil {
 			log.Errorf("failed: %v", err)
-			panic(err)
 		}
 
 		pods, err := clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
@@ -98,11 +121,8 @@ func main() {
 			log.Errorf("failed: %v", err)
 		}
 
-		node1 := nodes.Items[0]
-		clusterName := node1.Labels["alpha.eksctl.io/cluster-name"]
-		clusterRegion := node1.Labels["topology.kubernetes.io/region"]
-
 		t := &TelemetryData{
+			ClusterID:       c.cluster.id,
 			AccountID:       awsAccountId,
 			ClusterProvider: "EKS",
 			ClusterName:     clusterName,
@@ -163,7 +183,7 @@ func retrieveKubeConfig() (*rest.Config, error) {
 	return config, nil
 }
 
-func registerCluster(log *logrus.Logger, registerRequest RegisterClusterRequest) (*RegisterClusterResponse, error) {
+func registerCluster(log *logrus.Logger, registerRequest *RegisterClusterRequest) (*RegisterClusterResponse, error) {
 	r, err := json.Marshal(registerRequest)
 	if err != nil {
 		return nil, err
