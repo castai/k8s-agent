@@ -34,6 +34,10 @@ jobs:
 
       - name: Build Go binary
         run: go build -o bin/castai-agent
+        env:
+          GOOS: linux
+          GOARCH: amd64
+          CGO_ENABLED: 0
 
       - name: Test
         run: go test ./...
