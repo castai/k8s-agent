@@ -52,14 +52,12 @@ type TelemetryData struct {
 
 type EKSParams struct {
 	ClusterName    string `json:"clusterName"`
-	OrganizationID string `json:"organizationId"`
 	Region         string `json:"region"`
 	AccountID      string `json:"accountId"`
 }
 
 type RegisterClusterRequest struct {
 	Name           string    `json:"name"`
-	OrganizationID string    `json:"organizationId"`
 	EKS            EKSParams `json:"eks"`
 }
 
