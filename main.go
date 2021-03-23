@@ -12,7 +12,10 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/go-resty/resty/v2"
 	"github.com/sirupsen/logrus"
-	v1 "k8s.io/api/core/v1"
+	appv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
 
@@ -39,26 +42,37 @@ type Request struct {
 }
 
 type TelemetryData struct {
-	ClusterID       string       `json:"clusterId"`
-	AccountID       string       `json:"accountId"`
-	OrganizationID  string       `json:"organizationId"`
-	ClusterProvider string       `json:"clusterProvider"`
-	ClusterName     string       `json:"clusterName"`
-	ClusterVersion  string       `json:"clusterVersion"`
-	ClusterRegion   string       `json:"clusterRegion"`
-	NodeList        *v1.NodeList `json:"nodeList"`
-	PodList         *v1.PodList  `json:"podList"`
+	ClusterID                 string                            `json:"clusterId"`
+	AccountID                 string                            `json:"accountId"`
+	OrganizationID            string                            `json:"organizationId"`
+	ClusterProvider           string                            `json:"clusterProvider"`
+	ClusterName               string                            `json:"clusterName"`
+	ClusterVersion            string                            `json:"clusterVersion"`
+	ClusterRegion             string                            `json:"clusterRegion"`
+	NodeList                  *corev1.NodeList                  `json:"nodeList"`
+	PodList                   *corev1.PodList                   `json:"podList"`
+	PersistentVolumeList      *corev1.PersistentVolumeList      `json:"persistentVolumeList"`
+	PersistentVolumeClaimList *corev1.PersistentVolumeClaimList `json:"persistentVolumeClaimList"`
+	DeploymentList            *appv1.DeploymentList             `json:"deploymentList"`
+	ReplicaSetList            *appv1.ReplicaSetList             `json:"replicaSetList"`
+	DaemonSetList             *appv1.DaemonSetList              `json:"daemonSetList"`
+	StatefulSetList           *appv1.StatefulSetList            `json:"statefulSetList"`
+	ReplicationControllerList *corev1.ReplicationControllerList `json:"replicationControllerList"`
+	ServiceList               *corev1.ServiceList               `json:"serviceList"`
+	CSINodeList               *storagev1.CSINodeList            `json:"csiNodeList"`
+	StorageClassList          *storagev1.StorageClassList       `json:"storageClassList"`
+	JobList                   *batchv1.JobList                  `json:"jobList"`
 }
 
 type EKSParams struct {
-	ClusterName    string `json:"clusterName"`
-	Region         string `json:"region"`
-	AccountID      string `json:"accountId"`
+	ClusterName string `json:"clusterName"`
+	Region      string `json:"region"`
+	AccountID   string `json:"accountId"`
 }
 
 type RegisterClusterRequest struct {
-	Name           string    `json:"name"`
-	EKS            EKSParams `json:"eks"`
+	Name string    `json:"name"`
+	EKS  EKSParams `json:"eks"`
 }
 
 type Cluster struct {
@@ -133,7 +147,6 @@ func main() {
 			log.Errorf("failed listing nodes: %v", err)
 			continue
 		}
-
 
 		pods, err := clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
 		if err != nil {
