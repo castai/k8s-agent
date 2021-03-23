@@ -41,7 +41,7 @@ type Request struct {
 	Payload []byte `json:"payload"`
 }
 
-type TelemetryData struct {
+type TelemetrySnapshot struct {
 	ClusterID                 string                            `json:"clusterId"`
 	AccountID                 string                            `json:"accountId"`
 	OrganizationID            string                            `json:"organizationId"`
@@ -154,7 +154,7 @@ func main() {
 			continue
 		}
 
-		t := &TelemetryData{
+		t := &TelemetrySnapshot{
 			OrganizationID:  c.Cluster.OrganizationID,
 			ClusterID:       c.Cluster.ID,
 			AccountID:       awsAccountId,
@@ -234,7 +234,7 @@ func registerCluster(log *logrus.Logger, client *resty.Client, registerRequest *
 	return resp.Result().(*RegisterClusterResponse), nil
 }
 
-func sendTelemetry(log *logrus.Logger, client *resty.Client, t *TelemetryData) error {
+func sendTelemetry(log *logrus.Logger, client *resty.Client, t *TelemetrySnapshot) error {
 	tb, err := json.Marshal(t)
 	if err != nil {
 		return err
