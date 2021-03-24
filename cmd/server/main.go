@@ -15,7 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/castai/k8s-agent/internal/services/collector"
+	"castai-agent/internal/services/collector"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"

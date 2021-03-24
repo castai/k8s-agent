@@ -1,4 +1,4 @@
-module github.com/castai/k8s-agent
+module castai-agent
 
 go 1.16
 
