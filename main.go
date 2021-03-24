@@ -145,9 +145,9 @@ func main() {
 			return
 		}
 
-		cd, err := collect(ctx, clientset)
+		cd, err := collectAll(ctx, clientset)
 		if err != nil {
-			log.Errorf("failed collecitng snapshot data: %v", err)
+			log.Errorf("failed collecting snapshot data: %v", err)
 			continue
 		}
 
@@ -175,85 +175,181 @@ func main() {
 	}
 }
 
-func collect(ctx context.Context, c *kubernetes.Clientset) (*ClusterData, error) {
-	var cd ClusterData
+func collectNodes(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
 	nodes, err := c.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	cd.NodeList = nodes
+	return nil
+}
 
+func collectPods(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
 	pods, err := c.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	cd.PodList = pods
+	return nil
+}
 
-	pv, err := c.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
+func collectPersistentVolumes(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
+	pods, err := c.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return err
 	}
-	cd.PersistentVolumeList = pv
+	cd.PodList = pods
+	return nil
+}
 
+func collectPersistentVolumeClaims(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
 	pvc, err := c.CoreV1().PersistentVolumeClaims("").List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	cd.PersistentVolumeClaimList = pvc
+	return nil
+}
 
+func collectDeploymentList(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
 	dpls, err := c.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	cd.DeploymentList = dpls
+	return nil
+}
 
+func collectReplicaSetList(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
 	rpsl, err := c.AppsV1().ReplicaSets("").List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	cd.ReplicaSetList = rpsl
+	return nil
+}
 
+func collectDaemonSetList(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
 	dsl, err := c.AppsV1().DaemonSets("").List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	cd.DaemonSetList = dsl
+	return nil
+}
 
+func collectStatefulSetList(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
 	stsl, err := c.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	cd.StatefulSetList = stsl
+	return nil
+}
 
+func collectReplicationControllerList(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
 	rc, err := c.CoreV1().ReplicationControllers("").List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	cd.ReplicationControllerList = rc
+	return nil
+}
 
+func collectServiceList(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
 	svc, err := c.CoreV1().Services("").List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	cd.ServiceList = svc
+	return nil
+}
 
+func collectCSINodeList(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
 	csin, err := c.StorageV1().CSINodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	cd.CSINodeList = csin
+	return nil
+}
 
+func collectStorageClassList(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
 	scl, err := c.StorageV1().StorageClasses().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	cd.StorageClassList = scl
+	return nil
+}
 
+func collectJobList(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
 	jobs, err := c.BatchV1().Jobs("").List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	cd.JobList = jobs
+	return nil
+}
+
+func collectAll(ctx context.Context, c *kubernetes.Clientset) (*ClusterData, error) {
+	var cd ClusterData
+
+	if err := collectNodes(ctx, c, &cd); err != nil {
+		return nil, err
+	}
+
+	if err := collectPods(ctx, c, &cd); err != nil {
+		return nil, err
+	}
+
+	if err := collectPods(ctx, c, &cd); err != nil {
+		return nil, err
+	}
+
+	if err := collectPersistentVolumes(ctx, c, &cd); err != nil {
+		return nil, err
+	}
+
+	if err := collectPersistentVolumeClaims(ctx, c, &cd); err != nil {
+		return nil, err
+	}
+
+	if err := collectDeploymentList(ctx, c, &cd); err != nil {
+		return nil, err
+	}
+
+	if err := collectReplicaSetList(ctx, c, &cd); err != nil {
+		return nil, err
+	}
+
+	if err := collectDaemonSetList(ctx, c, &cd); err != nil {
+		return nil, err
+	}
+
+	if err := collectStatefulSetList(ctx, c, &cd); err != nil {
+		return nil, err
+	}
+
+	if err := collectReplicationControllerList(ctx, c, &cd); err != nil {
+		return nil, err
+	}
+
+	if err := collectServiceList(ctx, c, &cd); err != nil {
+		return nil, err
+	}
+
+	if err := collectCSINodeList(ctx, c, &cd); err != nil {
+		return nil, err
+	}
+
+	if err := collectStorageClassList(ctx, c, &cd); err != nil {
+		return nil, err
+	}
+
+	if err := collectJobList(ctx, c, &cd); err != nil {
+		return nil, err
+	}
 
 	return &cd, nil
 }
