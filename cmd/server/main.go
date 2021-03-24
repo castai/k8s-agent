@@ -12,9 +12,10 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/go-resty/resty/v2"
 	"github.com/sirupsen/logrus"
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
+
+	"castai-agent/internal/services/collector"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -38,27 +39,26 @@ type Request struct {
 	Payload []byte `json:"payload"`
 }
 
-type TelemetryData struct {
-	ClusterID       string       `json:"clusterId"`
-	AccountID       string       `json:"accountId"`
-	OrganizationID  string       `json:"organizationId"`
-	ClusterProvider string       `json:"clusterProvider"`
-	ClusterName     string       `json:"clusterName"`
-	ClusterVersion  string       `json:"clusterVersion"`
-	ClusterRegion   string       `json:"clusterRegion"`
-	NodeList        *v1.NodeList `json:"nodeList"`
-	PodList         *v1.PodList  `json:"podList"`
+type TelemetrySnapshot struct {
+	ClusterID       string `json:"clusterId"`
+	AccountID       string `json:"accountId"`
+	OrganizationID  string `json:"organizationId"`
+	ClusterProvider string `json:"clusterProvider"`
+	ClusterName     string `json:"clusterName"`
+	ClusterVersion  string `json:"clusterVersion"`
+	ClusterRegion   string `json:"clusterRegion"`
+	*collector.ClusterData
 }
 
 type EKSParams struct {
-	ClusterName    string `json:"clusterName"`
-	Region         string `json:"region"`
-	AccountID      string `json:"accountId"`
+	ClusterName string `json:"clusterName"`
+	Region      string `json:"region"`
+	AccountID   string `json:"accountId"`
 }
 
 type RegisterClusterRequest struct {
-	Name           string    `json:"name"`
-	EKS            EKSParams `json:"eks"`
+	Name string    `json:"name"`
+	EKS  EKSParams `json:"eks"`
 }
 
 type Cluster struct {
@@ -120,6 +120,8 @@ func main() {
 		panic(err)
 	}
 
+	col := collector.NewCollector(clientset)
+
 	for {
 		select {
 		case <-ticker.C:
@@ -127,29 +129,20 @@ func main() {
 			return
 		}
 
-		// TODO: move into separate collector function
-		nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+		cd, err := col.Collect(ctx)
 		if err != nil {
-			log.Errorf("failed listing nodes: %v", err)
+			log.Errorf("failed collecting snapshot data: %v", err)
 			continue
 		}
 
-
-		pods, err := clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
-		if err != nil {
-			log.Errorf("failed listing pods: %v", err)
-			continue
-		}
-
-		t := &TelemetryData{
+		t := &TelemetrySnapshot{
 			OrganizationID:  c.Cluster.OrganizationID,
 			ClusterID:       c.Cluster.ID,
 			AccountID:       awsAccountId,
 			ClusterProvider: "EKS",
 			ClusterName:     clusterName,
 			ClusterRegion:   clusterRegion,
-			NodeList:        nodes,
-			PodList:         pods,
+			ClusterData:     cd,
 		}
 
 		version, err := clientset.ServerVersion()
@@ -221,7 +214,7 @@ func registerCluster(log *logrus.Logger, client *resty.Client, registerRequest *
 	return resp.Result().(*RegisterClusterResponse), nil
 }
 
-func sendTelemetry(log *logrus.Logger, client *resty.Client, t *TelemetryData) error {
+func sendTelemetry(log *logrus.Logger, client *resty.Client, t *TelemetrySnapshot) error {
 	tb, err := json.Marshal(t)
 	if err != nil {
 		return err

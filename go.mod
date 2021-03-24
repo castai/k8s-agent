@@ -1,6 +1,6 @@
 module castai-agent
 
-go 1.15
+go 1.16
 
 require (
 	github.com/aws/aws-sdk-go v1.37.23
