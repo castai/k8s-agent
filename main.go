@@ -177,7 +177,6 @@ func main() {
 
 func collect(ctx context.Context, c *kubernetes.Clientset) (*ClusterData, error) {
 	var cd ClusterData
-	// TODO: move into separate collector function
 	nodes, err := c.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
