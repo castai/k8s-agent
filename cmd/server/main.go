@@ -12,12 +12,10 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/go-resty/resty/v2"
 	"github.com/sirupsen/logrus"
-	appv1 "k8s.io/api/apps/v1"
-	batchv1 "k8s.io/api/batch/v1"
-	corev1 "k8s.io/api/core/v1"
-	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
+
+	"github.com/castai/k8s-agent/internal/services/collector"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -41,22 +39,6 @@ type Request struct {
 	Payload []byte `json:"payload"`
 }
 
-type ClusterData struct {
-	NodeList                  *corev1.NodeList                  `json:"nodeList"`
-	PodList                   *corev1.PodList                   `json:"podList"`
-	PersistentVolumeList      *corev1.PersistentVolumeList      `json:"persistentVolumeList"`
-	PersistentVolumeClaimList *corev1.PersistentVolumeClaimList `json:"persistentVolumeClaimList"`
-	DeploymentList            *appv1.DeploymentList             `json:"deploymentList"`
-	ReplicaSetList            *appv1.ReplicaSetList             `json:"replicaSetList"`
-	DaemonSetList             *appv1.DaemonSetList              `json:"daemonSetList"`
-	StatefulSetList           *appv1.StatefulSetList            `json:"statefulSetList"`
-	ReplicationControllerList *corev1.ReplicationControllerList `json:"replicationControllerList"`
-	ServiceList               *corev1.ServiceList               `json:"serviceList"`
-	CSINodeList               *storagev1.CSINodeList            `json:"csiNodeList"`
-	StorageClassList          *storagev1.StorageClassList       `json:"storageClassList"`
-	JobList                   *batchv1.JobList                  `json:"jobList"`
-}
-
 type TelemetrySnapshot struct {
 	ClusterID       string `json:"clusterId"`
 	AccountID       string `json:"accountId"`
@@ -65,7 +47,7 @@ type TelemetrySnapshot struct {
 	ClusterName     string `json:"clusterName"`
 	ClusterVersion  string `json:"clusterVersion"`
 	ClusterRegion   string `json:"clusterRegion"`
-	*ClusterData
+	*collector.ClusterData
 }
 
 type EKSParams struct {
@@ -138,6 +120,8 @@ func main() {
 		panic(err)
 	}
 
+	col := collector.NewCollector(clientset)
+
 	for {
 		select {
 		case <-ticker.C:
@@ -145,7 +129,7 @@ func main() {
 			return
 		}
 
-		cd, err := collectAll(ctx, clientset)
+		cd, err := col.Collect(ctx)
 		if err != nil {
 			log.Errorf("failed collecting snapshot data: %v", err)
 			continue
@@ -173,185 +157,6 @@ func main() {
 			log.Errorf("failed to send data: %v", err)
 		}
 	}
-}
-
-func collectNodes(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
-	nodes, err := c.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return err
-	}
-	cd.NodeList = nodes
-	return nil
-}
-
-func collectPods(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
-	pods, err := c.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return err
-	}
-	cd.PodList = pods
-	return nil
-}
-
-func collectPersistentVolumes(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
-	pods, err := c.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return err
-	}
-	cd.PodList = pods
-	return nil
-}
-
-func collectPersistentVolumeClaims(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
-	pvc, err := c.CoreV1().PersistentVolumeClaims("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return err
-	}
-	cd.PersistentVolumeClaimList = pvc
-	return nil
-}
-
-func collectDeploymentList(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
-	dpls, err := c.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return err
-	}
-	cd.DeploymentList = dpls
-	return nil
-}
-
-func collectReplicaSetList(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
-	rpsl, err := c.AppsV1().ReplicaSets("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return err
-	}
-	cd.ReplicaSetList = rpsl
-	return nil
-}
-
-func collectDaemonSetList(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
-	dsl, err := c.AppsV1().DaemonSets("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return err
-	}
-	cd.DaemonSetList = dsl
-	return nil
-}
-
-func collectStatefulSetList(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
-	stsl, err := c.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return err
-	}
-	cd.StatefulSetList = stsl
-	return nil
-}
-
-func collectReplicationControllerList(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
-	rc, err := c.CoreV1().ReplicationControllers("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return err
-	}
-	cd.ReplicationControllerList = rc
-	return nil
-}
-
-func collectServiceList(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
-	svc, err := c.CoreV1().Services("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return err
-	}
-	cd.ServiceList = svc
-	return nil
-}
-
-func collectCSINodeList(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
-	csin, err := c.StorageV1().CSINodes().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return err
-	}
-	cd.CSINodeList = csin
-	return nil
-}
-
-func collectStorageClassList(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
-	scl, err := c.StorageV1().StorageClasses().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return err
-	}
-	cd.StorageClassList = scl
-	return nil
-}
-
-func collectJobList(ctx context.Context, c *kubernetes.Clientset, cd *ClusterData) error {
-	jobs, err := c.BatchV1().Jobs("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return err
-	}
-	cd.JobList = jobs
-	return nil
-}
-
-func collectAll(ctx context.Context, c *kubernetes.Clientset) (*ClusterData, error) {
-	var cd ClusterData
-
-	if err := collectNodes(ctx, c, &cd); err != nil {
-		return nil, err
-	}
-
-	if err := collectPods(ctx, c, &cd); err != nil {
-		return nil, err
-	}
-
-	if err := collectPods(ctx, c, &cd); err != nil {
-		return nil, err
-	}
-
-	if err := collectPersistentVolumes(ctx, c, &cd); err != nil {
-		return nil, err
-	}
-
-	if err := collectPersistentVolumeClaims(ctx, c, &cd); err != nil {
-		return nil, err
-	}
-
-	if err := collectDeploymentList(ctx, c, &cd); err != nil {
-		return nil, err
-	}
-
-	if err := collectReplicaSetList(ctx, c, &cd); err != nil {
-		return nil, err
-	}
-
-	if err := collectDaemonSetList(ctx, c, &cd); err != nil {
-		return nil, err
-	}
-
-	if err := collectStatefulSetList(ctx, c, &cd); err != nil {
-		return nil, err
-	}
-
-	if err := collectReplicationControllerList(ctx, c, &cd); err != nil {
-		return nil, err
-	}
-
-	if err := collectServiceList(ctx, c, &cd); err != nil {
-		return nil, err
-	}
-
-	if err := collectCSINodeList(ctx, c, &cd); err != nil {
-		return nil, err
-	}
-
-	if err := collectStorageClassList(ctx, c, &cd); err != nil {
-		return nil, err
-	}
-
-	if err := collectJobList(ctx, c, &cd); err != nil {
-		return nil, err
-	}
-
-	return &cd, nil
 }
 
 func kubeConfigFromEnv() (*rest.Config, error) {
