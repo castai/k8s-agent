@@ -33,7 +33,7 @@ jobs:
           restore-keys: ${{ runner.os }}-build-
 
       - name: Build Go binary
-        run: go build -o bin/castai-agent
+        run: go build -o bin/castai-agent ./cmd/server/main.go
         env:
           GOOS: linux
           GOARCH: amd64
