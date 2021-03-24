@@ -41,14 +41,7 @@ type Request struct {
 	Payload []byte `json:"payload"`
 }
 
-type TelemetrySnapshot struct {
-	ClusterID                 string                            `json:"clusterId"`
-	AccountID                 string                            `json:"accountId"`
-	OrganizationID            string                            `json:"organizationId"`
-	ClusterProvider           string                            `json:"clusterProvider"`
-	ClusterName               string                            `json:"clusterName"`
-	ClusterVersion            string                            `json:"clusterVersion"`
-	ClusterRegion             string                            `json:"clusterRegion"`
+type ClusterData struct {
 	NodeList                  *corev1.NodeList                  `json:"nodeList"`
 	PodList                   *corev1.PodList                   `json:"podList"`
 	PersistentVolumeList      *corev1.PersistentVolumeList      `json:"persistentVolumeList"`
@@ -62,6 +55,17 @@ type TelemetrySnapshot struct {
 	CSINodeList               *storagev1.CSINodeList            `json:"csiNodeList"`
 	StorageClassList          *storagev1.StorageClassList       `json:"storageClassList"`
 	JobList                   *batchv1.JobList                  `json:"jobList"`
+}
+
+type TelemetrySnapshot struct {
+	ClusterID       string `json:"clusterId"`
+	AccountID       string `json:"accountId"`
+	OrganizationID  string `json:"organizationId"`
+	ClusterProvider string `json:"clusterProvider"`
+	ClusterName     string `json:"clusterName"`
+	ClusterVersion  string `json:"clusterVersion"`
+	ClusterRegion   string `json:"clusterRegion"`
+	*ClusterData
 }
 
 type EKSParams struct {
@@ -141,16 +145,9 @@ func main() {
 			return
 		}
 
-		// TODO: move into separate collector function
-		nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+		cd, err := collect(ctx, clientset)
 		if err != nil {
-			log.Errorf("failed listing nodes: %v", err)
-			continue
-		}
-
-		pods, err := clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
-		if err != nil {
-			log.Errorf("failed listing pods: %v", err)
+			log.Errorf("failed collecitng snapshot data: %v", err)
 			continue
 		}
 
@@ -161,8 +158,7 @@ func main() {
 			ClusterProvider: "EKS",
 			ClusterName:     clusterName,
 			ClusterRegion:   clusterRegion,
-			NodeList:        nodes,
-			PodList:         pods,
+			ClusterData:     cd,
 		}
 
 		version, err := clientset.ServerVersion()
@@ -177,6 +173,90 @@ func main() {
 			log.Errorf("failed to send data: %v", err)
 		}
 	}
+}
+
+func collect(ctx context.Context, c *kubernetes.Clientset) (*ClusterData, error) {
+	var cd ClusterData
+	// TODO: move into separate collector function
+	nodes, err := c.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	cd.NodeList = nodes
+
+	pods, err := c.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	cd.PodList = pods
+
+	pv, err := c.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	cd.PersistentVolumeList = pv
+
+	pvc, err := c.CoreV1().PersistentVolumeClaims("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	cd.PersistentVolumeClaimList = pvc
+
+	dpls, err := c.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	cd.DeploymentList = dpls
+
+	rpsl, err := c.AppsV1().ReplicaSets("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	cd.ReplicaSetList = rpsl
+
+	dsl, err := c.AppsV1().DaemonSets("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	cd.DaemonSetList = dsl
+
+	stsl, err := c.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	cd.StatefulSetList = stsl
+
+	rc, err := c.CoreV1().ReplicationControllers("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	cd.ReplicationControllerList = rc
+
+	svc, err := c.CoreV1().Services("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	cd.ServiceList = svc
+
+	csin, err := c.StorageV1().CSINodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	cd.CSINodeList = csin
+
+	scl, err := c.StorageV1().StorageClasses().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	cd.StorageClassList = scl
+
+	jobs, err := c.BatchV1().Jobs("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	cd.JobList = jobs
+
+	return &cd, nil
 }
 
 func kubeConfigFromEnv() (*rest.Config, error) {
