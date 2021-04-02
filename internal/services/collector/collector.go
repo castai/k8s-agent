@@ -2,25 +2,27 @@ package collector
 
 import (
 	"context"
-
+	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
-type collector struct {
-	clientset *kubernetes.Clientset
+type Collector struct {
+	log       logrus.FieldLogger
+	clientset kubernetes.Interface
 	cd        *ClusterData
 }
 
-func NewCollector(clientset *kubernetes.Clientset) *collector {
+func NewCollector(log logrus.FieldLogger, clientset kubernetes.Interface) *Collector {
 	var cd ClusterData
-	return &collector{
+	return &Collector{
+		log:       log,
 		clientset: clientset,
 		cd:        &cd,
 	}
 }
 
-func (c *collector) Collect(ctx context.Context) (*ClusterData, error) {
+func (c *Collector) Collect(ctx context.Context) (*ClusterData, error) {
 	if err := c.collectNodes(ctx); err != nil {
 		return nil, err
 	}
@@ -80,7 +82,7 @@ func (c *collector) Collect(ctx context.Context) (*ClusterData, error) {
 	return c.cd, nil
 }
 
-func (c *collector) collectNodes(ctx context.Context) error {
+func (c *Collector) collectNodes(ctx context.Context) error {
 	nodes, err := c.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -89,7 +91,7 @@ func (c *collector) collectNodes(ctx context.Context) error {
 	return nil
 }
 
-func (c *collector) collectPods(ctx context.Context) error {
+func (c *Collector) collectPods(ctx context.Context) error {
 	pods, err := c.clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -98,7 +100,7 @@ func (c *collector) collectPods(ctx context.Context) error {
 	return nil
 }
 
-func (c *collector) collectPersistentVolumes(ctx context.Context) error {
+func (c *Collector) collectPersistentVolumes(ctx context.Context) error {
 	pods, err := c.clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -107,7 +109,7 @@ func (c *collector) collectPersistentVolumes(ctx context.Context) error {
 	return nil
 }
 
-func (c *collector) collectPersistentVolumeClaims(ctx context.Context) error {
+func (c *Collector) collectPersistentVolumeClaims(ctx context.Context) error {
 	pvc, err := c.clientset.CoreV1().PersistentVolumeClaims("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -116,7 +118,7 @@ func (c *collector) collectPersistentVolumeClaims(ctx context.Context) error {
 	return nil
 }
 
-func (c *collector) collectDeploymentList(ctx context.Context) error {
+func (c *Collector) collectDeploymentList(ctx context.Context) error {
 	dpls, err := c.clientset.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -125,7 +127,7 @@ func (c *collector) collectDeploymentList(ctx context.Context) error {
 	return nil
 }
 
-func (c *collector) collectReplicaSetList(ctx context.Context) error {
+func (c *Collector) collectReplicaSetList(ctx context.Context) error {
 	rpsl, err := c.clientset.AppsV1().ReplicaSets("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -134,7 +136,7 @@ func (c *collector) collectReplicaSetList(ctx context.Context) error {
 	return nil
 }
 
-func (c *collector) collectDaemonSetList(ctx context.Context) error {
+func (c *Collector) collectDaemonSetList(ctx context.Context) error {
 	dsl, err := c.clientset.AppsV1().DaemonSets("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -143,7 +145,7 @@ func (c *collector) collectDaemonSetList(ctx context.Context) error {
 	return nil
 }
 
-func (c *collector) collectStatefulSetList(ctx context.Context) error {
+func (c *Collector) collectStatefulSetList(ctx context.Context) error {
 	stsl, err := c.clientset.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -152,7 +154,7 @@ func (c *collector) collectStatefulSetList(ctx context.Context) error {
 	return nil
 }
 
-func (c *collector) collectReplicationControllerList(ctx context.Context) error {
+func (c *Collector) collectReplicationControllerList(ctx context.Context) error {
 	rc, err := c.clientset.CoreV1().ReplicationControllers("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -161,7 +163,7 @@ func (c *collector) collectReplicationControllerList(ctx context.Context) error 
 	return nil
 }
 
-func (c *collector) collectServiceList(ctx context.Context) error {
+func (c *Collector) collectServiceList(ctx context.Context) error {
 	svc, err := c.clientset.CoreV1().Services("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -170,7 +172,7 @@ func (c *collector) collectServiceList(ctx context.Context) error {
 	return nil
 }
 
-func (c *collector) collectCSINodeList(ctx context.Context) error {
+func (c *Collector) collectCSINodeList(ctx context.Context) error {
 	csin, err := c.clientset.StorageV1().CSINodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -179,7 +181,7 @@ func (c *collector) collectCSINodeList(ctx context.Context) error {
 	return nil
 }
 
-func (c *collector) collectStorageClassList(ctx context.Context) error {
+func (c *Collector) collectStorageClassList(ctx context.Context) error {
 	scl, err := c.clientset.StorageV1().StorageClasses().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -188,7 +190,7 @@ func (c *collector) collectStorageClassList(ctx context.Context) error {
 	return nil
 }
 
-func (c *collector) collectJobList(ctx context.Context) error {
+func (c *Collector) collectJobList(ctx context.Context) error {
 	jobs, err := c.clientset.BatchV1().Jobs("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
