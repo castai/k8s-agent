@@ -106,11 +106,11 @@ func (c *collector) collectPods(ctx context.Context) error {
 }
 
 func (c *collector) collectPersistentVolumes(ctx context.Context) error {
-	pods, err := c.clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+	pvs, err := c.clientset.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
-	c.cd.PodList = pods
+	c.cd.PersistentVolumeList = pvs
 	return nil
 }
 
