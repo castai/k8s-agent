@@ -84,9 +84,9 @@ func collect(
 	ctx context.Context,
 	log logrus.FieldLogger,
 	c *cast.RegisterClusterResponse,
-	col *collector.Collector,
+	col collector.Collector,
 	provider providers.Provider,
-	clientset *kubernetes.Clientset,
+	clientset kubernetes.Interface,
 	castclient cast.Client,
 ) error {
 	cd, err := col.Collect(ctx)
@@ -110,8 +110,8 @@ func collect(
 	}
 
 	snap := &cast.Snapshot{
-		OrganizationID:  c.Cluster.OrganizationID,
 		ClusterID:       c.Cluster.ID,
+		OrganizationID:  c.Cluster.OrganizationID,
 		ClusterProvider: strings.ToUpper(provider.Name()),
 		AccountID:       accountID,
 		ClusterName:     clusterName,
@@ -119,19 +119,21 @@ func collect(
 		ClusterData:     cd,
 	}
 
-	version, err := clientset.ServerVersion()
-	if err != nil {
-		log.Errorf("getting cluster version: %v", version)
-	}
-	if version != nil {
-		snap.ClusterVersion = version.GitVersion
+	if cs, ok := clientset.(*kubernetes.Clientset); ok {
+		version, err := cs.ServerVersion()
+		if err != nil {
+			log.Errorf("getting cluster version: %v", version)
+		}
+		if version != nil {
+			snap.ClusterVersion = version.GitVersion
+		}
 	}
 
 	if err := addSpotLabel(ctx, provider, snap.NodeList); err != nil {
 		log.Errorf("adding spot labels: %v", err)
 	}
 
-	if err := castclient.SendClusterSnapshot(snap); err != nil {
+	if err := castclient.SendClusterSnapshot(ctx, snap); err != nil {
 		return fmt.Errorf("sending cluster snapshot: %w", err)
 	}
 

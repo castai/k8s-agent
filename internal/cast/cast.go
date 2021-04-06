@@ -1,3 +1,4 @@
+//go:generate mockgen -destination ./mock/client.go . Client
 package cast
 
 import (
@@ -15,11 +16,16 @@ const (
 	defaultTimeout    = 10 * time.Second
 )
 
+// Client responsible for communication between the agent and CAST AI API.
 type Client interface {
+	// RegisterCluster sends a request to CAST AI containing discovered cluster properties used to authenticate the
+	// cluster and register it.
 	RegisterCluster(ctx context.Context, req *RegisterClusterRequest) (*RegisterClusterResponse, error)
-	SendClusterSnapshot(snap *Snapshot) error
+	// SendClusterSnapshot sends a cluster snapshot to CAST AI to enable savings estimations / autoscaling / etc.
+	SendClusterSnapshot(ctx context.Context, snap *Snapshot) error
 }
 
+// NewClient creates and configures the CAST AI client.
 func NewClient(log logrus.FieldLogger, rest *resty.Client) Client {
 	return &client{
 		log:  log.WithField("client", "cast"),
@@ -27,6 +33,7 @@ func NewClient(log logrus.FieldLogger, rest *resty.Client) Client {
 	}
 }
 
+// NewDefaultClient configures a default instance of the resty.Client used to do HTTP requests.
 func NewDefaultClient() *resty.Client {
 	cfg := config.Get().API
 
@@ -64,15 +71,16 @@ func (c *client) RegisterCluster(ctx context.Context, req *RegisterClusterReques
 	return body, nil
 }
 
-func (c *client) SendClusterSnapshot(snap *Snapshot) error {
+func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) error {
 	payload, err := json.Marshal(snap)
 	if err != nil {
 		return err
 	}
 
 	resp, err := c.rest.R().
-		SetBody(&Request{Payload: payload}).
+		SetBody(&SnapshotRequest{Payload: payload}).
 		SetResult(&RegisterClusterResponse{}).
+		SetContext(ctx).
 		Post("/v1/agent/eks-snapshot")
 	if err != nil {
 		return err

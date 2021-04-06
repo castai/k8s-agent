@@ -24,7 +24,7 @@ type RegisterClusterResponse struct {
 	Cluster
 }
 
-type Request struct {
+type SnapshotRequest struct {
 	Payload []byte `json:"payload"`
 }
 
