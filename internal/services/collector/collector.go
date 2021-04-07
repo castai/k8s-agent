@@ -1,20 +1,27 @@
+//go:generate mockgen -destination ./mock/collector.go . Collector
 package collector
 
 import (
 	"context"
-
+	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
+type Collector interface {
+	Collect(ctx context.Context) (*ClusterData, error)
+}
+
 type collector struct {
-	clientset *kubernetes.Clientset
+	log       logrus.FieldLogger
+	clientset kubernetes.Interface
 	cd        *ClusterData
 }
 
-func NewCollector(clientset *kubernetes.Clientset) *collector {
+func NewCollector(log logrus.FieldLogger, clientset kubernetes.Interface) Collector {
 	var cd ClusterData
 	return &collector{
+		log:       log,
 		clientset: clientset,
 		cd:        &cd,
 	}
@@ -99,11 +106,11 @@ func (c *collector) collectPods(ctx context.Context) error {
 }
 
 func (c *collector) collectPersistentVolumes(ctx context.Context) error {
-	pods, err := c.clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+	pvs, err := c.clientset.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
-	c.cd.PodList = pods
+	c.cd.PersistentVolumeList = pvs
 	return nil
 }
 
