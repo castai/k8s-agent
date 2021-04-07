@@ -49,7 +49,7 @@ func New(ctx context.Context, log logrus.FieldLogger, opts ...Opt) (Client, erro
 
 const (
 	tagK8sCluster        = "k8s.io/cluster/"
-	tagKubernetesCluster = "kubernetes.io/cluster"
+	tagKubernetesCluster = "kubernetes.io/cluster/"
 	owned                = "owned"
 )
 
