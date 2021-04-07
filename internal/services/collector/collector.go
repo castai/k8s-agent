@@ -3,6 +3,7 @@ package collector
 
 import (
 	"context"
+
 	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -29,10 +30,6 @@ func NewCollector(log logrus.FieldLogger, clientset kubernetes.Interface) Collec
 
 func (c *collector) Collect(ctx context.Context) (*ClusterData, error) {
 	if err := c.collectNodes(ctx); err != nil {
-		return nil, err
-	}
-
-	if err := c.collectPods(ctx); err != nil {
 		return nil, err
 	}
 
@@ -72,8 +69,11 @@ func (c *collector) Collect(ctx context.Context) (*ClusterData, error) {
 		return nil, err
 	}
 
+
 	if err := c.collectCSINodeList(ctx); err != nil {
-		return nil, err
+		// https://kubernetes-csi.github.io/docs/csi-node-object.html
+		// GA since 1.17
+		c.log.Debugf("could not get CSINodes: %v", err)
 	}
 
 	if err := c.collectStorageClassList(ctx); err != nil {
