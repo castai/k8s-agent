@@ -207,7 +207,7 @@ func registerCluster(log *logrus.Logger, client *resty.Client, registerRequest *
 	}
 
 	if resp.IsError() {
-		return nil, fmt.Errorf("failed to register cluster with StatusCode[%d]", resp.StatusCode())
+		return nil, fmt.Errorf("failed to register cluster with StatusCode[%d] %s", resp.StatusCode(), string(resp.Body()))
 	}
 
 	log.Infof("cluster registered: %+v", resp.Result())
