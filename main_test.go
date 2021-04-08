@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/apimachinery/pkg/version"
 	"testing"
 )
 
@@ -22,7 +22,6 @@ func TestCollect(t *testing.T) {
 	mockctrl := gomock.NewController(t)
 	col := mock_collector.NewMockCollector(mockctrl)
 	provider := mock_providers.NewMockProvider(mockctrl)
-	clientset := fake.NewSimpleClientset()
 	castclient := mock_cast.NewMockClient(mockctrl)
 
 	c := &cast.RegisterClusterResponse{Cluster: cast.Cluster{ID: uuid.New().String(), OrganizationID: uuid.New().String()}}
@@ -32,6 +31,7 @@ func TestCollect(t *testing.T) {
 
 	cd := &collector.ClusterData{NodeList: &v1.NodeList{Items: []v1.Node{spot, onDemand}}}
 	col.EXPECT().Collect(ctx).Return(cd, nil)
+	col.EXPECT().GetVersion().Return(&version.Info{Major: "1", Minor: "20"})
 
 	provider.EXPECT().AccountID(ctx).Return("accountID", nil)
 	provider.EXPECT().ClusterName(ctx).Return("clusterName", nil)
@@ -47,9 +47,10 @@ func TestCollect(t *testing.T) {
 		ClusterName:     "clusterName",
 		ClusterRegion:   "eu-central-1",
 		ClusterData:     cd,
+		ClusterVersion:  "1.20",
 	}).Return(nil)
 
-	err := collect(ctx, logrus.New(), c, col, provider, clientset, castclient)
+	err := collect(ctx, logrus.New(), c, col, provider, castclient)
 
 	require.NoError(t, err)
 

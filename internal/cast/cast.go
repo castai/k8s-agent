@@ -2,6 +2,7 @@
 package cast
 
 import (
+	"bytes"
 	"castai-agent/internal/config"
 	"context"
 	"encoding/json"
@@ -42,7 +43,6 @@ func NewDefaultClient() *resty.Client {
 	client.SetRetryCount(defaultRetryCount)
 	client.SetTimeout(defaultTimeout)
 	client.Header.Set("X-API-Key", cfg.Key)
-	client.Header.Set("Content-Type", "application/json")
 
 	return client
 }
@@ -74,14 +74,15 @@ func (c *client) RegisterCluster(ctx context.Context, req *RegisterClusterReques
 func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) error {
 	payload, err := json.Marshal(snap)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshaling snapshot payload: %w", err)
 	}
+	buf := bytes.NewBuffer(payload)
 
 	resp, err := c.rest.R().
-		SetBody(&SnapshotRequest{Payload: payload}).
+		SetFileReader("payload", "payload.json", buf).
 		SetResult(&RegisterClusterResponse{}).
 		SetContext(ctx).
-		Post("/v1/agent/eks-snapshot")
+		Post("/v1/agent/snapshot")
 	if err != nil {
 		return err
 	}

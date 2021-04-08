@@ -60,14 +60,17 @@ func run(ctx context.Context, log logrus.FieldLogger) error {
 		return err
 	}
 
-	col := collector.NewCollector(log, clientset)
+	col, err := collector.NewCollector(log, clientset)
+	if err != nil {
+		return fmt.Errorf("initializing snapshot collector: %w", err)
+	}
 
 	const interval = 15 * time.Second
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
-		if err := collect(ctx, log, c, col, provider, clientset, castclient); err != nil {
+		if err := collect(ctx, log, c, col, provider, castclient); err != nil {
 			log.Errorf("collecting snapshot data: %v", err)
 		}
 
@@ -86,7 +89,6 @@ func collect(
 	c *cast.RegisterClusterResponse,
 	col collector.Collector,
 	provider providers.Provider,
-	clientset kubernetes.Interface,
 	castclient cast.Client,
 ) error {
 	cd, err := col.Collect(ctx)
@@ -119,14 +121,8 @@ func collect(
 		ClusterData:     cd,
 	}
 
-	if cs, ok := clientset.(*kubernetes.Clientset); ok {
-		version, err := cs.ServerVersion()
-		if err != nil {
-			log.Errorf("getting cluster version: %v", version)
-		}
-		if version != nil {
-			snap.ClusterVersion = version.GitVersion
-		}
+	if v := col.GetVersion(); v != nil {
+		snap.ClusterVersion = v.Major + "." + v.Minor
 	}
 
 	if err := addSpotLabel(ctx, provider, snap.NodeList); err != nil {
