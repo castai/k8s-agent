@@ -10,6 +10,7 @@ import (
 	reflect "reflect"
 
 	gomock "github.com/golang/mock/gomock"
+	version "k8s.io/apimachinery/pkg/version"
 )
 
 // MockCollector is a mock of Collector interface.
@@ -48,4 +49,18 @@ func (m *MockCollector) Collect(arg0 context.Context) (*collector.ClusterData, e
 func (mr *MockCollectorMockRecorder) Collect(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Collect", reflect.TypeOf((*MockCollector)(nil).Collect), arg0)
+}
+
+// GetVersion mocks base method.
+func (m *MockCollector) GetVersion() *version.Info {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetVersion")
+	ret0, _ := ret[0].(*version.Info)
+	return ret0
+}
+
+// GetVersion indicates an expected call of GetVersion.
+func (mr *MockCollectorMockRecorder) GetVersion() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVersion", reflect.TypeOf((*MockCollector)(nil).GetVersion))
 }

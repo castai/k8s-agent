@@ -3,88 +3,118 @@ package collector
 
 import (
 	"context"
-
+	"fmt"
 	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes"
+	"regexp"
+	"strconv"
 )
 
+// Collector is responsible for gathering K8s data from the cluster.
 type Collector interface {
+	// Collect cluster snapshot data.
 	Collect(ctx context.Context) (*ClusterData, error)
+	// GetVersion returns the K8s cluster version. Version is nil when the collector is unable to retrieve it.
+	GetVersion() *version.Info
+}
+
+// NewCollector creates and configures a Collector instance.
+func NewCollector(log logrus.FieldLogger, clientset kubernetes.Interface) (Collector, error) {
+	var v *version.Info
+	var minor int
+	if cs, ok := clientset.(*kubernetes.Clientset); ok {
+		sv, err := cs.ServerVersion()
+		if err != nil {
+			log.Errorf("getting cluster version: %v", err)
+		} else {
+			v = sv
+			m, err := strconv.Atoi(regexp.MustCompile(`^(\d+)`).FindString(sv.Minor))
+			if err != nil {
+				return nil, fmt.Errorf("parsing k8s version: %w", err)
+			}
+			minor = m
+		}
+	}
+
+	return &collector{
+		log:       log,
+		clientset: clientset,
+		cd:        &ClusterData{},
+		v:         v,
+		minor:     minor,
+	}, nil
 }
 
 type collector struct {
 	log       logrus.FieldLogger
 	clientset kubernetes.Interface
 	cd        *ClusterData
-}
-
-func NewCollector(log logrus.FieldLogger, clientset kubernetes.Interface) Collector {
-	var cd ClusterData
-	return &collector{
-		log:       log,
-		clientset: clientset,
-		cd:        &cd,
-	}
+	minor     int
+	v         *version.Info
 }
 
 func (c *collector) Collect(ctx context.Context) (*ClusterData, error) {
 	if err := c.collectNodes(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("collecting nodes: %w", err)
 	}
 
 	if err := c.collectPods(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("collecting pods: %w", err)
 	}
 
 	if err := c.collectPersistentVolumes(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("collecting persistent volumes: %w", err)
 	}
 
 	if err := c.collectPersistentVolumeClaims(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("collecting persistent volume claims: %w", err)
 	}
 
 	if err := c.collectDeploymentList(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("collecting deployments: %w", err)
 	}
 
 	if err := c.collectReplicaSetList(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("collecting replica sets: %w", err)
 	}
 
 	if err := c.collectDaemonSetList(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("collecting daemon sets: %w", err)
 	}
 
 	if err := c.collectStatefulSetList(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("collecting stateful sets: %w", err)
 	}
 
 	if err := c.collectReplicationControllerList(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("collecting replication controllers: %w", err)
 	}
 
 	if err := c.collectServiceList(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("collecting services: %w", err)
 	}
 
-
-	if err := c.collectCSINodeList(ctx); err != nil {
-		// https://kubernetes-csi.github.io/docs/csi-node-object.html
-		// GA since 1.17
-		c.log.Debugf("could not get CSINodes: %v", err)
+	if c.minor >= 17 {
+		if err := c.collectCSINodeList(ctx); err != nil {
+			return nil, fmt.Errorf("collecting csi nodes: %w", err)
+		}
 	}
 
 	if err := c.collectStorageClassList(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("collecting storage classes: %w", err)
 	}
 
 	if err := c.collectJobList(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("collecting jobs: %w", err)
 	}
 
 	return c.cd, nil
+}
+
+func (c *collector) GetVersion() *version.Info {
+	return c.v
 }
 
 func (c *collector) collectNodes(ctx context.Context) error {
