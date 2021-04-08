@@ -69,14 +69,14 @@ func TestClient_SendClusterSnapshot(t *testing.T) {
 		},
 	}
 
-	httpmock.RegisterResponder(http.MethodPost, "/v1/agent/eks-snapshot", func(req *http.Request) (*http.Response, error) {
-		actualRequest := &SnapshotRequest{}
-		require.NoError(t, json.NewDecoder(req.Body).Decode(actualRequest))
+	httpmock.RegisterResponder(http.MethodPost, "/v1/agent/snapshot", func(req *http.Request) (*http.Response, error) {
+		f, _, err := req.FormFile("payload")
+		require.NoError(t, err)
 
-		actualSnapshot := &Snapshot{}
-		require.NoError(t, json.Unmarshal(actualRequest.Payload, actualSnapshot))
+		actualRequest := &Snapshot{}
+		require.NoError(t, json.NewDecoder(f).Decode(actualRequest))
 
-		require.Equal(t, snapshot, actualSnapshot)
+		require.Equal(t, snapshot, actualRequest)
 
 		return httpmock.NewStringResponse(http.StatusNoContent, "ok"), nil
 	})
