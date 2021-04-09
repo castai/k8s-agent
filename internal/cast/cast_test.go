@@ -12,6 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/http"
+	"os"
 	"testing"
 )
 
@@ -39,6 +40,9 @@ func TestClient_RegisterCluster(t *testing.T) {
 }
 
 func TestClient_SendClusterSnapshot(t *testing.T) {
+	require.NoError(t, os.Setenv("API_KEY", "api-key"))
+	require.NoError(t, os.Setenv("API_URL", "localhost"))
+
 	rest := resty.New()
 	httpmock.ActivateNonDefault(rest.GetClient())
 	defer httpmock.Reset()
@@ -69,7 +73,7 @@ func TestClient_SendClusterSnapshot(t *testing.T) {
 		},
 	}
 
-	httpmock.RegisterResponder(http.MethodPost, "/v1/agent/snapshot", func(req *http.Request) (*http.Response, error) {
+	httpmock.RegisterResponder(http.MethodPost, "https://localhost/v1/agent/snapshot", func(req *http.Request) (*http.Response, error) {
 		f, _, err := req.FormFile("payload")
 		require.NoError(t, err)
 
@@ -77,6 +81,8 @@ func TestClient_SendClusterSnapshot(t *testing.T) {
 		require.NoError(t, json.NewDecoder(f).Decode(actualRequest))
 
 		require.Equal(t, snapshot, actualRequest)
+
+		require.Equal(t, "api-key", req.Header.Get(headerAPIKey))
 
 		return httpmock.NewStringResponse(http.StatusNoContent, "ok"), nil
 	})
