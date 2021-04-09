@@ -13,6 +13,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"time"
 )
 
@@ -20,7 +21,11 @@ const (
 	defaultRetryCount = 3
 	defaultTimeout    = 10 * time.Second
 	headerAPIKey      = "X-API-Key"
-	multiPartBoundary = "boundary"
+)
+
+var (
+	hdrContentType        = http.CanonicalHeaderKey("Content-Type")
+	hdrContentDisposition = http.CanonicalHeaderKey("Content-Disposition")
 )
 
 // Client responsible for communication between the agent and CAST AI API.
@@ -78,6 +83,13 @@ func (c *client) RegisterCluster(ctx context.Context, req *RegisterClusterReques
 }
 
 func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) error {
+	cfg := config.Get().API
+
+	uri, err := url.Parse(fmt.Sprintf("https://%s/v1/agent/snapshot", cfg.URL))
+	if err != nil {
+		return fmt.Errorf("invalid url: %w", err)
+	}
+
 	r, w := io.Pipe()
 	mw := multipart.NewWriter(w)
 
@@ -97,16 +109,13 @@ func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) error 
 		}
 	}()
 
-	cfg := config.Get().API
-
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("https://%s/v1/agent/snapshot", cfg.URL), r)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), r)
 	if err != nil {
 		return fmt.Errorf("creating snapshot request: %w", err)
 	}
 
-	req.Header.Set(http.CanonicalHeaderKey("Content-Type"), mw.FormDataContentType())
+	req.Header.Set(hdrContentType, mw.FormDataContentType())
 	req.Header.Set(headerAPIKey, cfg.Key)
-	req.WithContext(ctx)
 
 	resp, err := c.rest.GetClient().Do(req)
 	if err != nil {
@@ -138,8 +147,8 @@ func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) error 
 
 func writeSnapshotPart(mw *multipart.Writer, snap *Snapshot) error {
 	header := textproto.MIMEHeader{}
-	header.Set(http.CanonicalHeaderKey("Content-Disposition"), `form-data; name="payload"; filename="payload.json"`)
-	header.Set(http.CanonicalHeaderKey("Content-Type"), "application/json")
+	header.Set(hdrContentDisposition, `form-data; name="payload"; filename="payload.json"`)
+	header.Set(hdrContentType, "application/json")
 
 	bw, err := mw.CreatePart(header)
 	if err != nil {
