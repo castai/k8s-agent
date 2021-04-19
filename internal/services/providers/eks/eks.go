@@ -1,15 +1,18 @@
 package eks
 
 import (
-	"castai-agent/internal/cast"
-	"castai-agent/internal/config"
-	"castai-agent/internal/services/providers/eks/client"
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/patrickmn/go-cache"
 	"github.com/sirupsen/logrus"
 	"k8s.io/api/core/v1"
-	"time"
+
+	"castai-agent/internal/castai"
+	"castai-agent/internal/config"
+	"castai-agent/internal/services/providers/eks/client"
+	"castai-agent/internal/services/providers/types"
 )
 
 const (
@@ -17,7 +20,7 @@ const (
 )
 
 // New configures and returns an EKS provider.
-func New(ctx context.Context, log logrus.FieldLogger) (*Provider, error) {
+func New(ctx context.Context, log logrus.FieldLogger) (types.Provider, error) {
 	log = log.WithField("provider", Name)
 
 	var opts []client.Opt
@@ -46,6 +49,40 @@ type Provider struct {
 	log       logrus.FieldLogger
 	awsClient client.Client
 	spotCache *cache.Cache
+}
+
+func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*types.ClusterRegistration, error) {
+	cn, err := p.awsClient.GetClusterName(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting cluster name: %w", err)
+	}
+	r, err := p.awsClient.GetRegion(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting region: %w", err)
+	}
+	accID, err := p.awsClient.GetAccountID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting account id: %w", err)
+	}
+
+	req := &castai.RegisterClusterRequest{
+		Name: *cn,
+		EKS: castai.EKSParams{
+			ClusterName: *cn,
+			Region:      *r,
+			AccountID:   *accID,
+		},
+	}
+
+	resp, err := client.RegisterCluster(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("requesting castai api: %w", err)
+	}
+
+	return &types.ClusterRegistration{
+		ClusterID:      resp.ID,
+		OrganizationID: resp.OrganizationID,
+	}, nil
 }
 
 func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node, error) {
@@ -124,7 +161,7 @@ func (p *Provider) AccountID(ctx context.Context) (string, error) {
 	return *accID, nil
 }
 
-func (p *Provider) RegisterClusterRequest(ctx context.Context) (*cast.RegisterClusterRequest, error) {
+func (p *Provider) RegisterClusterRequest(ctx context.Context) (*castai.RegisterClusterRequest, error) {
 	cn, err := p.awsClient.GetClusterName(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting cluster name: %w", err)
@@ -137,9 +174,9 @@ func (p *Provider) RegisterClusterRequest(ctx context.Context) (*cast.RegisterCl
 	if err != nil {
 		return nil, fmt.Errorf("getting account id: %w", err)
 	}
-	return &cast.RegisterClusterRequest{
+	return &castai.RegisterClusterRequest{
 		Name: *cn,
-		EKS: cast.EKSParams{
+		EKS: castai.EKSParams{
 			ClusterName: *cn,
 			Region:      *r,
 			AccountID:   *accID,

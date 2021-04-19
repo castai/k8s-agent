@@ -1,24 +1,25 @@
 package main
 
 import (
-	"castai-agent/internal/cast"
-	"castai-agent/internal/config"
-	"castai-agent/internal/services/providers"
 	"context"
 	"fmt"
 	"io/ioutil"
-	"k8s.io/api/core/v1"
-	"k8s.io/client-go/kubernetes"
-	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"k8s.io/client-go/tools/clientcmd"
-
-	"castai-agent/internal/services/collector"
-
+	"k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
+
+	"castai-agent/internal/castai"
+	"castai-agent/internal/config"
+	"castai-agent/internal/services/collector"
+	"castai-agent/internal/services/providers"
+	"castai-agent/internal/services/providers/types"
+	"castai-agent/pkg/labels"
 )
 
 func main() {
@@ -38,14 +39,9 @@ func run(ctx context.Context, log logrus.FieldLogger) error {
 
 	log = log.WithField("provider", provider.Name())
 
-	registerClusterReq, err := provider.RegisterClusterRequest(ctx)
-	if err != nil {
-		return fmt.Errorf("creating register cluster request: %w", err)
-	}
+	castclient := castai.NewClient(log, castai.NewDefaultClient())
 
-	castclient := cast.NewClient(log, cast.NewDefaultClient())
-
-	c, err := castclient.RegisterCluster(ctx, registerClusterReq)
+	reg, err := provider.RegisterCluster(ctx, castclient)
 	if err != nil {
 		return fmt.Errorf("registering cluster: %w", err)
 	}
@@ -70,7 +66,7 @@ func run(ctx context.Context, log logrus.FieldLogger) error {
 	defer ticker.Stop()
 
 	for {
-		if err := collect(ctx, log, c, col, provider, castclient); err != nil {
+		if err := collect(ctx, log, reg, col, provider, castclient); err != nil {
 			log.Errorf("collecting snapshot data: %v", err)
 		}
 
@@ -86,10 +82,10 @@ func run(ctx context.Context, log logrus.FieldLogger) error {
 func collect(
 	ctx context.Context,
 	log logrus.FieldLogger,
-	c *cast.RegisterClusterResponse,
+	reg *types.ClusterRegistration,
 	col collector.Collector,
-	provider providers.Provider,
-	castclient cast.Client,
+	provider types.Provider,
+	castclient castai.Client,
 ) error {
 	cd, err := col.Collect(ctx)
 	if err != nil {
@@ -111,9 +107,9 @@ func collect(
 		return fmt.Errorf("getting cluster region: %w", err)
 	}
 
-	snap := &cast.Snapshot{
-		ClusterID:       c.Cluster.ID,
-		OrganizationID:  c.Cluster.OrganizationID,
+	snap := &castai.Snapshot{
+		ClusterID:       reg.ClusterID,
+		OrganizationID:  reg.OrganizationID,
 		ClusterProvider: strings.ToUpper(provider.Name()),
 		AccountID:       accountID,
 		ClusterName:     clusterName,
@@ -136,7 +132,7 @@ func collect(
 	return nil
 }
 
-func addSpotLabel(ctx context.Context, provider providers.Provider, nodes *v1.NodeList) error {
+func addSpotLabel(ctx context.Context, provider types.Provider, nodes *v1.NodeList) error {
 	nodeMap := make(map[string]*v1.Node, len(nodes.Items))
 	items := make([]*v1.Node, len(nodes.Items))
 	for i, node := range nodes.Items {
@@ -150,7 +146,7 @@ func addSpotLabel(ctx context.Context, provider providers.Provider, nodes *v1.No
 	}
 
 	for _, node := range spotNodes {
-		nodeMap[node.Name].Labels["scheduling.cast.ai/spot"] = "true"
+		nodeMap[node.Name].Labels[labels.Spot] = "true"
 	}
 
 	return nil
