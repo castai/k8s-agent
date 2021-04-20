@@ -1,20 +1,22 @@
 //go:generate mockgen -destination ./mock/client.go . Client
-package cast
+package castai
 
 import (
 	"bytes"
-	"castai-agent/internal/config"
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/go-resty/resty/v2"
-	"github.com/sirupsen/logrus"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
 	"net/url"
 	"time"
+
+	"github.com/go-resty/resty/v2"
+	"github.com/sirupsen/logrus"
+
+	"castai-agent/internal/config"
 )
 
 const (

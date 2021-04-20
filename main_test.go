@@ -1,12 +1,16 @@
 package main
 
 import (
-	"castai-agent/internal/cast"
-	mock_cast "castai-agent/internal/cast/mock"
+	"context"
+	"testing"
+
+	"castai-agent/internal/castai"
+	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/internal/services/collector"
 	mock_collector "castai-agent/internal/services/collector/mock"
-	mock_providers "castai-agent/internal/services/providers/mock"
-	"context"
+	"castai-agent/internal/services/providers/types"
+	mock_types "castai-agent/internal/services/providers/types/mock"
+
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -14,17 +18,19 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/version"
-	"testing"
 )
 
 func TestCollect(t *testing.T) {
 	ctx := context.Background()
 	mockctrl := gomock.NewController(t)
 	col := mock_collector.NewMockCollector(mockctrl)
-	provider := mock_providers.NewMockProvider(mockctrl)
-	castclient := mock_cast.NewMockClient(mockctrl)
+	provider := mock_types.NewMockProvider(mockctrl)
+	castclient := mock_castai.NewMockClient(mockctrl)
 
-	c := &cast.RegisterClusterResponse{Cluster: cast.Cluster{ID: uuid.New().String(), OrganizationID: uuid.New().String()}}
+	reg := &types.ClusterRegistration{
+		ClusterID:      uuid.New().String(),
+		OrganizationID: uuid.New().String(),
+	}
 
 	spot := v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "spot", Labels: map[string]string{}}}
 	onDemand := v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "on-demand"}}
@@ -39,9 +45,9 @@ func TestCollect(t *testing.T) {
 	provider.EXPECT().Name().Return("eks")
 	provider.EXPECT().FilterSpot(ctx, []*v1.Node{&spot, &onDemand}).Return([]*v1.Node{&spot}, nil)
 
-	castclient.EXPECT().SendClusterSnapshot(ctx, &cast.Snapshot{
-		ClusterID:       c.Cluster.ID,
-		OrganizationID:  c.Cluster.OrganizationID,
+	castclient.EXPECT().SendClusterSnapshot(ctx, &castai.Snapshot{
+		ClusterID:       reg.ClusterID,
+		OrganizationID:  reg.OrganizationID,
 		AccountID:       "accountID",
 		ClusterProvider: "EKS",
 		ClusterName:     "clusterName",
@@ -50,7 +56,7 @@ func TestCollect(t *testing.T) {
 		ClusterVersion:  "1.20",
 	}).Return(nil)
 
-	err := collect(ctx, logrus.New(), c, col, provider, castclient)
+	err := collect(ctx, logrus.New(), reg, col, provider, castclient)
 
 	require.NoError(t, err)
 

@@ -1,4 +1,4 @@
-package cast
+package castai
 
 import "castai-agent/internal/services/collector"
 

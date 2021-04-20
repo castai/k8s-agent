@@ -4,12 +4,13 @@ package collector
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strconv"
+
 	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes"
-	"regexp"
-	"strconv"
 )
 
 // Collector is responsible for gathering K8s data from the cluster.
