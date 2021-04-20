@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+
 	"github.com/spf13/viper"
 )
 
@@ -9,12 +10,18 @@ type Config struct {
 	API        API
 	Kubeconfig string
 	Provider   string
+	CASTAI     *CASTAI
 	EKS        *EKS
 }
 
 type API struct {
 	Key string
 	URL string
+}
+
+type CASTAI struct {
+	ClusterID      string
+	OrganizationID string
 }
 
 type EKS struct {
@@ -25,6 +32,7 @@ type EKS struct {
 
 var cfg *Config
 
+// Get configuration bound to environment variables.
 func Get() Config {
 	if cfg != nil {
 		return *cfg
@@ -36,6 +44,9 @@ func Get() Config {
 	_ = viper.BindEnv("kubeconfig")
 
 	_ = viper.BindEnv("provider")
+
+	_ = viper.BindEnv("castai.clusterid", "CASTAI_CLUSTER_ID")
+	_ = viper.BindEnv("castai.organizationid", "CASTAI_ORGANIZATION_ID")
 
 	_ = viper.BindEnv("eks.accountid", "EKS_ACCOUNT_ID")
 	_ = viper.BindEnv("eks.region", "EKS_REGION")
@@ -53,6 +64,15 @@ func Get() Config {
 		required("API_URL")
 	}
 
+	if cfg.CASTAI != nil {
+		if cfg.CASTAI.ClusterID == "" {
+			requiredDiscoveryDisabled("CASTAI_CLUSTER_ID")
+		}
+		if cfg.CASTAI.OrganizationID == "" {
+			requiredDiscoveryDisabled("CASTAI_ORGANIZATION_ID")
+		}
+	}
+
 	if cfg.EKS != nil {
 		if cfg.EKS.AccountID == "" {
 			requiredDiscoveryDisabled("EKS_ACCOUNT_ID")
@@ -66,6 +86,11 @@ func Get() Config {
 	}
 
 	return *cfg
+}
+
+// Reset is used only for unit testing to reset configuration and rebind variables.
+func Reset() {
+	cfg = nil
 }
 
 func required(variable string) {

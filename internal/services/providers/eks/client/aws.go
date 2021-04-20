@@ -5,14 +5,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"strings"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/sirupsen/logrus"
 	"k8s.io/utils/pointer"
-	"math"
-	"strings"
 )
 
 // Client is an abstraction on the AWS SDK to enable easier mocking and manipulation of request data.
