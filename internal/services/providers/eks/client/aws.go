@@ -180,7 +180,7 @@ func (c *client) GetClusterName(ctx context.Context) (*string, error) {
 	var clusterName string
 
 	for _, tag := range resp.Reservations[0].Instances[0].Tags {
-		if tag.Key == nil || tag.Value == nil {
+		if tag == nil || tag.Key == nil || tag.Value == nil {
 			continue
 		}
 		for _, clusterTag := range clusterTags {
