@@ -3,7 +3,6 @@ package client
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -156,43 +155,47 @@ func (c *client) GetClusterName(ctx context.Context) (*string, error) {
 
 	instanceID, err := c.metaClient.GetMetadataWithContext(ctx, "instance-id")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting instance id from metadata: %w", err)
 	}
 
-	req := &ec2.DescribeTagsInput{
-		Filters: []*ec2.Filter{
-			{
-				Name:   pointer.StringPtr("resource-type"),
-				Values: []*string{pointer.StringPtr("instance")},
-			},
-			{
-				Name:   pointer.StringPtr("resource-id"),
-				Values: []*string{&instanceID},
-			},
-		},
+	resp, err := c.ec2Client.DescribeInstancesWithContext(ctx, &ec2.DescribeInstancesInput{
+		InstanceIds: []*string{pointer.StringPtr(instanceID)},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("describing instance_id=%s: %w", instanceID, err)
+	}
+
+	if len(resp.Reservations) == 0 {
+		return nil, fmt.Errorf("no reservations found for instance_id=%s", instanceID)
+	}
+
+	if len(resp.Reservations[0].Instances) == 0 {
+		return nil, fmt.Errorf("no instances found for instance_id=%s", instanceID)
+	}
+
+	if len(resp.Reservations[0].Instances[0].Tags) == 0 {
+		return nil, fmt.Errorf("no tags found for instance_id=%s", instanceID)
 	}
 
 	var clusterName string
 
-	if err := c.ec2Client.DescribeTagsPagesWithContext(ctx, req, func(page *ec2.DescribeTagsOutput, last bool) bool {
-		for _, tag := range page.Tags {
-			if tag.Key == nil || tag.Value == nil {
-				continue
-			}
-			for _, clusterTag := range clusterTags {
-				if strings.HasPrefix(*tag.Key, clusterTag) && *tag.Value == owned {
-					clusterName = strings.TrimPrefix(*tag.Key, clusterTag)
-					return false
-				}
+	for _, tag := range resp.Reservations[0].Instances[0].Tags {
+		if tag.Key == nil || tag.Value == nil {
+			continue
+		}
+		for _, clusterTag := range clusterTags {
+			if strings.HasPrefix(*tag.Key, clusterTag) && *tag.Value == owned {
+				clusterName = strings.TrimPrefix(*tag.Key, clusterTag)
+				break
 			}
 		}
-		return last
-	}); err != nil {
-		return nil, err
+		if clusterName != "" {
+			break
+		}
 	}
 
 	if clusterName == "" {
-		return nil, errors.New("discovering cluster name: instance cluster tags not found")
+		return nil, fmt.Errorf("discovering cluster name: instance cluster tags not found for instance_id=%s", instanceID)
 	}
 
 	c.clusterName = &clusterName
