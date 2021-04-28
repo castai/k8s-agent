@@ -137,11 +137,18 @@ func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) error 
 		return fmt.Errorf("snapshot request error status_code=%d body=%s", resp.StatusCode, buf.String())
 	}
 
+	var responseBody SnapshotResponse
+
+	if err := json.NewDecoder(resp.Body).Decode(&responseBody); err != nil {
+		return 	fmt.Errorf("failed to decode response body: %v", err)
+	}
+
 	c.log.Infof(
-		"snapshot with nodes[%d], pods[%d] sent, response_code=%d",
+		"snapshot with nodes[%d], pods[%d] sent, response_code=%d, response_body=%+v",
 		len(snap.NodeList.Items),
 		len(snap.PodList.Items),
 		resp.StatusCode,
+		responseBody,
 	)
 
 	return nil

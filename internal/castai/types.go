@@ -24,6 +24,10 @@ type RegisterClusterResponse struct {
 	Cluster
 }
 
+type SnapshotResponse struct {
+	IntervalSeconds int16 `json:"intervalSeconds"`
+}
+
 type SnapshotRequest struct {
 	Payload []byte `json:"payload"`
 }
