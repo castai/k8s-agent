@@ -67,10 +67,12 @@ func run(ctx context.Context, log logrus.FieldLogger) error {
 	defer ticker.Stop()
 
 	for {
-		b := backoff.WithContext(backoff.WithMaxRetries(backoff.NewExponentialBackOff(), 10), ctx)
+		// FIXME: consider moving to SendSnapshot?
+		b := backoff.WithContext(backoff.WithMaxRetries(backoff.NewExponentialBackOff(), 15), ctx)
 		var snapRes *castai.SnapshotResponse
 		op := func() error {
 			snapRes, err = collect(ctx, log, reg, col, provider, castclient);
+			log.Errorf("[%s] collect failed, retrying: %v", time.Now().UTC(), err)
 			return err
 		}
 		if err := backoff.Retry(op, b); err != nil {

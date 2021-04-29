@@ -134,7 +134,7 @@ func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) (*Snap
 		if _, err := buf.ReadFrom(resp.Body); err != nil {
 			c.log.Errorf("failed reading error response body: %v", err)
 		}
-		return nil, err
+		return nil, fmt.Errorf("request failed with status_code=%d", resp.StatusCode);
 	}
 
 	var responseBody SnapshotResponse
