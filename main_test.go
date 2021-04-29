@@ -56,7 +56,7 @@ func TestCollect(t *testing.T) {
 		ClusterVersion:  "1.20",
 	}).Return(nil)
 
-	err := collect(ctx, logrus.New(), reg, col, provider, castclient)
+	_, err := collect(ctx, logrus.New(), reg, col, provider, castclient)
 
 	require.NoError(t, err)
 

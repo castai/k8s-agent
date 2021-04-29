@@ -51,11 +51,11 @@ func (mr *MockClientMockRecorder) RegisterCluster(arg0, arg1 interface{}) *gomoc
 }
 
 // SendClusterSnapshot mocks base method.
-func (m *MockClient) SendClusterSnapshot(arg0 context.Context, arg1 *castai.Snapshot) error {
+func (m *MockClient) SendClusterSnapshot(ctx context.Context, snap *castai.Snapshot) (*castai.SnapshotResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SendClusterSnapshot", arg0, arg1)
 	ret0, _ := ret[0].(error)
-	return ret0
+	return
 }
 
 // SendClusterSnapshot indicates an expected call of SendClusterSnapshot.

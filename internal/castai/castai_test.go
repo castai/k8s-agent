@@ -87,7 +87,7 @@ func TestClient_SendClusterSnapshot(t *testing.T) {
 		return httpmock.NewStringResponse(http.StatusNoContent, "ok"), nil
 	})
 
-	err := c.SendClusterSnapshot(context.Background(), snapshot)
+	_, err := c.SendClusterSnapshot(context.Background(), snapshot)
 
 	require.NoError(t, err)
 }

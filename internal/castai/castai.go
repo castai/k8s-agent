@@ -36,7 +36,7 @@ type Client interface {
 	// cluster and register it.
 	RegisterCluster(ctx context.Context, req *RegisterClusterRequest) (*RegisterClusterResponse, error)
 	// SendClusterSnapshot sends a cluster snapshot to CAST AI to enable savings estimations / autoscaling / etc.
-	SendClusterSnapshot(ctx context.Context, snap *Snapshot) error
+	SendClusterSnapshot(ctx context.Context, snap *Snapshot) (*SnapshotResponse, error)
 }
 
 // NewClient creates and configures the CAST AI client.
@@ -84,12 +84,12 @@ func (c *client) RegisterCluster(ctx context.Context, req *RegisterClusterReques
 	return body, nil
 }
 
-func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) error {
+func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) (*SnapshotResponse, error) {
 	cfg := config.Get().API
 
 	uri, err := url.Parse(fmt.Sprintf("https://%s/v1/agent/snapshot", cfg.URL))
 	if err != nil {
-		return fmt.Errorf("invalid url: %w", err)
+		return nil, err
 	}
 
 	r, w := io.Pipe()
@@ -113,7 +113,7 @@ func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) error 
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), r)
 	if err != nil {
-		return fmt.Errorf("creating snapshot request: %w", err)
+		return nil, err
 	}
 
 	req.Header.Set(hdrContentType, mw.FormDataContentType())
@@ -121,7 +121,7 @@ func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) error 
 
 	resp, err := c.rest.GetClient().Do(req)
 	if err != nil {
-		return fmt.Errorf("sending snapshot request: %w", err)
+		return nil, err
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
@@ -134,13 +134,13 @@ func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) error 
 		if _, err := buf.ReadFrom(resp.Body); err != nil {
 			c.log.Errorf("failed reading error response body: %v", err)
 		}
-		return fmt.Errorf("snapshot request error status_code=%d body=%s", resp.StatusCode, buf.String())
+		return nil, err
 	}
 
 	var responseBody SnapshotResponse
 
 	if err := json.NewDecoder(resp.Body).Decode(&responseBody); err != nil {
-		return 	fmt.Errorf("failed to decode response body: %v", err)
+		return nil, err
 	}
 
 	c.log.Infof(
@@ -151,7 +151,7 @@ func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) error 
 		responseBody,
 	)
 
-	return nil
+	return &responseBody, nil
 }
 
 func writeSnapshotPart(mw *multipart.Writer, snap *Snapshot) error {

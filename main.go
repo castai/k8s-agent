@@ -66,7 +66,7 @@ func run(ctx context.Context, log logrus.FieldLogger) error {
 	defer ticker.Stop()
 
 	for {
-		if err := collect(ctx, log, reg, col, provider, castclient); err != nil {
+		if _, err := collect(ctx, log, reg, col, provider, castclient); err != nil {
 			log.Errorf("collecting snapshot data: %v", err)
 		}
 
@@ -79,32 +79,25 @@ func run(ctx context.Context, log logrus.FieldLogger) error {
 	}
 }
 
-func collect(
-	ctx context.Context,
-	log logrus.FieldLogger,
-	reg *types.ClusterRegistration,
-	col collector.Collector,
-	provider types.Provider,
-	castclient castai.Client,
-) error {
+func collect(ctx context.Context, log logrus.FieldLogger, reg *types.ClusterRegistration, col collector.Collector, provider types.Provider, castclient castai.Client, ) (*castai.SnapshotResponse, error) {
 	cd, err := col.Collect(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	accountID, err := provider.AccountID(ctx)
 	if err != nil {
-		return fmt.Errorf("getting account id: %w", err)
+		return nil, fmt.Errorf("getting account id: %w", err)
 	}
 
 	clusterName, err := provider.ClusterName(ctx)
 	if err != nil {
-		return fmt.Errorf("getting cluster name: %w", err)
+		return nil, fmt.Errorf("getting cluster name: %w", err)
 	}
 
 	region, err := provider.ClusterRegion(ctx)
 	if err != nil {
-		return fmt.Errorf("getting cluster region: %w", err)
+		return nil, fmt.Errorf("getting cluster region: %w", err)
 	}
 
 	snap := &castai.Snapshot{
@@ -125,11 +118,13 @@ func collect(
 		log.Errorf("adding spot labels: %v", err)
 	}
 
-	if err := castclient.SendClusterSnapshot(ctx, snap); err != nil {
-		return fmt.Errorf("sending cluster snapshot: %w", err)
+	res, err := castclient.SendClusterSnapshot(ctx, snap);
+
+	if err != nil {
+		return nil, fmt.Errorf("sending cluster snapshot: %w", err)
 	}
 
-	return nil
+	return res, nil
 }
 
 func addSpotLabel(ctx context.Context, provider types.Provider, nodes *v1.NodeList) error {
