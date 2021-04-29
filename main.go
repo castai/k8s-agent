@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/sirupsen/logrus"
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
@@ -61,13 +62,25 @@ func run(ctx context.Context, log logrus.FieldLogger) error {
 		return fmt.Errorf("initializing snapshot collector: %w", err)
 	}
 
-	const interval = 15 * time.Second
-	ticker := time.NewTicker(interval)
+	const defaultInterval = 15 * time.Second
+	ticker := time.NewTicker(defaultInterval)
 	defer ticker.Stop()
 
 	for {
-		if _, err := collect(ctx, log, reg, col, provider, castclient); err != nil {
+		b := backoff.WithContext(backoff.WithMaxRetries(backoff.NewExponentialBackOff(), 10), ctx)
+		var snapRes *castai.SnapshotResponse
+		op := func() error {
+			snapRes, err = collect(ctx, log, reg, col, provider, castclient);
+			return err
+		}
+		if err := backoff.Retry(op, b); err != nil {
 			log.Errorf("collecting snapshot data: %v", err)
+		} else if snapRes != nil {
+			remoteInterval := time.Duration(snapRes.IntervalSeconds) * time.Second
+			if remoteInterval != defaultInterval {
+				ticker.Stop()
+				ticker = time.NewTicker(remoteInterval)
+			}
 		}
 
 		select {
