@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"testing"
+	"time"
 
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
@@ -56,7 +57,7 @@ func TestCollect(t *testing.T) {
 		ClusterVersion:  "1.20",
 	}).Return(&castai.SnapshotResponse{IntervalSeconds: 120}, nil)
 
-	_, err := collectAndSend(ctx, logrus.New(), reg, col, provider, castclient)
+	_, err := collectAndSend(ctx, logrus.New(), reg, col, provider, castclient, time.Millisecond)
 
 	require.NoError(t, err)
 

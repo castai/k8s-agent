@@ -61,23 +61,24 @@ func run(ctx context.Context, log logrus.FieldLogger) error {
 		return fmt.Errorf("initializing snapshot collector: %w", err)
 	}
 
-	const defaultInterval = 15 * time.Second
-	ticker := time.NewTicker(defaultInterval)
+	interval := 30 * time.Minute
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
 		// TODO: split up the function, changed the name for now
 		// collect & send should be separate calls
-		res, err := collectAndSend(ctx, log, reg, col, provider, castclient)
+		res, err := collectAndSend(ctx, log, reg, col, provider, castclient, interval)
 		if err != nil {
 			log.Errorf("collecting snapshot data: %v", err)
 		}
 
 		if res != nil {
 			remoteInterval := time.Duration(res.IntervalSeconds) * time.Second
-			if remoteInterval != defaultInterval {
+			if interval != remoteInterval  {
+				interval = remoteInterval
 				ticker.Stop()
-				ticker = time.NewTicker(remoteInterval)
+				ticker = time.NewTicker(interval)
 			}
 		}
 
@@ -90,7 +91,7 @@ func run(ctx context.Context, log logrus.FieldLogger) error {
 	}
 }
 
-func collectAndSend(ctx context.Context, log logrus.FieldLogger, reg *types.ClusterRegistration, col collector.Collector, provider types.Provider, castclient castai.Client, ) (*castai.SnapshotResponse, error) {
+func collectAndSend(ctx context.Context, log logrus.FieldLogger, reg *types.ClusterRegistration, col collector.Collector, provider types.Provider, castclient castai.Client, timeoutInterval time.Duration) (*castai.SnapshotResponse, error) {
 	cd, err := col.Collect(ctx)
 	if err != nil {
 		return nil, err
@@ -129,8 +130,10 @@ func collectAndSend(ctx context.Context, log logrus.FieldLogger, reg *types.Clus
 		log.Errorf("adding spot labels: %v", err)
 	}
 
-	res, err := castclient.SendClusterSnapshotWithRetry(ctx, snap)
+	ctx, cancel := context.WithTimeout(ctx, timeoutInterval)
+	defer cancel()
 
+	res, err := castclient.SendClusterSnapshotWithRetry(ctx, snap)
 	if err != nil {
 		return nil, fmt.Errorf("sending cluster snapshot: %w", err)
 	}

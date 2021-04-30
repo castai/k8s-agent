@@ -159,7 +159,7 @@ func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) (*Snap
 }
 
 func (c *client) SendClusterSnapshotWithRetry(ctx context.Context, snap *Snapshot) (*SnapshotResponse, error) {
-	b := backoff.WithContext(backoff.WithMaxRetries(backoff.NewExponentialBackOff(), 30), ctx)
+	b := backoff.WithContext(backoff.NewExponentialBackOff(), ctx)
 	var res *SnapshotResponse
 	op := func() error {
 		snapRes, err := c.SendClusterSnapshot(ctx, snap)
