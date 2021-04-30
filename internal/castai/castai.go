@@ -147,8 +147,7 @@ func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) (*Snap
 	}
 
 	c.log.Infof(
-		"[%s] snapshot with nodes[%d], pods[%d] sent, response_code=%d, response_body=%+v",
-		time.Now().UTC(),
+		"snapshot with nodes[%d], pods[%d] sent, response_code=%d, response_body=%+v",
 		len(snap.NodeList.Items),
 		len(snap.PodList.Items),
 		resp.StatusCode,
