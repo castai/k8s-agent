@@ -45,7 +45,7 @@ func TestCollect(t *testing.T) {
 	provider.EXPECT().Name().Return("eks")
 	provider.EXPECT().FilterSpot(ctx, []*v1.Node{&spot, &onDemand}).Return([]*v1.Node{&spot}, nil)
 
-	castclient.EXPECT().SendClusterSnapshot(ctx, &castai.Snapshot{
+	castclient.EXPECT().SendClusterSnapshotWithRetry(ctx, &castai.Snapshot{
 		ClusterID:       reg.ClusterID,
 		OrganizationID:  reg.OrganizationID,
 		AccountID:       "accountID",
@@ -54,7 +54,7 @@ func TestCollect(t *testing.T) {
 		ClusterRegion:   "eu-central-1",
 		ClusterData:     cd,
 		ClusterVersion:  "1.20",
-	}).Return(nil)
+	}).Return(&castai.SnapshotResponse{IntervalSeconds: 120}, nil)
 
 	_, err := collectAndSend(ctx, logrus.New(), reg, col, provider, castclient)
 
