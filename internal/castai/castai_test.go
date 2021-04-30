@@ -1,9 +1,12 @@
 package castai
 
 import (
-	"castai-agent/internal/services/collector"
 	"context"
 	"encoding/json"
+	"net/http"
+	"os"
+	"testing"
+
 	"github.com/go-resty/resty/v2"
 	"github.com/google/uuid"
 	"github.com/jarcoal/httpmock"
@@ -11,9 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"net/http"
-	"os"
-	"testing"
+
+	"castai-agent/internal/services/collector"
 )
 
 func TestClient_RegisterCluster(t *testing.T) {
@@ -84,7 +86,7 @@ func TestClient_SendClusterSnapshot(t *testing.T) {
 
 		require.Equal(t, "api-key", req.Header.Get(headerAPIKey))
 
-		return httpmock.NewStringResponse(http.StatusNoContent, "ok"), nil
+		return httpmock.NewJsonResponse(http.StatusNoContent, &SnapshotResponse{IntervalSeconds: 120})
 	})
 
 	_, err := c.SendClusterSnapshot(context.Background(), snapshot)
