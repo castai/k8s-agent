@@ -51,15 +51,31 @@ func (mr *MockClientMockRecorder) RegisterCluster(arg0, arg1 interface{}) *gomoc
 }
 
 // SendClusterSnapshot mocks base method.
-func (m *MockClient) SendClusterSnapshot(arg0 context.Context, arg1 *castai.Snapshot) error {
+func (m *MockClient) SendClusterSnapshot(arg0 context.Context, arg1 *castai.Snapshot) (*castai.SnapshotResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SendClusterSnapshot", arg0, arg1)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(*castai.SnapshotResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // SendClusterSnapshot indicates an expected call of SendClusterSnapshot.
 func (mr *MockClientMockRecorder) SendClusterSnapshot(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendClusterSnapshot", reflect.TypeOf((*MockClient)(nil).SendClusterSnapshot), arg0, arg1)
+}
+
+// SendClusterSnapshotWithRetry mocks base method.
+func (m *MockClient) SendClusterSnapshotWithRetry(arg0 context.Context, arg1 *castai.Snapshot) (*castai.SnapshotResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SendClusterSnapshotWithRetry", arg0, arg1)
+	ret0, _ := ret[0].(*castai.SnapshotResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SendClusterSnapshotWithRetry indicates an expected call of SendClusterSnapshotWithRetry.
+func (mr *MockClientMockRecorder) SendClusterSnapshotWithRetry(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendClusterSnapshotWithRetry", reflect.TypeOf((*MockClient)(nil).SendClusterSnapshotWithRetry), arg0, arg1)
 }
