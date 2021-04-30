@@ -46,7 +46,7 @@ func TestCollect(t *testing.T) {
 	provider.EXPECT().Name().Return("eks")
 	provider.EXPECT().FilterSpot(ctx, []*v1.Node{&spot, &onDemand}).Return([]*v1.Node{&spot}, nil)
 
-	castclient.EXPECT().SendClusterSnapshotWithRetry(ctx, &castai.Snapshot{
+	castclient.EXPECT().SendClusterSnapshotWithRetry(gomock.Any(), &castai.Snapshot{
 		ClusterID:       reg.ClusterID,
 		OrganizationID:  reg.OrganizationID,
 		AccountID:       "accountID",
