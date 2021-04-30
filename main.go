@@ -66,6 +66,8 @@ func run(ctx context.Context, log logrus.FieldLogger) error {
 	defer ticker.Stop()
 
 	for {
+		// TODO: split up the function, changed the name for now
+		// collect & send should be separate calls
 		res, err := collectAndSend(ctx, log, reg, col, provider, castclient)
 		if err != nil {
 			log.Errorf("collecting snapshot data: %v", err)
