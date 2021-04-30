@@ -39,7 +39,7 @@ type Client interface {
 	// SendClusterSnapshot sends a cluster snapshot to CAST AI to enable savings estimations / autoscaling / etc.
 	SendClusterSnapshot(ctx context.Context, snap *Snapshot) (*SnapshotResponse, error)
 	// SendClusterSnapshotWithRetry sends cluster snapshot with retries to CAST AI to enable savings estimations / autoscaling / etc.
-	SendClusterSnapshotWithRetry(ctx context.Context, snap *Snapshot) (*SnapshotResponse, error) {
+	SendClusterSnapshotWithRetry(ctx context.Context, snap *Snapshot) (*SnapshotResponse, error)
 }
 
 // NewClient creates and configures the CAST AI client.
