@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
 	"github.com/sirupsen/logrus"
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
@@ -67,18 +66,13 @@ func run(ctx context.Context, log logrus.FieldLogger) error {
 	defer ticker.Stop()
 
 	for {
-		// FIXME: consider moving to SendSnapshot?
-		b := backoff.WithContext(backoff.WithMaxRetries(backoff.NewExponentialBackOff(), 15), ctx)
-		var snapRes *castai.SnapshotResponse
-		op := func() error {
-			snapRes, err = collect(ctx, log, reg, col, provider, castclient);
-			log.Errorf("[%s] collect failed, retrying: %v", time.Now().UTC(), err)
-			return err
-		}
-		if err := backoff.Retry(op, b); err != nil {
+		res, err := collectAndSend(ctx, log, reg, col, provider, castclient)
+		if err != nil {
 			log.Errorf("collecting snapshot data: %v", err)
-		} else if snapRes != nil {
-			remoteInterval := time.Duration(snapRes.IntervalSeconds) * time.Second
+		}
+
+		if res != nil {
+			remoteInterval := time.Duration(res.IntervalSeconds) * time.Second
 			if remoteInterval != defaultInterval {
 				ticker.Stop()
 				ticker = time.NewTicker(remoteInterval)
@@ -94,7 +88,7 @@ func run(ctx context.Context, log logrus.FieldLogger) error {
 	}
 }
 
-func collect(ctx context.Context, log logrus.FieldLogger, reg *types.ClusterRegistration, col collector.Collector, provider types.Provider, castclient castai.Client, ) (*castai.SnapshotResponse, error) {
+func collectAndSend(ctx context.Context, log logrus.FieldLogger, reg *types.ClusterRegistration, col collector.Collector, provider types.Provider, castclient castai.Client, ) (*castai.SnapshotResponse, error) {
 	cd, err := col.Collect(ctx)
 	if err != nil {
 		return nil, err
@@ -133,7 +127,7 @@ func collect(ctx context.Context, log logrus.FieldLogger, reg *types.ClusterRegi
 		log.Errorf("adding spot labels: %v", err)
 	}
 
-	res, err := castclient.SendClusterSnapshot(ctx, snap);
+	res, err := castclient.SendClusterSnapshotWithRetry(ctx, snap)
 
 	if err != nil {
 		return nil, fmt.Errorf("sending cluster snapshot: %w", err)

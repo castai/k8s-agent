@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/go-resty/resty/v2"
 	"github.com/sirupsen/logrus"
 
@@ -37,6 +38,8 @@ type Client interface {
 	RegisterCluster(ctx context.Context, req *RegisterClusterRequest) (*RegisterClusterResponse, error)
 	// SendClusterSnapshot sends a cluster snapshot to CAST AI to enable savings estimations / autoscaling / etc.
 	SendClusterSnapshot(ctx context.Context, snap *Snapshot) (*SnapshotResponse, error)
+	// SendClusterSnapshotWithRetry sends cluster snapshot with retries to CAST AI to enable savings estimations / autoscaling / etc.
+	SendClusterSnapshotWithRetry(ctx context.Context, snap *Snapshot) (*SnapshotResponse, error) {
 }
 
 // NewClient creates and configures the CAST AI client.
@@ -153,6 +156,24 @@ func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) (*Snap
 	)
 
 	return &responseBody, nil
+}
+
+func (c *client) SendClusterSnapshotWithRetry(ctx context.Context, snap *Snapshot) (*SnapshotResponse, error) {
+	b := backoff.WithContext(backoff.WithMaxRetries(backoff.NewExponentialBackOff(), 15), ctx)
+	var res *SnapshotResponse
+	op := func() error {
+		snapRes, err := c.SendClusterSnapshot(ctx, snap)
+		if err == nil {
+			res = snapRes
+		}
+		return err
+	}
+
+	if err := backoff.Retry(op, b); err != nil {
+		return nil, fmt.Errorf("sending snapshot data: %v", err)
+	}
+
+	return res, nil
 }
 
 func writeSnapshotPart(mw *multipart.Writer, snap *Snapshot) error {
