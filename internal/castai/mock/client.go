@@ -35,6 +35,21 @@ func (m *MockClient) EXPECT() *MockClientMockRecorder {
 	return m.recorder
 }
 
+// GetAgentCfg mocks base method.
+func (m *MockClient) GetAgentCfg(arg0 context.Context, arg1 string) (*castai.AgentCfgResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAgentCfg", arg0, arg1)
+	ret0, _ := ret[0].(*castai.AgentCfgResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetAgentCfg indicates an expected call of GetAgentCfg.
+func (mr *MockClientMockRecorder) GetAgentCfg(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAgentCfg", reflect.TypeOf((*MockClient)(nil).GetAgentCfg), arg0, arg1)
+}
+
 // RegisterCluster mocks base method.
 func (m *MockClient) RegisterCluster(arg0 context.Context, arg1 *castai.RegisterClusterRequest) (*castai.RegisterClusterResponse, error) {
 	m.ctrl.T.Helper()
@@ -51,12 +66,11 @@ func (mr *MockClientMockRecorder) RegisterCluster(arg0, arg1 interface{}) *gomoc
 }
 
 // SendClusterSnapshot mocks base method.
-func (m *MockClient) SendClusterSnapshot(arg0 context.Context, arg1 *castai.Snapshot) (*castai.SnapshotResponse, error) {
+func (m *MockClient) SendClusterSnapshot(arg0 context.Context, arg1 *castai.Snapshot) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SendClusterSnapshot", arg0, arg1)
-	ret0, _ := ret[0].(*castai.SnapshotResponse)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret0, _ := ret[0].(error)
+	return ret0
 }
 
 // SendClusterSnapshot indicates an expected call of SendClusterSnapshot.
@@ -66,12 +80,11 @@ func (mr *MockClientMockRecorder) SendClusterSnapshot(arg0, arg1 interface{}) *g
 }
 
 // SendClusterSnapshotWithRetry mocks base method.
-func (m *MockClient) SendClusterSnapshotWithRetry(arg0 context.Context, arg1 *castai.Snapshot) (*castai.SnapshotResponse, error) {
+func (m *MockClient) SendClusterSnapshotWithRetry(arg0 context.Context, arg1 *castai.Snapshot) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SendClusterSnapshotWithRetry", arg0, arg1)
-	ret0, _ := ret[0].(*castai.SnapshotResponse)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret0, _ := ret[0].(error)
+	return ret0
 }
 
 // SendClusterSnapshotWithRetry indicates an expected call of SendClusterSnapshotWithRetry.

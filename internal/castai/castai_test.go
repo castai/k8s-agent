@@ -86,10 +86,10 @@ func TestClient_SendClusterSnapshot(t *testing.T) {
 
 		require.Equal(t, "api-key", req.Header.Get(headerAPIKey))
 
-		return httpmock.NewJsonResponse(http.StatusNoContent, &SnapshotResponse{IntervalSeconds: 120})
+		return httpmock.NewStringResponse(http.StatusNoContent, "ok"), nil
 	})
 
-	_, err := c.SendClusterSnapshot(context.Background(), snapshot)
+	err := c.SendClusterSnapshot(context.Background(), snapshot)
 
 	require.NoError(t, err)
 }

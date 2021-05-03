@@ -37,9 +37,11 @@ type Client interface {
 	// cluster and register it.
 	RegisterCluster(ctx context.Context, req *RegisterClusterRequest) (*RegisterClusterResponse, error)
 	// SendClusterSnapshot sends a cluster snapshot to CAST AI to enable savings estimations / autoscaling / etc.
-	SendClusterSnapshot(ctx context.Context, snap *Snapshot) (*SnapshotResponse, error)
+	SendClusterSnapshot(ctx context.Context, snap *Snapshot) error
 	// SendClusterSnapshotWithRetry sends cluster snapshot with retries to CAST AI to enable savings estimations / autoscaling / etc.
-	SendClusterSnapshotWithRetry(ctx context.Context, snap *Snapshot) (*SnapshotResponse, error)
+	SendClusterSnapshotWithRetry(ctx context.Context, snap *Snapshot) error
+	// GetAgentCfg is used to poll CAST AI for agent configuration which can be updated via UI or other means.
+	GetAgentCfg(ctx context.Context, clusterID string) (*AgentCfgResponse, error)
 }
 
 // NewClient creates and configures the CAST AI client.
@@ -87,12 +89,12 @@ func (c *client) RegisterCluster(ctx context.Context, req *RegisterClusterReques
 	return body, nil
 }
 
-func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) (*SnapshotResponse, error) {
+func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) error {
 	cfg := config.Get().API
 
 	uri, err := url.Parse(fmt.Sprintf("https://%s/v1/agent/snapshot", cfg.URL))
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	r, w := io.Pipe()
@@ -116,7 +118,7 @@ func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) (*Snap
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), r)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	req.Header.Set(hdrContentType, mw.FormDataContentType())
@@ -124,7 +126,7 @@ func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) (*Snap
 
 	resp, err := c.rest.GetClient().Do(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
@@ -137,42 +139,46 @@ func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) (*Snap
 		if _, err := buf.ReadFrom(resp.Body); err != nil {
 			c.log.Errorf("failed reading error response body: %v", err)
 		}
-		return nil, fmt.Errorf("request failed with status_code=%d", resp.StatusCode);
-	}
-
-	var responseBody SnapshotResponse
-
-	if err := json.NewDecoder(resp.Body).Decode(&responseBody); err != nil {
-		return nil, err
+		return fmt.Errorf("request failed with status_code=%d", resp.StatusCode)
 	}
 
 	c.log.Infof(
-		"snapshot with nodes[%d], pods[%d] sent, response_code=%d, response_body=%+v",
+		"snapshot with nodes[%d], pods[%d] sent, response_code=%d",
 		len(snap.NodeList.Items),
 		len(snap.PodList.Items),
 		resp.StatusCode,
-		responseBody,
 	)
 
-	return &responseBody, nil
+	return nil
 }
 
-func (c *client) SendClusterSnapshotWithRetry(ctx context.Context, snap *Snapshot) (*SnapshotResponse, error) {
+func (c *client) SendClusterSnapshotWithRetry(ctx context.Context, snap *Snapshot) error {
 	b := backoff.WithContext(backoff.NewExponentialBackOff(), ctx)
-	var res *SnapshotResponse
 	op := func() error {
-		snapRes, err := c.SendClusterSnapshot(ctx, snap)
-		if err == nil {
-			res = snapRes
-		}
-		return err
+		return c.SendClusterSnapshot(ctx, snap)
 	}
 
 	if err := backoff.Retry(op, b); err != nil {
-		return nil, fmt.Errorf("sending snapshot data: %v", err)
+		return fmt.Errorf("sending snapshot data: %v", err)
 	}
 
-	return res, nil
+	return nil
+}
+
+func (c *client) GetAgentCfg(ctx context.Context, clusterID string) (*AgentCfgResponse, error) {
+	body := &AgentCfgResponse{}
+	resp, err := c.rest.R().
+		SetResult(body).
+		SetContext(ctx).
+		Get(fmt.Sprintf("/v1/agent/config/%s", clusterID))
+	if err != nil {
+		return nil, err
+	}
+	if resp.IsError() {
+		return nil, fmt.Errorf("request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
+	}
+
+	return body, nil
 }
 
 func writeSnapshotPart(mw *multipart.Writer, snap *Snapshot) error {
