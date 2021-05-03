@@ -24,8 +24,8 @@ type RegisterClusterResponse struct {
 	Cluster
 }
 
-type SnapshotResponse struct {
-	IntervalSeconds int16 `json:"intervalSeconds"`
+type AgentCfgResponse struct {
+	IntervalSeconds string `json:"intervalSeconds"`
 }
 
 type SnapshotRequest struct {

@@ -4,11 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
-	"strings"
-	"time"
 
 	"github.com/sirupsen/logrus"
-	"k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -18,8 +15,7 @@ import (
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/collector"
 	"castai-agent/internal/services/providers"
-	"castai-agent/internal/services/providers/types"
-	"castai-agent/pkg/labels"
+	"castai-agent/internal/services/worker"
 )
 
 func main() {
@@ -61,104 +57,7 @@ func run(ctx context.Context, log logrus.FieldLogger) error {
 		return fmt.Errorf("initializing snapshot collector: %w", err)
 	}
 
-	interval := 30 * time.Minute
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for {
-		// TODO: split up the function, changed the name for now
-		// collect & send should be separate calls
-		res, err := collectAndSend(ctx, log, reg, col, provider, castclient, interval)
-		if err != nil {
-			log.Errorf("collecting snapshot data: %v", err)
-		}
-
-		if res != nil {
-			remoteInterval := time.Duration(res.IntervalSeconds) * time.Second
-			if interval != remoteInterval  {
-				interval = remoteInterval
-				ticker.Stop()
-				ticker = time.NewTicker(interval)
-			}
-		}
-
-		select {
-		case <-ticker.C:
-		case <-ctx.Done():
-			log.Info("shutting down agent")
-			return nil
-		}
-	}
-}
-
-func collectAndSend(ctx context.Context, log logrus.FieldLogger, reg *types.ClusterRegistration, col collector.Collector, provider types.Provider, castclient castai.Client, timeoutInterval time.Duration) (*castai.SnapshotResponse, error) {
-	cd, err := col.Collect(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	accountID, err := provider.AccountID(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("getting account id: %w", err)
-	}
-
-	clusterName, err := provider.ClusterName(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("getting cluster name: %w", err)
-	}
-
-	region, err := provider.ClusterRegion(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("getting cluster region: %w", err)
-	}
-
-	snap := &castai.Snapshot{
-		ClusterID:       reg.ClusterID,
-		OrganizationID:  reg.OrganizationID,
-		ClusterProvider: strings.ToUpper(provider.Name()),
-		AccountID:       accountID,
-		ClusterName:     clusterName,
-		ClusterRegion:   region,
-		ClusterData:     cd,
-	}
-
-	if v := col.GetVersion(); v != nil {
-		snap.ClusterVersion = v.Major + "." + v.Minor
-	}
-
-	if err := addSpotLabel(ctx, provider, snap.NodeList); err != nil {
-		log.Errorf("adding spot labels: %v", err)
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, timeoutInterval)
-	defer cancel()
-
-	res, err := castclient.SendClusterSnapshotWithRetry(ctx, snap)
-	if err != nil {
-		return nil, fmt.Errorf("sending cluster snapshot: %w", err)
-	}
-
-	return res, nil
-}
-
-func addSpotLabel(ctx context.Context, provider types.Provider, nodes *v1.NodeList) error {
-	nodeMap := make(map[string]*v1.Node, len(nodes.Items))
-	items := make([]*v1.Node, len(nodes.Items))
-	for i, node := range nodes.Items {
-		items[i] = &nodes.Items[i]
-		nodeMap[node.Name] = &nodes.Items[i]
-	}
-
-	spotNodes, err := provider.FilterSpot(ctx, items)
-	if err != nil {
-		return fmt.Errorf("filtering spot instances: %w", err)
-	}
-
-	for _, node := range spotNodes {
-		nodeMap[node.Name].Labels[labels.Spot] = "true"
-	}
-
-	return nil
+	return worker.Run(ctx, log, reg, col, castclient, provider)
 }
 
 func kubeConfigFromEnv() (*rest.Config, error) {
