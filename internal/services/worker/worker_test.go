@@ -1,9 +1,15 @@
-package main
+package worker
 
 import (
 	"context"
 	"testing"
-	"time"
+
+	"github.com/golang/mock/gomock"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/version"
 
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
@@ -11,14 +17,6 @@ import (
 	mock_collector "castai-agent/internal/services/collector/mock"
 	"castai-agent/internal/services/providers/types"
 	mock_types "castai-agent/internal/services/providers/types/mock"
-
-	"github.com/golang/mock/gomock"
-	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/require"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/version"
 )
 
 func TestCollect(t *testing.T) {
@@ -55,11 +53,17 @@ func TestCollect(t *testing.T) {
 		ClusterRegion:   "eu-central-1",
 		ClusterData:     cd,
 		ClusterVersion:  "1.20",
-	}).Return(&castai.SnapshotResponse{IntervalSeconds: 120}, nil)
+	}).Return(nil)
 
-	_, err := collectAndSend(ctx, logrus.New(), reg, col, provider, castclient, time.Millisecond)
+	w := &worker{
+		reg:        reg,
+		col:        col,
+		provider:   provider,
+		castclient: castclient,
+	}
+
+	err := w.collect(ctx)
 
 	require.NoError(t, err)
-
 	require.Equal(t, map[string]string{"scheduling.cast.ai/spot": "true"}, spot.ObjectMeta.Labels)
 }
