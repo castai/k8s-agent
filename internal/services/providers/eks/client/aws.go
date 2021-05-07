@@ -48,15 +48,16 @@ func New(ctx context.Context, log logrus.FieldLogger, opts ...Opt) (Client, erro
 }
 
 const (
-	tagK8sCluster        = "k8s.io/cluster/"
-	tagKubernetesCluster = "kubernetes.io/cluster/"
-	owned                = "owned"
+	tagEKSK8sCluster         = "k8s.io/cluster/"
+	tagEKSKubernetesCluster  = "kubernetes.io/cluster/"
+	tagKOPSKubernetesCluster = "KubernetesCluster"
+	owned                    = "owned"
 )
 
 var (
-	clusterTags = []string{
-		tagK8sCluster,
-		tagKubernetesCluster,
+	eksClusterTags = []string{
+		tagEKSK8sCluster,
+		tagEKSKubernetesCluster,
 	}
 )
 
@@ -177,23 +178,7 @@ func (c *client) GetClusterName(ctx context.Context) (*string, error) {
 		return nil, fmt.Errorf("no tags found for instance_id=%s", instanceID)
 	}
 
-	var clusterName string
-
-	for _, tag := range resp.Reservations[0].Instances[0].Tags {
-		if tag == nil || tag.Key == nil || tag.Value == nil {
-			continue
-		}
-		for _, clusterTag := range clusterTags {
-			if strings.HasPrefix(*tag.Key, clusterTag) && *tag.Value == owned {
-				clusterName = strings.TrimPrefix(*tag.Key, clusterTag)
-				break
-			}
-		}
-		if clusterName != "" {
-			break
-		}
-	}
-
+	clusterName := getClusterName(resp.Reservations[0].Instances[0].Tags)
 	if clusterName == "" {
 		return nil, fmt.Errorf("discovering cluster name: instance cluster tags not found for instance_id=%s", instanceID)
 	}
@@ -201,6 +186,23 @@ func (c *client) GetClusterName(ctx context.Context) (*string, error) {
 	c.clusterName = &clusterName
 
 	return c.clusterName, nil
+}
+
+func getClusterName(tags []*ec2.Tag) string {
+	for _, tag := range tags {
+		if tag == nil || tag.Key == nil || tag.Value == nil {
+			continue
+		}
+		for _, clusterTag := range eksClusterTags {
+			if strings.HasPrefix(*tag.Key, clusterTag) && *tag.Value == owned {
+				return strings.TrimPrefix(*tag.Key, clusterTag)
+			}
+		}
+		if *tag.Key == tagKOPSKubernetesCluster {
+			return *tag.Value
+		}
+	}
+	return ""
 }
 
 func (c *client) GetInstancesByPrivateDNS(ctx context.Context, dns []string) ([]*ec2.Instance, error) {
