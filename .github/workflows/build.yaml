@@ -72,4 +72,6 @@ jobs:
         with:
           context: .
           push: true
-          tags: castai/agent:${{ env.RELEASE_TAG }}
+          tags: |
+            castai/agent:${{ env.RELEASE_TAG }}
+            castai/agent:latest
