@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/patrickmn/go-cache"
 	"github.com/sirupsen/logrus"
 	"k8s.io/api/core/v1"
 
@@ -51,7 +50,6 @@ func New(ctx context.Context, log logrus.FieldLogger) (types.Provider, error) {
 type Provider struct {
 	log       logrus.FieldLogger
 	awsClient client.Client
-	spotCache *cache.Cache
 }
 
 func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*types.ClusterRegistration, error) {

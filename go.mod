@@ -8,7 +8,6 @@ require (
 	github.com/golang/mock v1.4.1
 	github.com/google/uuid v1.1.2
 	github.com/jarcoal/httpmock v1.0.8
-	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/sirupsen/logrus v1.7.0
 	github.com/spf13/viper v1.7.1
 	github.com/stretchr/testify v1.6.1
