@@ -49,26 +49,3 @@ func (v *Version) Full() string {
 func (v *Version) MinorInt() int {
 	return v.m
 }
-
-// GetMinor gets the minor kubernetes version from the semver major.minor.patch. All characters are removed and just the
-// minor version number is returned.
-func GetMinor(log logrus.FieldLogger, clientset kubernetes.Interface) (int, error) {
-	cs, ok := clientset.(*kubernetes.Clientset)
-	if !ok {
-		return 0, nil
-	}
-
-	sv, err := cs.ServerVersion()
-	if err != nil {
-		return 0, fmt.Errorf("getting server version: %w", err)
-	}
-
-	log.Infof("kubernetes version %s.%s", sv.Major, sv.Minor)
-
-	m, err := strconv.Atoi(regexp.MustCompile(`^(\d+)`).FindString(sv.Minor))
-	if err != nil {
-		return 0, fmt.Errorf("parsing k8s version: %w", err)
-	}
-
-	return m, nil
-}
