@@ -17,6 +17,7 @@ import (
 	mock_castai "castai-agent/internal/castai/mock"
 	mock_client "castai-agent/internal/services/providers/eks/client/mock"
 	"castai-agent/internal/services/providers/types"
+	"castai-agent/pkg/labels"
 )
 
 func TestProvider_RegisterCluster(t *testing.T) {
@@ -59,9 +60,8 @@ func TestProvider_RegisterCluster(t *testing.T) {
 	require.Equal(t, expected, got)
 }
 
-func TestProvider_FilterSpot(t *testing.T) {
-	t.Run("no spot instances", func(t *testing.T) {
-		ctx := context.Background()
+func TestProvider_IsSpot(t *testing.T) {
+	t.Run("spot instance capacity label", func(t *testing.T) {
 		awsClient := mock_client.NewMockClient(gomock.NewController(t))
 
 		p := &Provider{
@@ -69,34 +69,15 @@ func TestProvider_FilterSpot(t *testing.T) {
 			awsClient: awsClient,
 		}
 
-		nodes := []*v1.Node{
-			{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test",
-					Labels: map[string]string{
-						v1.LabelHostname: "hostname",
-					},
-				},
-			},
-		}
-
-		instances := []*ec2.Instance{
-			{
-				PrivateDnsName:    pointer.StringPtr("hostname"),
-				InstanceLifecycle: pointer.StringPtr("on-demand"),
-			},
-		}
-
-		awsClient.EXPECT().GetInstancesByPrivateDNS(ctx, []string{"hostname"}).Return(instances, nil)
-
-		got, err := p.FilterSpot(ctx, nodes)
+		got, err := p.IsSpot(context.Background(), &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			LabelCapacity: ValueCapacitySpot,
+		}}})
 
 		require.NoError(t, err)
-		require.Empty(t, got)
+		require.True(t, got)
 	})
 
-	t.Run("one spot instance", func(t *testing.T) {
-		ctx := context.Background()
+	t.Run("spot instance CAST AI label", func(t *testing.T) {
 		awsClient := mock_client.NewMockClient(gomock.NewController(t))
 
 		p := &Provider{
@@ -104,45 +85,37 @@ func TestProvider_FilterSpot(t *testing.T) {
 			awsClient: awsClient,
 		}
 
-		spotNode := &v1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "spot",
-				Labels: map[string]string{
-					v1.LabelHostname: "spot",
-				},
-			},
+		got, err := p.IsSpot(context.Background(), &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			labels.Spot: "true",
+		}}})
+
+		require.NoError(t, err)
+		require.True(t, got)
+	})
+
+	t.Run("spot instance lifecycle response", func(t *testing.T) {
+		awsClient := mock_client.NewMockClient(gomock.NewController(t))
+
+		p := &Provider{
+			log:       logrus.New(),
+			awsClient: awsClient,
 		}
 
-		nodes := []*v1.Node{spotNode, {
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "on-demand",
-				Labels: map[string]string{
-					v1.LabelHostname: "on-demand",
-				},
-			},
-		}}
-
-		instances := []*ec2.Instance{
+		awsClient.EXPECT().GetInstancesByPrivateDNS(gomock.Any(), []string{"hostname"}).Return([]*ec2.Instance{
 			{
-				PrivateDnsName:    pointer.StringPtr("spot"),
 				InstanceLifecycle: pointer.StringPtr("spot"),
 			},
-			{
-				PrivateDnsName:    pointer.StringPtr("on-demand"),
-				InstanceLifecycle: pointer.StringPtr("on-demand"),
-			},
-		}
+		}, nil)
 
-		awsClient.EXPECT().GetInstancesByPrivateDNS(ctx, []string{"spot", "on-demand"}).Return(instances, nil)
-
-		got, err := p.FilterSpot(ctx, nodes)
+		got, err := p.IsSpot(context.Background(), &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			v1.LabelHostname: "hostname",
+		}}})
 
 		require.NoError(t, err)
-		require.Equal(t, []*v1.Node{spotNode}, got)
+		require.True(t, got)
 	})
 
-	t.Run("should use cache", func(t *testing.T) {
-		ctx := context.Background()
+	t.Run("on-demand instance", func(t *testing.T) {
 		awsClient := mock_client.NewMockClient(gomock.NewController(t))
 
 		p := &Provider{
@@ -150,34 +123,17 @@ func TestProvider_FilterSpot(t *testing.T) {
 			awsClient: awsClient,
 		}
 
-		nodes := []*v1.Node{
+		awsClient.EXPECT().GetInstancesByPrivateDNS(gomock.Any(), []string{"hostname"}).Return([]*ec2.Instance{
 			{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test",
-					Labels: map[string]string{
-						v1.LabelHostname: "hostname",
-					},
-				},
-			},
-		}
-
-		instances := []*ec2.Instance{
-			{
-				PrivateDnsName:    pointer.StringPtr("hostname"),
 				InstanceLifecycle: pointer.StringPtr("on-demand"),
 			},
-		}
+		}, nil)
 
-		awsClient.EXPECT().GetInstancesByPrivateDNS(ctx, []string{"hostname"}).Times(1).Return(instances, nil)
-
-		got, err := p.FilterSpot(ctx, nodes)
-
-		require.NoError(t, err)
-		require.Empty(t, got)
-
-		got, err = p.FilterSpot(ctx, nodes)
+		got, err := p.IsSpot(context.Background(), &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			v1.LabelHostname: "hostname",
+		}}})
 
 		require.NoError(t, err)
-		require.Empty(t, got)
+		require.False(t, got)
 	})
 }

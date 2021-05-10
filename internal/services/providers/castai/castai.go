@@ -24,6 +24,13 @@ type Provider struct {
 	log logrus.FieldLogger
 }
 
+func (p *Provider) IsSpot(_ context.Context, node *v1.Node) (bool, error) {
+	if val, ok := node.Labels[labels.Spot]; ok && val == "true" {
+		return true, nil
+	}
+	return false, nil
+}
+
 func (p *Provider) RegisterCluster(_ context.Context, _ castai.Client) (*types.ClusterRegistration, error) {
 	cfg := config.Get().CASTAI
 	return &types.ClusterRegistration{
@@ -34,18 +41,6 @@ func (p *Provider) RegisterCluster(_ context.Context, _ castai.Client) (*types.C
 
 func (p *Provider) Name() string {
 	return Name
-}
-
-func (p *Provider) FilterSpot(_ context.Context, nodes []*v1.Node) ([]*v1.Node, error) {
-	var spots []*v1.Node
-
-	for _, n := range nodes {
-		if val, ok := n.ObjectMeta.Labels[labels.Spot]; ok && val == "true" {
-			spots = append(spots, n)
-		}
-	}
-
-	return spots, nil
 }
 
 func (p *Provider) AccountID(_ context.Context) (string, error) {

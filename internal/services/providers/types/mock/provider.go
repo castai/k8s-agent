@@ -97,6 +97,21 @@ func (mr *MockProviderMockRecorder) FilterSpot(arg0, arg1 interface{}) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FilterSpot", reflect.TypeOf((*MockProvider)(nil).FilterSpot), arg0, arg1)
 }
 
+// IsSpot mocks base method.
+func (m *MockProvider) IsSpot(arg0 context.Context, arg1 *v1.Node) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsSpot", arg0, arg1)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IsSpot indicates an expected call of IsSpot.
+func (mr *MockProviderMockRecorder) IsSpot(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsSpot", reflect.TypeOf((*MockProvider)(nil).IsSpot), arg0, arg1)
+}
+
 // Name mocks base method.
 func (m *MockProvider) Name() string {
 	m.ctrl.T.Helper()

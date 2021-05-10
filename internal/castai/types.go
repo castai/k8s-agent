@@ -1,7 +1,5 @@
 package castai
 
-import "castai-agent/internal/services/collector"
-
 type EKSParams struct {
 	ClusterName string `json:"clusterName"`
 	Region      string `json:"region"`
@@ -26,19 +24,26 @@ type RegisterClusterResponse struct {
 
 type AgentCfgResponse struct {
 	IntervalSeconds string `json:"intervalSeconds"`
+	Resync          bool   `json:"resync"`
 }
 
-type SnapshotRequest struct {
-	Payload []byte `json:"payload"`
+type Delta struct {
+	ClusterID      string       `json:"clusterId"`
+	ClusterVersion string       `json:"clusterVersion"`
+	Resync         bool         `json:"resync"`
+	Items          []*DeltaItem `json:"items"`
 }
 
-type Snapshot struct {
-	ClusterID       string `json:"clusterId"`
-	AccountID       string `json:"accountId"`
-	OrganizationID  string `json:"organizationId"`
-	ClusterProvider string `json:"clusterProvider"`
-	ClusterName     string `json:"clusterName"`
-	ClusterVersion  string `json:"clusterVersion"`
-	ClusterRegion   string `json:"clusterRegion"`
-	*collector.ClusterData
+type DeltaItem struct {
+	Event EventType `json:"event"`
+	Kind  string    `json:"kind"`
+	Data  string    `json:"data"`
 }
+
+type EventType string
+
+const (
+	EventAdd    EventType = "add"
+	EventUpdate EventType = "update"
+	EventDelete EventType = "delete"
+)

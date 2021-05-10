@@ -7,13 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
-	"net/textproto"
 	"net/url"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
 	"github.com/go-resty/resty/v2"
 	"github.com/sirupsen/logrus"
 
@@ -27,8 +24,8 @@ const (
 )
 
 var (
-	hdrContentType        = http.CanonicalHeaderKey("Content-Type")
-	hdrContentDisposition = http.CanonicalHeaderKey("Content-Disposition")
+	hdrContentType = http.CanonicalHeaderKey("Content-Type")
+	hdrAPIKey      = http.CanonicalHeaderKey(headerAPIKey)
 )
 
 // Client responsible for communication between the agent and CAST AI API.
@@ -36,12 +33,10 @@ type Client interface {
 	// RegisterCluster sends a request to CAST AI containing discovered cluster properties used to authenticate the
 	// cluster and register it.
 	RegisterCluster(ctx context.Context, req *RegisterClusterRequest) (*RegisterClusterResponse, error)
-	// SendClusterSnapshot sends a cluster snapshot to CAST AI to enable savings estimations / autoscaling / etc.
-	SendClusterSnapshot(ctx context.Context, snap *Snapshot) error
-	// SendClusterSnapshotWithRetry sends cluster snapshot with retries to CAST AI to enable savings estimations / autoscaling / etc.
-	SendClusterSnapshotWithRetry(ctx context.Context, snap *Snapshot) error
 	// GetAgentCfg is used to poll CAST AI for agent configuration which can be updated via UI or other means.
 	GetAgentCfg(ctx context.Context, clusterID string) (*AgentCfgResponse, error)
+	// SendDelta sends the kubernetes state change to CAST AI. Function is noop when items are empty.
+	SendDelta(ctx context.Context, delta *Delta) error
 }
 
 // NewClient creates and configures the CAST AI client.
@@ -60,7 +55,7 @@ func NewDefaultClient() *resty.Client {
 	client.SetHostURL(fmt.Sprintf("https://%s", cfg.URL))
 	client.SetRetryCount(defaultRetryCount)
 	client.SetTimeout(defaultTimeout)
-	client.Header.Set(headerAPIKey, cfg.Key)
+	client.Header.Set(hdrAPIKey, cfg.Key)
 
 	return client
 }
@@ -68,6 +63,61 @@ func NewDefaultClient() *resty.Client {
 type client struct {
 	log  logrus.FieldLogger
 	rest *resty.Client
+}
+
+func (c *client) SendDelta(ctx context.Context, delta *Delta) error {
+	c.log.Infof("sending delta with items[%d]", len(delta.Items))
+
+	cfg := config.Get().API
+
+	uri, err := url.Parse(fmt.Sprintf("https://%s/v1/agent/delta", cfg.URL))
+	if err != nil {
+		return fmt.Errorf("invalid url: %w", err)
+	}
+
+	r, w := io.Pipe()
+
+	go func() {
+		defer func() {
+			if err := w.Close(); err != nil {
+				c.log.Errorf("closing pipe: %v", err)
+			}
+		}()
+
+		if err := json.NewEncoder(w).Encode(delta); err != nil {
+			c.log.Errorf("marshaling delta: %v", err)
+		}
+	}()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), r)
+	if err != nil {
+		return fmt.Errorf("creating delta request: %w", err)
+	}
+
+	req.Header.Set(hdrContentType, "application/json")
+	req.Header.Set(hdrAPIKey, cfg.Key)
+
+	resp, err := c.rest.GetClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("sending delta request: %w", err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			c.log.Errorf("closing response body: %v", err)
+		}
+	}()
+
+	if resp.StatusCode > 399 {
+		var buf bytes.Buffer
+		if _, err := buf.ReadFrom(resp.Body); err != nil {
+			c.log.Errorf("failed reading error response body: %v", err)
+		}
+		return fmt.Errorf("delta request error status_code=%d body=%s", resp.StatusCode, buf.String())
+	}
+
+	c.log.Infof("delta with items[%d] sent, response_code=%d", len(delta.Items), resp.StatusCode)
+
+	return nil
 }
 
 func (c *client) RegisterCluster(ctx context.Context, req *RegisterClusterRequest) (*RegisterClusterResponse, error) {
@@ -89,82 +139,6 @@ func (c *client) RegisterCluster(ctx context.Context, req *RegisterClusterReques
 	return body, nil
 }
 
-func (c *client) SendClusterSnapshot(ctx context.Context, snap *Snapshot) error {
-	cfg := config.Get().API
-
-	uri, err := url.Parse(fmt.Sprintf("https://%s/v1/agent/snapshot", cfg.URL))
-	if err != nil {
-		return err
-	}
-
-	r, w := io.Pipe()
-	mw := multipart.NewWriter(w)
-
-	go func() {
-		defer func() {
-			if err := w.Close(); err != nil {
-				c.log.Errorf("closing pipe: %v", err)
-			}
-		}()
-		defer func() {
-			if err := mw.Close(); err != nil {
-				c.log.Errorf("closing multipart writer: %w", err)
-			}
-		}()
-		if err := writeSnapshotPart(mw, snap); err != nil {
-			c.log.Errorf("writing snapshot content: %v", err)
-		}
-	}()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), r)
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set(hdrContentType, mw.FormDataContentType())
-	req.Header.Set(headerAPIKey, cfg.Key)
-
-	resp, err := c.rest.GetClient().Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			c.log.Errorf("closing response body: %v", err)
-		}
-	}()
-
-	if resp.StatusCode > 399 {
-		var buf bytes.Buffer
-		if _, err := buf.ReadFrom(resp.Body); err != nil {
-			c.log.Errorf("failed reading error response body: %v", err)
-		}
-		return fmt.Errorf("request failed with status_code=%d", resp.StatusCode)
-	}
-
-	c.log.Infof(
-		"snapshot with nodes[%d], pods[%d] sent, response_code=%d",
-		len(snap.NodeList.Items),
-		len(snap.PodList.Items),
-		resp.StatusCode,
-	)
-
-	return nil
-}
-
-func (c *client) SendClusterSnapshotWithRetry(ctx context.Context, snap *Snapshot) error {
-	b := backoff.WithContext(backoff.NewExponentialBackOff(), ctx)
-	op := func() error {
-		return c.SendClusterSnapshot(ctx, snap)
-	}
-
-	if err := backoff.Retry(op, b); err != nil {
-		return fmt.Errorf("sending snapshot data: %v", err)
-	}
-
-	return nil
-}
-
 func (c *client) GetAgentCfg(ctx context.Context, clusterID string) (*AgentCfgResponse, error) {
 	body := &AgentCfgResponse{}
 	resp, err := c.rest.R().
@@ -179,21 +153,4 @@ func (c *client) GetAgentCfg(ctx context.Context, clusterID string) (*AgentCfgRe
 	}
 
 	return body, nil
-}
-
-func writeSnapshotPart(mw *multipart.Writer, snap *Snapshot) error {
-	header := textproto.MIMEHeader{}
-	header.Set(hdrContentDisposition, `form-data; name="payload"; filename="payload.json"`)
-	header.Set(hdrContentType, "application/json")
-
-	bw, err := mw.CreatePart(header)
-	if err != nil {
-		return fmt.Errorf("creating payload part: %w", err)
-	}
-
-	if err := json.NewEncoder(bw).Encode(snap); err != nil {
-		return fmt.Errorf("marshaling snapshot payload: %w", err)
-	}
-
-	return nil
 }
