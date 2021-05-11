@@ -187,9 +187,10 @@ func genericHandler(
 	}
 
 	queue.Add(&castai.DeltaItem{
-		Event: event,
-		Kind:  kind,
-		Data:  data,
+		Event:     event,
+		Kind:      kind,
+		Data:      data,
+		CreatedAt: time.Now().UTC(),
 	})
 }
 

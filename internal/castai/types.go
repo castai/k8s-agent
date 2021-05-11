@@ -1,5 +1,7 @@
 package castai
 
+import "time"
+
 type EKSParams struct {
 	ClusterName string `json:"clusterName"`
 	Region      string `json:"region"`
@@ -35,9 +37,10 @@ type Delta struct {
 }
 
 type DeltaItem struct {
-	Event EventType `json:"event"`
-	Kind  string    `json:"kind"`
-	Data  string    `json:"data"`
+	Event     EventType `json:"event"`
+	Kind      string    `json:"kind"`
+	Data      string    `json:"data"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type EventType string
