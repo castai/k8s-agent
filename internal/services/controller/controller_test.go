@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -60,8 +61,14 @@ func Test(t *testing.T) {
 			require.Equal(t, "1.19+", d.ClusterVersion)
 			require.True(t, d.Resync)
 			require.Len(t, d.Items, 2)
-			require.Contains(t, d.Items, &castai.DeltaItem{Event: castai.EventAdd, Kind: "Node", Data: nodeData})
-			require.Contains(t, d.Items, &castai.DeltaItem{Event: castai.EventAdd, Kind: "Pod", Data: podData})
+
+			var actualValues []string
+			for _, item := range d.Items {
+				actualValues = append(actualValues, fmt.Sprintf("%s-%s-%s", item.Event, item.Kind, item.Data))
+			}
+
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%s", castai.EventAdd, "Node", nodeData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%s", castai.EventAdd, "Pod", podData))
 
 			return nil
 		})
