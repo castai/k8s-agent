@@ -70,7 +70,7 @@ func (c *client) SendDelta(ctx context.Context, delta *Delta) error {
 
 	cfg := config.Get().API
 
-	uri, err := url.Parse(fmt.Sprintf("https://%s/v1/agent/delta", cfg.URL))
+	uri, err := url.Parse(fmt.Sprintf("https://%s/v1/agent/cluster-delta", cfg.URL))
 	if err != nil {
 		return fmt.Errorf("invalid url: %w", err)
 	}
