@@ -27,7 +27,8 @@ func Test(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write(b)
+		_, err = w.Write(b)
+		require.NoError(t, err)
 	}))
 	defer s.Close()
 	client := kubernetes.NewForConfigOrDie(&rest.Config{Host: s.URL})

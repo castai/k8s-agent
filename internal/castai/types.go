@@ -32,7 +32,7 @@ type AgentCfgResponse struct {
 type Delta struct {
 	ClusterID      string       `json:"clusterId"`
 	ClusterVersion string       `json:"clusterVersion"`
-	Resync         bool         `json:"resync"`
+	FullSnapshot   bool         `json:"fullSnapshot"`
 	Items          []*DeltaItem `json:"items"`
 }
 

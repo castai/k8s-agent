@@ -59,7 +59,7 @@ func Test(t *testing.T) {
 
 			require.Equal(t, clusterID.String(), d.ClusterID)
 			require.Equal(t, "1.19+", d.ClusterVersion)
-			require.True(t, d.Resync)
+			require.True(t, d.FullSnapshot)
 			require.Len(t, d.Items, 2)
 
 			var actualValues []string

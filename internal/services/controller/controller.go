@@ -75,7 +75,7 @@ func New(
 		provider:     provider,
 		interval:     interval,
 		prepDuration: prepDuration,
-		delta:        &castai.Delta{ClusterID: clusterID, ClusterVersion: v.Full(), Resync: true},
+		delta:        &castai.Delta{ClusterID: clusterID, ClusterVersion: v.Full(), FullSnapshot: true},
 		spotCache:    map[string]bool{},
 		queue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "castai-agent"),
 		informers:    typeInformerMap,
@@ -280,5 +280,5 @@ func (c *Controller) send(ctx context.Context) {
 	}
 
 	c.delta.Items = nil
-	c.delta.Resync = false
+	c.delta.FullSnapshot = false
 }
