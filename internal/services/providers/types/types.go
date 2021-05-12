@@ -13,8 +13,8 @@ import (
 type Provider interface {
 	// RegisterCluster retrieves cluster registration data needed to correctly identify the cluster.
 	RegisterCluster(ctx context.Context, client castclient.Client) (*ClusterRegistration, error)
-	// FilterSpot returns a list of nodes which are configured as spot/preemtible instances.
-	FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node, error)
+	// IsSpot checks provider specific properties whether the node lifecycle is spot/preemtible.
+	IsSpot(ctx context.Context, node *v1.Node) (bool, error)
 	// Name of the provider.
 	Name() string
 	// AccountID of the EC2 instance.

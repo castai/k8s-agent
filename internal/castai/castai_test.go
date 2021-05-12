@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"os"
 	"testing"
 
 	"github.com/go-resty/resty/v2"
@@ -12,10 +11,6 @@ import (
 	"github.com/jarcoal/httpmock"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"castai-agent/internal/services/collector"
 )
 
 func TestClient_RegisterCluster(t *testing.T) {
@@ -39,57 +34,4 @@ func TestClient_RegisterCluster(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, registerClusterResp, got)
-}
-
-func TestClient_SendClusterSnapshot(t *testing.T) {
-	require.NoError(t, os.Setenv("API_KEY", "api-key"))
-	require.NoError(t, os.Setenv("API_URL", "localhost"))
-
-	rest := resty.New()
-	httpmock.ActivateNonDefault(rest.GetClient())
-	defer httpmock.Reset()
-
-	c := NewClient(logrus.New(), rest)
-
-	snapshot := &Snapshot{
-		ClusterID: uuid.New().String(),
-		ClusterData: &collector.ClusterData{
-			NodeList: &corev1.NodeList{
-				Items: []corev1.Node{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "test",
-						},
-					},
-				},
-			},
-			PodList: &corev1.PodList{
-				Items: []corev1.Pod{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "test",
-						},
-					},
-				},
-			},
-		},
-	}
-
-	httpmock.RegisterResponder(http.MethodPost, "https://localhost/v1/agent/snapshot", func(req *http.Request) (*http.Response, error) {
-		f, _, err := req.FormFile("payload")
-		require.NoError(t, err)
-
-		actualRequest := &Snapshot{}
-		require.NoError(t, json.NewDecoder(f).Decode(actualRequest))
-
-		require.Equal(t, snapshot, actualRequest)
-
-		require.Equal(t, "api-key", req.Header.Get(headerAPIKey))
-
-		return httpmock.NewStringResponse(http.StatusNoContent, "ok"), nil
-	})
-
-	err := c.SendClusterSnapshot(context.Background(), snapshot)
-
-	require.NoError(t, err)
 }

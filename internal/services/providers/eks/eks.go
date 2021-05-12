@@ -3,9 +3,7 @@ package eks
 import (
 	"context"
 	"fmt"
-	"time"
 
-	"github.com/patrickmn/go-cache"
 	"github.com/sirupsen/logrus"
 	"k8s.io/api/core/v1"
 
@@ -13,10 +11,14 @@ import (
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/providers/eks/client"
 	"castai-agent/internal/services/providers/types"
+	"castai-agent/pkg/labels"
 )
 
 const (
 	Name = "eks"
+
+	LabelCapacity     = "eks.amazonaws.com/capacityType"
+	ValueCapacitySpot = "SPOT"
 )
 
 // New configures and returns an EKS provider.
@@ -48,7 +50,6 @@ func New(ctx context.Context, log logrus.FieldLogger) (types.Provider, error) {
 type Provider struct {
 	log       logrus.FieldLogger
 	awsClient client.Client
-	spotCache *cache.Cache
 }
 
 func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*types.ClusterRegistration, error) {
@@ -85,52 +86,32 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 	}, nil
 }
 
-func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node, error) {
-	if p.spotCache == nil {
-		p.spotCache = cache.New(60*time.Minute, 10*time.Minute)
+func (p *Provider) IsSpot(ctx context.Context, node *v1.Node) (bool, error) {
+	if val, ok := node.Labels[LabelCapacity]; ok && ValueCapacitySpot == val {
+		return true, nil
 	}
 
-	var spotNodes []*v1.Node
-	var checkPrivateDNS []string
-
-	for _, node := range nodes {
-		val, exists := p.spotCache.Get(node.Name)
-
-		if !exists {
-			checkPrivateDNS = append(checkPrivateDNS, node.ObjectMeta.Labels[v1.LabelHostname])
-			continue
-		}
-
-		spot := val.(bool)
-
-		if spot {
-			spotNodes = append(spotNodes, node)
-		}
+	if val, ok := node.Labels[labels.Spot]; ok && val == "true" {
+		return true, nil
 	}
 
-	if len(checkPrivateDNS) > 0 {
-		instances, err := p.awsClient.GetInstancesByPrivateDNS(ctx, checkPrivateDNS)
-		if err != nil {
-			return nil, err
-		}
+	hostname, ok := node.Labels[v1.LabelHostname]
+	if !ok {
+		return false, fmt.Errorf("label %s not found on node %s", v1.LabelHostname, node.Name)
+	}
 
-		spotInstances := make(map[string]bool, len(instances))
-		for _, instance := range instances {
-			spotInstances[*instance.PrivateDnsName] = instance.InstanceLifecycle != nil && *instance.InstanceLifecycle == "spot"
-		}
+	instances, err := p.awsClient.GetInstancesByPrivateDNS(ctx, []string{hostname})
+	if err != nil {
+		return false, fmt.Errorf("getting instances by hostname: %w", err)
+	}
 
-		for _, node := range nodes {
-			spot, ok := spotInstances[node.ObjectMeta.Labels[v1.LabelHostname]]
-			if ok {
-				p.spotCache.SetDefault(node.Name, spot)
-			}
-			if spot {
-				spotNodes = append(spotNodes, node)
-			}
+	for _, instance := range instances {
+		if instance.InstanceLifecycle != nil && *instance.InstanceLifecycle == "spot" {
+			return true, nil
 		}
 	}
 
-	return spotNodes, nil
+	return false, nil
 }
 
 func (p *Provider) Name() string {

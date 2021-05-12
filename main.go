@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"time"
 
 	"github.com/sirupsen/logrus"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -13,9 +16,9 @@ import (
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
-	"castai-agent/internal/services/collector"
+	"castai-agent/internal/services/controller"
 	"castai-agent/internal/services/providers"
-	"castai-agent/internal/services/worker"
+	"castai-agent/internal/services/version"
 )
 
 func main() {
@@ -35,12 +38,14 @@ func run(ctx context.Context, log logrus.FieldLogger) error {
 
 	log = log.WithField("provider", provider.Name())
 
-	castclient := castai.NewClient(log, castai.NewDefaultClient())
+	castaiclient := castai.NewClient(log, castai.NewDefaultClient())
 
-	reg, err := provider.RegisterCluster(ctx, castclient)
+	reg, err := provider.RegisterCluster(ctx, castaiclient)
 	if err != nil {
 		return fmt.Errorf("registering cluster: %w", err)
 	}
+
+	log = log.WithField("cluster_id", reg.ClusterID)
 
 	restconfig, err := retrieveKubeConfig()
 	if err != nil {
@@ -52,12 +57,19 @@ func run(ctx context.Context, log logrus.FieldLogger) error {
 		return err
 	}
 
-	col, err := collector.NewCollector(log, clientset)
-	if err != nil {
-		return fmt.Errorf("initializing snapshot collector: %w", err)
-	}
+	wait.Until(func() {
+		v, err := version.Get(log, clientset)
+		if err != nil {
+			panic(fmt.Errorf("failed getting kubernetes version: %v", err))
+		}
 
-	return worker.Run(ctx, log, reg, col, castclient, provider)
+		f := informers.NewSharedInformerFactory(clientset, 0)
+		ctrl := controller.New(log, f, castaiclient, provider, reg.ClusterID, 15*time.Second, 30*time.Second, v)
+		f.Start(ctx.Done())
+		ctrl.Run(ctx)
+	}, 0, ctx.Done())
+
+	return nil
 }
 
 func kubeConfigFromEnv() (*rest.Config, error) {
