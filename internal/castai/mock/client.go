@@ -35,19 +35,19 @@ func (m *MockClient) EXPECT() *MockClientMockRecorder {
 	return m.recorder
 }
 
-// GetAgentCfg mocks base method.
-func (m *MockClient) GetAgentCfg(arg0 context.Context, arg1 string) (*castai.AgentCfgResponse, error) {
+// ExchangeAgentTelemetry mocks base method.
+func (m *MockClient) ExchangeAgentTelemetry(arg0 context.Context, arg1 string, arg2 *castai.AgentTelemetryRequest) (*castai.AgentTelemetryResponse, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAgentCfg", arg0, arg1)
-	ret0, _ := ret[0].(*castai.AgentCfgResponse)
+	ret := m.ctrl.Call(m, "ExchangeAgentTelemetry", arg0, arg1, arg2)
+	ret0, _ := ret[0].(*castai.AgentTelemetryResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetAgentCfg indicates an expected call of GetAgentCfg.
-func (mr *MockClientMockRecorder) GetAgentCfg(arg0, arg1 interface{}) *gomock.Call {
+// ExchangeAgentTelemetry indicates an expected call of ExchangeAgentTelemetry.
+func (mr *MockClientMockRecorder) ExchangeAgentTelemetry(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAgentCfg", reflect.TypeOf((*MockClient)(nil).GetAgentCfg), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExchangeAgentTelemetry", reflect.TypeOf((*MockClient)(nil).ExchangeAgentTelemetry), arg0, arg1, arg2)
 }
 
 // RegisterCluster mocks base method.
