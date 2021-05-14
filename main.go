@@ -24,7 +24,7 @@ import (
 // These should be set via `go build` during a release
 var (
 	GitCommit string = "undefined"
-	GitTag    string = "notag"
+	GitRef    string = "no-ref"
 	Version   string = "local"
 )
 
@@ -40,7 +40,7 @@ func main() {
 func run(ctx context.Context, log logrus.FieldLogger) error {
 	agentVersion := &config.AgentVersion{
 		GitCommit: GitCommit,
-		GitTag:    GitTag,
+		GitRef:    GitRef,
 		Version:   Version,
 	}
 	provider, err := providers.GetProvider(ctx, log)
