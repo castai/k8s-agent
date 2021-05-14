@@ -32,8 +32,12 @@ jobs:
           key: ${{ runner.os }}-build-${{ hashFiles('**/go.sum') }}
           restore-keys: ${{ runner.os }}-build-
 
+      - name: Get release tag
+        if: github.event_name == 'release'
+        run: echo "RELEASE_TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+
       - name: Build Go binary
-        run: go build -ldflags "-X main.GitCommit=$GITHUB_SHA -X main.GitRef" -o bin/castai-agent .
+        run: go build -ldflags "-X main.GitCommit=$GITHUB_SHA -X main.GitRef=$GITHUB_REF -X main.Version=${RELEASE_TAG:-commit-$GITHUB_SHA}" -o bin/castai-agent .
         env:
           GOOS: linux
           GOARCH: amd64
@@ -61,10 +65,6 @@ jobs:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
           tags: castai/agent:${{ github.sha }}
-
-      - name: Get release tag
-        if: github.event_name == 'release'
-        run: echo "RELEASE_TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
 
       - name: Build and push release
         if: github.event_name == 'release'

@@ -43,6 +43,7 @@ func run(ctx context.Context, log logrus.FieldLogger) error {
 		GitRef:    GitRef,
 		Version:   Version,
 	}
+	log.Infof("Running agentVersion: %+v", agentVersion)
 	provider, err := providers.GetProvider(ctx, log)
 	if err != nil {
 		return fmt.Errorf("getting provider: %w", err)
