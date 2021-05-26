@@ -227,7 +227,8 @@ func (c *Controller) Run(ctx context.Context) {
 				c.log.Errorf("failed getting agent configuration: %v", err)
 				return
 			}
-			if cfg.Resync {
+			// Resync only when at least one full snapshot has already been sent.
+			if cfg.Resync && !c.delta.FullSnapshot {
 				c.log.Info("restarting controller to resync data")
 				cancel()
 			}
