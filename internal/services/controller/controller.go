@@ -21,6 +21,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 
 	"castai-agent/internal/castai"
+	"castai-agent/internal/config"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/internal/services/version"
 	"castai-agent/pkg/labels"
@@ -35,9 +36,10 @@ type Controller struct {
 	prepDuration time.Duration
 	informers    map[reflect.Type]cache.SharedInformer
 
-	delta     *castai.Delta
-	mu        sync.Mutex
-	spotCache map[string]bool
+	delta        *castai.Delta
+	mu           sync.Mutex
+	spotCache    map[string]bool
+	agentVersion *config.AgentVersion
 }
 
 func New(
@@ -49,6 +51,7 @@ func New(
 	interval time.Duration,
 	prepDuration time.Duration,
 	v version.Interface,
+	agentVersion *config.AgentVersion,
 ) *Controller {
 	typeInformerMap := map[reflect.Type]cache.SharedInformer{
 		reflect.TypeOf(&corev1.Node{}):                  f.Core().V1().Nodes().Informer(),
@@ -79,6 +82,7 @@ func New(
 		spotCache:    map[string]bool{},
 		queue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "castai-agent"),
 		informers:    typeInformerMap,
+		agentVersion: agentVersion,
 	}
 
 	for typ, informer := range c.informers {
@@ -222,7 +226,11 @@ func (c *Controller) Run(ctx context.Context) {
 		const dur = 15 * time.Second
 		c.log.Infof("polling agent configuration every %s", dur)
 		wait.Until(func() {
-			cfg, err := c.castaiclient.GetAgentCfg(ctx, c.delta.ClusterID)
+			req := &castai.AgentTelemetryRequest{
+				AgentVersion: c.agentVersion.Version,
+				GitCommit:    c.agentVersion.GitCommit,
+			}
+			cfg, err := c.castaiclient.ExchangeAgentTelemetry(ctx, c.delta.ClusterID, req)
 			if err != nil {
 				c.log.Errorf("failed getting agent configuration: %v", err)
 				return
