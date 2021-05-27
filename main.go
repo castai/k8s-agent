@@ -21,6 +21,13 @@ import (
 	"castai-agent/internal/services/version"
 )
 
+// These should be set via `go build` during a release
+var (
+	GitCommit string = "undefined"
+	GitRef    string = "no-ref"
+	Version   string = "local"
+)
+
 func main() {
 	log := logrus.New()
 	log.Info("starting the agent")
@@ -31,6 +38,12 @@ func main() {
 }
 
 func run(ctx context.Context, log logrus.FieldLogger) error {
+	agentVersion := &config.AgentVersion{
+		GitCommit: GitCommit,
+		GitRef:    GitRef,
+		Version:   Version,
+	}
+	log.Infof("Running agentVersion: %+v", agentVersion)
 	provider, err := providers.GetProvider(ctx, log)
 	if err != nil {
 		return fmt.Errorf("getting provider: %w", err)
@@ -64,7 +77,7 @@ func run(ctx context.Context, log logrus.FieldLogger) error {
 		}
 
 		f := informers.NewSharedInformerFactory(clientset, 0)
-		ctrl := controller.New(log, f, castaiclient, provider, reg.ClusterID, 15*time.Second, 30*time.Second, v)
+		ctrl := controller.New(log, f, castaiclient, provider, reg.ClusterID, 15*time.Second, 30*time.Second, v, agentVersion)
 		f.Start(ctx.Done())
 		ctrl.Run(ctx)
 	}, 0, ctx.Done())

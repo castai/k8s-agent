@@ -24,7 +24,12 @@ type RegisterClusterResponse struct {
 	Cluster
 }
 
-type AgentCfgResponse struct {
+type AgentTelemetryRequest struct {
+	AgentVersion string `json:"agentVersion"`
+	GitCommit    string `json:"gitCommit"`
+}
+
+type AgentTelemetryResponse struct {
 	IntervalSeconds string `json:"intervalSeconds"`
 	Resync          bool   `json:"resync"`
 }

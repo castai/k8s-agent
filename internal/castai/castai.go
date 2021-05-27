@@ -34,7 +34,9 @@ type Client interface {
 	// cluster and register it.
 	RegisterCluster(ctx context.Context, req *RegisterClusterRequest) (*RegisterClusterResponse, error)
 	// GetAgentCfg is used to poll CAST AI for agent configuration which can be updated via UI or other means.
-	GetAgentCfg(ctx context.Context, clusterID string) (*AgentCfgResponse, error)
+	// ExchangeAgentTelemetry is used to send agent information (e.g. version)
+	// as well as poll CAST AI for agent configuration which can be updated via UI or other means.
+	ExchangeAgentTelemetry(ctx context.Context, clusterID string, req *AgentTelemetryRequest) (*AgentTelemetryResponse, error)
 	// SendDelta sends the kubernetes state change to CAST AI. Function is noop when items are empty.
 	SendDelta(ctx context.Context, delta *Delta) error
 }
@@ -139,12 +141,15 @@ func (c *client) RegisterCluster(ctx context.Context, req *RegisterClusterReques
 	return body, nil
 }
 
-func (c *client) GetAgentCfg(ctx context.Context, clusterID string) (*AgentCfgResponse, error) {
-	body := &AgentCfgResponse{}
-	resp, err := c.rest.R().
+func (c *client) ExchangeAgentTelemetry(ctx context.Context, clusterID string, req *AgentTelemetryRequest) (*AgentTelemetryResponse, error) {
+	body := &AgentTelemetryResponse{}
+	r := c.rest.R().
 		SetResult(body).
-		SetContext(ctx).
-		Get(fmt.Sprintf("/v1/agent/config/%s", clusterID))
+		SetContext(ctx)
+	if req != nil {
+		r.SetBody(req)
+	}
+	resp, err := r.Post(fmt.Sprintf("/v1/agent/config/%s", clusterID))
 	if err != nil {
 		return nil, err
 	}

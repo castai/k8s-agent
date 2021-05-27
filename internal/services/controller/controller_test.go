@@ -19,6 +19,7 @@ import (
 
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
+	"castai-agent/internal/config"
 	mock_types "castai-agent/internal/services/providers/types/mock"
 	mock_version "castai-agent/internal/services/version/mock"
 	"castai-agent/pkg/labels"
@@ -73,11 +74,16 @@ func Test(t *testing.T) {
 			return nil
 		})
 
-	castaiclient.EXPECT().GetAgentCfg(gomock.Any(), gomock.Any()).AnyTimes().Return(&castai.AgentCfgResponse{}, nil)
+	agentVersion := &config.AgentVersion{Version: "1.2.3"}
+	castaiclient.EXPECT().ExchangeAgentTelemetry(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
+		Return(&castai.AgentTelemetryResponse{}, nil).
+		Do(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
+			require.Equalf(t, "1.2.3", req.AgentVersion, "got request: %+v", req)
+		})
 	provider.EXPECT().IsSpot(gomock.Any(), node).Return(true, nil)
 
 	f := informers.NewSharedInformerFactory(clientset, 0)
-	ctrl := New(logrus.New(), f, castaiclient, provider, clusterID.String(), 15*time.Second, 100*time.Millisecond, version)
+	ctrl := New(logrus.New(), f, castaiclient, provider, clusterID.String(), 15*time.Second, 100*time.Millisecond, version, agentVersion)
 	f.Start(ctx.Done())
 
 	go ctrl.Run(ctx)
