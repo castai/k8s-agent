@@ -1,6 +1,10 @@
 package castai
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type EKSParams struct {
 	ClusterName string `json:"clusterName"`
@@ -8,16 +12,22 @@ type EKSParams struct {
 	AccountID   string `json:"accountId"`
 }
 
+type GKEParams struct {
+	Region      string `json:"region"`
+	ProjectID   string `json:"projectId"`
+	ClusterName string `json:"clusterName"`
+}
+
 type RegisterClusterRequest struct {
-	Name string    `json:"name"`
-	EKS  EKSParams `json:"eks"`
+	ID   uuid.UUID  `json:"id"`
+	Name string     `json:"name"`
+	EKS  *EKSParams `json:"eks"`
+	GKE  *GKEParams `json:"gke"`
 }
 
 type Cluster struct {
-	ID             string    `json:"id"`
-	Name           string    `json:"name"`
-	OrganizationID string    `json:"organizationId"`
-	EKS            EKSParams `json:"eks"`
+	ID             string `json:"id"`
+	OrganizationID string `json:"organizationId"`
 }
 
 type RegisterClusterResponse struct {

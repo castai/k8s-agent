@@ -42,15 +42,3 @@ func (p *Provider) RegisterCluster(_ context.Context, _ castai.Client) (*types.C
 func (p *Provider) Name() string {
 	return Name
 }
-
-func (p *Provider) AccountID(_ context.Context) (string, error) {
-	return "", nil
-}
-
-func (p *Provider) ClusterName(_ context.Context) (string, error) {
-	return "", nil
-}
-
-func (p *Provider) ClusterRegion(_ context.Context) (string, error) {
-	return "", nil
-}
