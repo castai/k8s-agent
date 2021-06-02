@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"time"
@@ -29,14 +28,6 @@ var (
 	GitRef    = "no-ref"
 	Version   = "local"
 )
-
-var (
-	cfgFile string
-)
-
-func init() {
-	flag.StringVar(&cfgFile, "config", "", "cast-agent config file path.")
-}
 
 func main() {
 	cfg := config.Get()
