@@ -37,7 +37,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 
 	expectedReq := &castai.RegisterClusterRequest{
 		Name: "test",
-		EKS: castai.EKSParams{
+		EKS: &castai.EKSParams{
 			ClusterName: "test",
 			Region:      "eu-central-1",
 			AccountID:   "id",
