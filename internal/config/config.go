@@ -3,15 +3,22 @@ package config
 import (
 	"fmt"
 
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
 
 type Config struct {
+	Log        Log
 	API        API
 	Kubeconfig string
 	Provider   string
 	CASTAI     *CASTAI
 	EKS        *EKS
+	GKE        *GKE
+}
+
+type Log struct {
+	Level int
 }
 
 type API struct {
@@ -30,6 +37,12 @@ type EKS struct {
 	ClusterName string
 }
 
+type GKE struct {
+	Region      string
+	ProjectID   string
+	ClusterName string
+}
+
 var cfg *Config
 
 // Get configuration bound to environment variables.
@@ -37,6 +50,8 @@ func Get() Config {
 	if cfg != nil {
 		return *cfg
 	}
+
+	_ = viper.BindEnv("log.level", "LOG_LEVEL")
 
 	_ = viper.BindEnv("api.key", "API_KEY")
 	_ = viper.BindEnv("api.url", "API_URL")
@@ -52,9 +67,17 @@ func Get() Config {
 	_ = viper.BindEnv("eks.region", "EKS_REGION")
 	_ = viper.BindEnv("eks.clustername", "EKS_CLUSTER_NAME")
 
+	_ = viper.BindEnv("gke.region", "GKE_REGION")
+	_ = viper.BindEnv("gke.projectid", "GKE_PROJECT_ID")
+	_ = viper.BindEnv("gke.clustername", "GKE_CLUSTER_NAME")
+
 	cfg = &Config{}
 	if err := viper.Unmarshal(&cfg); err != nil {
 		panic(fmt.Errorf("parsing configuration: %v", err))
+	}
+
+	if cfg.Log.Level == 0 {
+		cfg.Log.Level = int(logrus.InfoLevel)
 	}
 
 	if cfg.API.Key == "" {
@@ -82,6 +105,18 @@ func Get() Config {
 		}
 		if cfg.EKS.ClusterName == "" {
 			requiredDiscoveryDisabled("EKS_CLUSTER_NAME")
+		}
+	}
+
+	if cfg.GKE != nil {
+		if cfg.GKE.Region == "" {
+			requiredDiscoveryDisabled("GKE_REGION")
+		}
+		if cfg.GKE.ProjectID == "" {
+			requiredDiscoveryDisabled("GKE_PROJECT_ID")
+		}
+		if cfg.GKE.ClusterName == "" {
+			requiredDiscoveryDisabled("GKE_CLUSTER_NAME")
 		}
 	}
 

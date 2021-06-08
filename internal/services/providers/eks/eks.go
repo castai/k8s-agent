@@ -23,8 +23,6 @@ const (
 
 // New configures and returns an EKS provider.
 func New(ctx context.Context, log logrus.FieldLogger) (types.Provider, error) {
-	log = log.WithField("provider", Name)
-
 	var opts []client.Opt
 
 	if cfg := config.Get().EKS; cfg != nil {
@@ -68,7 +66,7 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 
 	req := &castai.RegisterClusterRequest{
 		Name: *cn,
-		EKS: castai.EKSParams{
+		EKS: &castai.EKSParams{
 			ClusterName: *cn,
 			Region:      *r,
 			AccountID:   *accID,
@@ -116,51 +114,4 @@ func (p *Provider) IsSpot(ctx context.Context, node *v1.Node) (bool, error) {
 
 func (p *Provider) Name() string {
 	return Name
-}
-
-func (p *Provider) ClusterName(ctx context.Context) (string, error) {
-	cn, err := p.awsClient.GetClusterName(ctx)
-	if err != nil {
-		return "", err
-	}
-	return *cn, nil
-}
-
-func (p *Provider) ClusterRegion(ctx context.Context) (string, error) {
-	r, err := p.awsClient.GetRegion(ctx)
-	if err != nil {
-		return "", err
-	}
-	return *r, nil
-}
-
-func (p *Provider) AccountID(ctx context.Context) (string, error) {
-	accID, err := p.awsClient.GetAccountID(ctx)
-	if err != nil {
-		return "", err
-	}
-	return *accID, nil
-}
-
-func (p *Provider) RegisterClusterRequest(ctx context.Context) (*castai.RegisterClusterRequest, error) {
-	cn, err := p.awsClient.GetClusterName(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("getting cluster name: %w", err)
-	}
-	r, err := p.awsClient.GetRegion(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("getting region: %w", err)
-	}
-	accID, err := p.awsClient.GetAccountID(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("getting account id: %w", err)
-	}
-	return &castai.RegisterClusterRequest{
-		Name: *cn,
-		EKS: castai.EKSParams{
-			ClusterName: *cn,
-			Region:      *r,
-			AccountID:   *accID,
-		},
-	}, nil
 }

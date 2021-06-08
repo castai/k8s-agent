@@ -3,6 +3,7 @@ package types
 
 import (
 	"context"
+	"fmt"
 
 	v1 "k8s.io/api/core/v1"
 
@@ -17,19 +18,14 @@ type Provider interface {
 	IsSpot(ctx context.Context, node *v1.Node) (bool, error)
 	// Name of the provider.
 	Name() string
-	// AccountID of the EC2 instance.
-	// Deprecated: snapshot should not include cluster metadata as it already is known via register cluster request.
-	AccountID(ctx context.Context) (string, error)
-	// ClusterName of the of the EKS cluster.
-	// Deprecated: snapshot should not include cluster name as it already is known via register cluster request.
-	ClusterName(ctx context.Context) (string, error)
-	// ClusterRegion of the EC2 instance.
-	// Deprecated: snapshot should not include cluster metadata as it already is known via register cluster request.
-	ClusterRegion(ctx context.Context) (string, error)
 }
 
 // ClusterRegistration holds information needed to identify the cluster.
 type ClusterRegistration struct {
 	ClusterID      string
 	OrganizationID string
+}
+
+func (c *ClusterRegistration) String() string {
+	return fmt.Sprintf("ClusterID=%q OrganizationID=%q", c.ClusterID, c.OrganizationID)
 }

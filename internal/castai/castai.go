@@ -33,7 +33,6 @@ type Client interface {
 	// RegisterCluster sends a request to CAST AI containing discovered cluster properties used to authenticate the
 	// cluster and register it.
 	RegisterCluster(ctx context.Context, req *RegisterClusterRequest) (*RegisterClusterResponse, error)
-	// GetAgentCfg is used to poll CAST AI for agent configuration which can be updated via UI or other means.
 	// ExchangeAgentTelemetry is used to send agent information (e.g. version)
 	// as well as poll CAST AI for agent configuration which can be updated via UI or other means.
 	ExchangeAgentTelemetry(ctx context.Context, clusterID string, req *AgentTelemetryRequest) (*AgentTelemetryResponse, error)
@@ -44,7 +43,7 @@ type Client interface {
 // NewClient creates and configures the CAST AI client.
 func NewClient(log logrus.FieldLogger, rest *resty.Client) Client {
 	return &client{
-		log:  log.WithField("client", "cast"),
+		log:  log.WithField("client", "castai"),
 		rest: rest,
 	}
 }
@@ -68,7 +67,7 @@ type client struct {
 }
 
 func (c *client) SendDelta(ctx context.Context, delta *Delta) error {
-	c.log.Infof("sending delta with items[%d]", len(delta.Items))
+	c.log.Debugf("sending delta with items[%d]", len(delta.Items))
 
 	cfg := config.Get().API
 
@@ -135,8 +134,6 @@ func (c *client) RegisterCluster(ctx context.Context, req *RegisterClusterReques
 	if resp.IsError() {
 		return nil, fmt.Errorf("request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
 	}
-
-	c.log.Infof("cluster registered: %+v", body)
 
 	return body, nil
 }
