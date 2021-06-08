@@ -147,7 +147,7 @@ func (c *Controller) nodeAddHandler(
 	}
 
 	if spot {
-		node.Labels[labels.Spot] = "true"
+		node.Labels[labels.FakeSpot] = "true"
 	}
 
 	genericHandler(log, c.queue, reflect.TypeOf(&corev1.Node{}), event, node)

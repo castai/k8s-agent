@@ -1,5 +1,6 @@
 package labels
 
 const (
-	Spot = "scheduling.cast.ai/fake-spot"
+	Spot     = "scheduling.cast.ai/spot"
+	FakeSpot = "scheduling.cast.ai/fake-spot"
 )
