@@ -24,7 +24,7 @@ import (
 
 const Name = "kops"
 
-func New(_ context.Context, log logrus.FieldLogger, clientset kubernetes.Interface) (types.Provider, error) {
+func New(log logrus.FieldLogger, clientset kubernetes.Interface) (types.Provider, error) {
 	return &Provider{
 		log:       log,
 		clientset: clientset,
@@ -84,7 +84,10 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 		}
 		c, err := awsclient.New(ctx, p.log, opts...)
 		if err != nil {
-			p.log.Errorf("failed initializing aws client, spot functionality will be reduced: %v", err)
+			p.log.Errorf(
+				"failed initializing aws client, spot functionality for savings estimation will be reduced: %v",
+				err,
+			)
 		} else {
 			p.awsClient = c
 		}
@@ -146,6 +149,10 @@ func (p *Provider) Name() string {
 	return Name
 }
 
+// getClusterNameAndStateStore discovers the cluster name and kOps state store bucket from the kube-system namespace
+// annotation. kOps annotates the kube-system namespace with annotations such as this:
+// * addons.k8s.io/core.addons.k8s.io: '{"version":"1.4.0","channel":"s3://bucket/cluster-name/addons/bootstrap-channel.yaml","manifestHash":"hash"}'
+// We can retrieve the state store bucket name and the cluster name from the "channel" property of the annotation value.
 func (p *Provider) getClusterNameAndStateStore(ns *v1.Namespace) (clusterName, stateStore *string, reterr error) {
 	for k, v := range ns.Annotations {
 		manifest, ok := kopsAddonAnnotation(p.log, k, v)
@@ -167,6 +174,9 @@ func (p *Provider) getClusterNameAndStateStore(ns *v1.Namespace) (clusterName, s
 	return nil, nil, errors.New("failed discovering cluster properties: cluster name, state store")
 }
 
+// getCSPAndRegion discovers the cluster cloud service provider (CSP) and the region the cluster is deployed in by
+// listing the cluster nodes and inspecting their labels. CSP is retrieved by parsing the Node.Spec.ProviderID property.
+// Whereas the region is read from the well-known node region labels.
 func (p *Provider) getCSPAndRegion(ctx context.Context, next string) (csp, region *string, reterr error) {
 	nodes, err := p.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{Limit: 10, Continue: next})
 	if err != nil {

@@ -19,7 +19,7 @@ const (
 	LabelPreemptible = "cloud.google.com/gke-preemptible"
 )
 
-func New(_ context.Context, log logrus.FieldLogger) (types.Provider, error) {
+func New(log logrus.FieldLogger) (types.Provider, error) {
 	return &Provider{log: log}, nil
 }
 

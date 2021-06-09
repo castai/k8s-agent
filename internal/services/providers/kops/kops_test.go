@@ -82,7 +82,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 
 		clientset := fake.NewSimpleClientset(objects...)
 
-		p, err := New(context.Background(), logrus.New(), clientset)
+		p, err := New(logrus.New(), clientset)
 		require.NoError(t, err)
 
 		castaiclient := mock_castai.NewMockClient(gomock.NewController(t))
@@ -134,7 +134,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 			},
 		}
 
-		p, err := New(context.Background(), logrus.New(), fake.NewSimpleClientset(namespace))
+		p, err := New(logrus.New(), fake.NewSimpleClientset(namespace))
 		require.NoError(t, err)
 
 		castaiclient := mock_castai.NewMockClient(gomock.NewController(t))

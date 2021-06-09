@@ -27,11 +27,11 @@ func GetProvider(ctx context.Context, log logrus.FieldLogger, clientset kubernet
 	}
 
 	if cfg.Provider == gke.Name || cfg.GKE != nil {
-		return gke.New(ctx, log.WithField("provider", gke.Name))
+		return gke.New(log.WithField("provider", gke.Name))
 	}
 
 	if cfg.Provider == kops.Name || cfg.KOPS != nil {
-		return kops.New(ctx, log.WithField("provider", kops.Name), clientset)
+		return kops.New(log.WithField("provider", kops.Name), clientset)
 	}
 
 	return nil, fmt.Errorf("unknown provider %q", cfg.Provider)
