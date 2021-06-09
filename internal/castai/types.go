@@ -18,11 +18,19 @@ type GKEParams struct {
 	ClusterName string `json:"clusterName"`
 }
 
+type KOPSParams struct {
+	CSP         string `json:"cloud"`
+	Region      string `json:"region"`
+	ClusterName string `json:"clusterName"`
+	StateStore  string `json:"stateStore"`
+}
+
 type RegisterClusterRequest struct {
-	ID   uuid.UUID  `json:"id"`
-	Name string     `json:"name"`
-	EKS  *EKSParams `json:"eks"`
-	GKE  *GKEParams `json:"gke"`
+	ID   uuid.UUID   `json:"id"`
+	Name string      `json:"name"`
+	EKS  *EKSParams  `json:"eks"`
+	GKE  *GKEParams  `json:"gke"`
+	KOPS *KOPSParams `json:"kops"`
 }
 
 type Cluster struct {
