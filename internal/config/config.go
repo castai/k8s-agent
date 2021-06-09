@@ -15,6 +15,7 @@ type Config struct {
 	CASTAI     *CASTAI
 	EKS        *EKS
 	GKE        *GKE
+	KOPS       *KOPS
 }
 
 type Log struct {
@@ -41,6 +42,13 @@ type GKE struct {
 	Region      string
 	ProjectID   string
 	ClusterName string
+}
+
+type KOPS struct {
+	CSP         string
+	Region      string
+	ClusterName string
+	StateStore  string
 }
 
 var cfg *Config
@@ -71,6 +79,11 @@ func Get() Config {
 	_ = viper.BindEnv("gke.projectid", "GKE_PROJECT_ID")
 	_ = viper.BindEnv("gke.clustername", "GKE_CLUSTER_NAME")
 
+	_ = viper.BindEnv("kops.csp", "KOPS_CSP")
+	_ = viper.BindEnv("kops.region", "KOPS_REGION")
+	_ = viper.BindEnv("kops.clustername", "KOPS_CLUSTER_NAME")
+	_ = viper.BindEnv("kops.statestore", "KOPS_STATE_STORE")
+
 	cfg = &Config{}
 	if err := viper.Unmarshal(&cfg); err != nil {
 		panic(fmt.Errorf("parsing configuration: %v", err))
@@ -89,34 +102,49 @@ func Get() Config {
 
 	if cfg.CASTAI != nil {
 		if cfg.CASTAI.ClusterID == "" {
-			requiredDiscoveryDisabled("CASTAI_CLUSTER_ID")
+			requiredWhenDiscoveryDisabled("CASTAI_CLUSTER_ID")
 		}
 		if cfg.CASTAI.OrganizationID == "" {
-			requiredDiscoveryDisabled("CASTAI_ORGANIZATION_ID")
+			requiredWhenDiscoveryDisabled("CASTAI_ORGANIZATION_ID")
 		}
 	}
 
 	if cfg.EKS != nil {
 		if cfg.EKS.AccountID == "" {
-			requiredDiscoveryDisabled("EKS_ACCOUNT_ID")
+			requiredWhenDiscoveryDisabled("EKS_ACCOUNT_ID")
 		}
 		if cfg.EKS.Region == "" {
-			requiredDiscoveryDisabled("EKS_REGION")
+			requiredWhenDiscoveryDisabled("EKS_REGION")
 		}
 		if cfg.EKS.ClusterName == "" {
-			requiredDiscoveryDisabled("EKS_CLUSTER_NAME")
+			requiredWhenDiscoveryDisabled("EKS_CLUSTER_NAME")
 		}
 	}
 
 	if cfg.GKE != nil {
 		if cfg.GKE.Region == "" {
-			requiredDiscoveryDisabled("GKE_REGION")
+			requiredWhenDiscoveryDisabled("GKE_REGION")
 		}
 		if cfg.GKE.ProjectID == "" {
-			requiredDiscoveryDisabled("GKE_PROJECT_ID")
+			requiredWhenDiscoveryDisabled("GKE_PROJECT_ID")
 		}
 		if cfg.GKE.ClusterName == "" {
-			requiredDiscoveryDisabled("GKE_CLUSTER_NAME")
+			requiredWhenDiscoveryDisabled("GKE_CLUSTER_NAME")
+		}
+	}
+
+	if cfg.KOPS != nil {
+		if cfg.KOPS.CSP == "" {
+			requiredWhenDiscoveryDisabled("KOPS_CSP")
+		}
+		if cfg.KOPS.Region == "" {
+			requiredWhenDiscoveryDisabled("KOPS_REGION")
+		}
+		if cfg.KOPS.ClusterName == "" {
+			requiredWhenDiscoveryDisabled("KOPS_CLUSTER_NAME")
+		}
+		if cfg.KOPS.StateStore == "" {
+			requiredWhenDiscoveryDisabled("KOPS_STATE_STORE")
 		}
 	}
 
@@ -132,6 +160,6 @@ func required(variable string) {
 	panic(fmt.Errorf("env variable %s is required", variable))
 }
 
-func requiredDiscoveryDisabled(variable string) {
+func requiredWhenDiscoveryDisabled(variable string) {
 	panic(fmt.Errorf("env variable %s is required when discovery is disabled", variable))
 }
