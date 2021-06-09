@@ -102,49 +102,49 @@ func Get() Config {
 
 	if cfg.CASTAI != nil {
 		if cfg.CASTAI.ClusterID == "" {
-			requiredDiscoveryDisabled("CASTAI_CLUSTER_ID")
+			requiredWhenDiscoveryDisabled("CASTAI_CLUSTER_ID")
 		}
 		if cfg.CASTAI.OrganizationID == "" {
-			requiredDiscoveryDisabled("CASTAI_ORGANIZATION_ID")
+			requiredWhenDiscoveryDisabled("CASTAI_ORGANIZATION_ID")
 		}
 	}
 
 	if cfg.EKS != nil {
 		if cfg.EKS.AccountID == "" {
-			requiredDiscoveryDisabled("EKS_ACCOUNT_ID")
+			requiredWhenDiscoveryDisabled("EKS_ACCOUNT_ID")
 		}
 		if cfg.EKS.Region == "" {
-			requiredDiscoveryDisabled("EKS_REGION")
+			requiredWhenDiscoveryDisabled("EKS_REGION")
 		}
 		if cfg.EKS.ClusterName == "" {
-			requiredDiscoveryDisabled("EKS_CLUSTER_NAME")
+			requiredWhenDiscoveryDisabled("EKS_CLUSTER_NAME")
 		}
 	}
 
 	if cfg.GKE != nil {
 		if cfg.GKE.Region == "" {
-			requiredDiscoveryDisabled("GKE_REGION")
+			requiredWhenDiscoveryDisabled("GKE_REGION")
 		}
 		if cfg.GKE.ProjectID == "" {
-			requiredDiscoveryDisabled("GKE_PROJECT_ID")
+			requiredWhenDiscoveryDisabled("GKE_PROJECT_ID")
 		}
 		if cfg.GKE.ClusterName == "" {
-			requiredDiscoveryDisabled("GKE_CLUSTER_NAME")
+			requiredWhenDiscoveryDisabled("GKE_CLUSTER_NAME")
 		}
 	}
 
 	if cfg.KOPS != nil {
 		if cfg.KOPS.CSP == "" {
-			requiredDiscoveryDisabled("KOPS_CSP")
+			requiredWhenDiscoveryDisabled("KOPS_CSP")
 		}
 		if cfg.KOPS.Region == "" {
-			requiredDiscoveryDisabled("KOPS_REGION")
+			requiredWhenDiscoveryDisabled("KOPS_REGION")
 		}
 		if cfg.KOPS.ClusterName == "" {
-			requiredDiscoveryDisabled("KOPS_CLUSTER_NAME")
+			requiredWhenDiscoveryDisabled("KOPS_CLUSTER_NAME")
 		}
 		if cfg.KOPS.StateStore == "" {
-			requiredDiscoveryDisabled("KOPS_STATE_STORE")
+			requiredWhenDiscoveryDisabled("KOPS_STATE_STORE")
 		}
 	}
 
@@ -160,6 +160,6 @@ func required(variable string) {
 	panic(fmt.Errorf("env variable %s is required", variable))
 }
 
-func requiredDiscoveryDisabled(variable string) {
+func requiredWhenDiscoveryDisabled(variable string) {
 	panic(fmt.Errorf("env variable %s is required when discovery is disabled", variable))
 }
