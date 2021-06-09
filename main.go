@@ -70,7 +70,17 @@ func run(ctx context.Context, log logrus.FieldLogger) (reterr error) {
 	log = log.WithFields(fields)
 	log.Infof("running agent version: %v", agentVersion)
 
-	provider, err := providers.GetProvider(ctx, log)
+	restconfig, err := retrieveKubeConfig(log)
+	if err != nil {
+		return err
+	}
+
+	clientset, err := kubernetes.NewForConfig(restconfig)
+	if err != nil {
+		return err
+	}
+
+	provider, err := providers.GetProvider(ctx, log, clientset)
 	if err != nil {
 		return fmt.Errorf("getting provider: %w", err)
 	}
@@ -89,16 +99,6 @@ func run(ctx context.Context, log logrus.FieldLogger) (reterr error) {
 	fields["cluster_id"] = reg.ClusterID
 	log = log.WithFields(fields)
 	log.Infof("cluster registered: %v", reg)
-
-	restconfig, err := retrieveKubeConfig(log)
-	if err != nil {
-		return err
-	}
-
-	clientset, err := kubernetes.NewForConfig(restconfig)
-	if err != nil {
-		return err
-	}
 
 	wait.Until(func() {
 		v, err := version.Get(log, clientset)

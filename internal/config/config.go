@@ -15,6 +15,7 @@ type Config struct {
 	CASTAI     *CASTAI
 	EKS        *EKS
 	GKE        *GKE
+	KOPS       *KOPS
 }
 
 type Log struct {
@@ -41,6 +42,13 @@ type GKE struct {
 	Region      string
 	ProjectID   string
 	ClusterName string
+}
+
+type KOPS struct {
+	CSP         string
+	Region      string
+	ClusterName string
+	StateStore  string
 }
 
 var cfg *Config
@@ -70,6 +78,11 @@ func Get() Config {
 	_ = viper.BindEnv("gke.region", "GKE_REGION")
 	_ = viper.BindEnv("gke.projectid", "GKE_PROJECT_ID")
 	_ = viper.BindEnv("gke.clustername", "GKE_CLUSTER_NAME")
+
+	_ = viper.BindEnv("kops.csp", "KOPS_CSP")
+	_ = viper.BindEnv("kops.region", "KOPS_REGION")
+	_ = viper.BindEnv("kops.clustername", "KOPS_CLUSTER_NAME")
+	_ = viper.BindEnv("kops.statestore", "KOPS_STATE_STORE")
 
 	cfg = &Config{}
 	if err := viper.Unmarshal(&cfg); err != nil {
@@ -117,6 +130,21 @@ func Get() Config {
 		}
 		if cfg.GKE.ClusterName == "" {
 			requiredDiscoveryDisabled("GKE_CLUSTER_NAME")
+		}
+	}
+
+	if cfg.KOPS != nil {
+		if cfg.KOPS.CSP == "" {
+			requiredDiscoveryDisabled("KOPS_CSP")
+		}
+		if cfg.KOPS.Region == "" {
+			requiredDiscoveryDisabled("KOPS_REGION")
+		}
+		if cfg.KOPS.ClusterName == "" {
+			requiredDiscoveryDisabled("KOPS_CLUSTER_NAME")
+		}
+		if cfg.KOPS.StateStore == "" {
+			requiredDiscoveryDisabled("KOPS_STATE_STORE")
 		}
 	}
 

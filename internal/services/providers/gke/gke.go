@@ -16,7 +16,7 @@ import (
 const (
 	Name = "gke"
 
-	labelPreemptible = "cloud.google.com/gke-preemptible"
+	LabelPreemptible = "cloud.google.com/gke-preemptible"
 )
 
 func New(_ context.Context, log logrus.FieldLogger) (types.Provider, error) {
@@ -53,7 +53,7 @@ func (p *Provider) IsSpot(_ context.Context, node *corev1.Node) (bool, error) {
 		return true, nil
 	}
 
-	if val, ok := node.Labels[labelPreemptible]; ok && val == "true" {
+	if val, ok := node.Labels[LabelPreemptible]; ok && val == "true" {
 		return true, nil
 	}
 
