@@ -14,6 +14,8 @@ import (
 	"castai-agent/internal/castai"
 )
 
+// newDelta initializes the delta struct which is used to collect cluster deltas, debounce them and map to CASTAI
+// requests.
 func newDelta(log logrus.FieldLogger, clusterID, clusterVersion string) *delta {
 	return &delta{
 		log:            log,
@@ -24,6 +26,8 @@ func newDelta(log logrus.FieldLogger, clusterID, clusterVersion string) *delta {
 	}
 }
 
+// delta is used to colelct cluster deltas, debounce them and map to CASTAI requests. It holds a cache of queue items
+// which is referenced any time a new item is added to debounce the items.
 type delta struct {
 	log            logrus.FieldLogger
 	clusterID      string
@@ -32,6 +36,7 @@ type delta struct {
 	cache          map[string]*item
 }
 
+// add will add an item to the delta cache. It will debounce the objects.
 func (d *delta) add(i *item) {
 	key := mustKeyObject(i.obj)
 
@@ -48,11 +53,14 @@ func (d *delta) add(i *item) {
 	}
 }
 
+// clear resets the delta cache and sets fullSnapshot to false. Should be called after toCASTAIRequest is successfully
+// delivered.
 func (d *delta) clear() {
 	d.fullSnapshot = false
 	d.cache = map[string]*item{}
 }
 
+// toCASTAIRequest maps the collected delta cache to the castai.Delta type.
 func (d *delta) toCASTAIRequest() *castai.Delta {
 	var items []*castai.DeltaItem
 
