@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 )
 
 type EKSParams struct {
@@ -40,6 +41,21 @@ type Cluster struct {
 
 type RegisterClusterResponse struct {
 	Cluster
+}
+
+type SendLogEventRequest struct {
+	LogEvent LogEvent `json:"logEvent"`
+}
+
+type SendLogEventResponse struct {
+	Accepted bool `json:"accepted"`
+}
+
+type LogEvent struct {
+	Level   string        `json:"level"`
+	Time    time.Time     `json:"time"`
+	Message string        `json:"message"`
+	Fields  logrus.Fields `json:"fields"`
 }
 
 type AgentTelemetryRequest struct {

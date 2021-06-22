@@ -78,3 +78,17 @@ func (mr *MockClientMockRecorder) SendDelta(arg0, arg1 interface{}) *gomock.Call
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendDelta", reflect.TypeOf((*MockClient)(nil).SendDelta), arg0, arg1)
 }
+
+// SendLogEvent mocks base method.
+func (m *MockClient) SendLogEvent(arg0 context.Context, arg1 string, arg2 *castai.SendLogEventRequest) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SendLogEvent", arg0, arg1, arg2)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SendLogEvent indicates an expected call of SendLogEvent.
+func (mr *MockClientMockRecorder) SendLogEvent(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendLogEvent", reflect.TypeOf((*MockClient)(nil).SendLogEvent), arg0, arg1, arg2)
+}

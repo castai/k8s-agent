@@ -10,30 +10,28 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func NewExporter(cfg Config, log logrus.Logger, client castai.Client) logrus.Hook {
+type Exporter interface {
+	logrus.Hook
+	Wait()
+}
+
+func NewExporter(cfg Config, client castai.Client) Exporter {
 	return &exporter{
 		cfg:    cfg,
-		log:    log,
 		client: client,
+		wg:     sync.WaitGroup{},
 	}
 }
 
 type exporter struct {
 	cfg    Config
-	log    logrus.Logger
 	client castai.Client
 	wg     sync.WaitGroup
 }
 
 type Config struct {
-	MsgSendTimeout time.Duration
-}
-
-type LogEvent struct {
-	Level   string        `json:"level"`
-	Time    time.Time     `json:"time"`
-	Message string        `json:"message"`
-	Fields  logrus.Fields `json:"fields"`
+	ClusterID          string
+	MsgSendTimeoutSecs time.Duration
 }
 
 func (ex *exporter) Levels() []logrus.Level {
@@ -47,16 +45,34 @@ func (ex *exporter) Levels() []logrus.Level {
 
 func (ex *exporter) Fire(entry *logrus.Entry) error {
 	ex.wg.Add(1)
+
 	go func(entry *logrus.Entry) {
 		defer ex.wg.Done()
-
+		ex.sendLogEvent(ex.cfg.ClusterID, entry)
 	}(entry)
+
 	return nil
 }
 
-func (ex *exporter) sendLogEvent(e *LogEvent) error {
-	ctx, cancel := context.WithTimeout(context.Background(), ex.cfg.MsgSendTimeout)
+// Wait will return after all subroutines have returned.
+// Use in conjunction with logrus return handling to ensure all of
+// your logs are delivered before your program exits.
+// `logrus.RegisterExitHandler(h.Wait)`
+func (ex *exporter) Wait() {
+	ex.wg.Wait()
+}
+
+func (ex *exporter) sendLogEvent(clusterID string, e *logrus.Entry) {
+	ctx, cancel := context.WithTimeout(context.Background(), ex.cfg.MsgSendTimeoutSecs)
 	defer cancel()
 
-	return ex.client.SendDelta(ctx, nil)
+	ex.client.SendLogEvent(ctx, clusterID, //nolint:errcheck
+		&castai.SendLogEventRequest{
+			LogEvent: castai.LogEvent{
+				Level:   e.Level.String(),
+				Time:    e.Time,
+				Message: e.Message,
+				Fields:  e.Data,
+			},
+		})
 }

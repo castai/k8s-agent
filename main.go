@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"time"
 
+	castailog "castai-agent/pkg/log"
+
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -31,13 +33,16 @@ var (
 
 func main() {
 	cfg := config.Get()
+
 	logger := logrus.New()
 	logger.SetLevel(logrus.Level(cfg.Log.Level))
 
-	var log logrus.FieldLogger = logger
-	log.Info("starting the agent")
+	castaiclient := castai.NewClient(logger, castai.NewDefaultClient())
 
-	if err := run(signals.SetupSignalHandler(), log); err != nil {
+	var log logrus.FieldLogger = logger
+	logger.Info("starting the agent")
+
+	if err := run(signals.SetupSignalHandler(), castaiclient, log, logger); err != nil {
 		logErr := &logContextErr{}
 		if errors.As(err, &logErr) {
 			log = log.WithFields(logErr.fields)
@@ -46,7 +51,8 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, log logrus.FieldLogger) (reterr error) {
+func run(ctx context.Context, castaiclient castai.Client, log logrus.FieldLogger, logger *logrus.Logger) (reterr error) {
+
 	fields := logrus.Fields{}
 
 	defer func() {
@@ -89,12 +95,12 @@ func run(ctx context.Context, log logrus.FieldLogger) (reterr error) {
 	log = log.WithFields(fields)
 	log.Infof("using provider %q", provider.Name())
 
-	castaiclient := castai.NewClient(log, castai.NewDefaultClient())
-
 	reg, err := provider.RegisterCluster(ctx, castaiclient)
 	if err != nil {
 		return fmt.Errorf("registering cluster: %w", err)
 	}
+
+	setupLogExporter(logger, reg.ClusterID, castaiclient)
 
 	fields["cluster_id"] = reg.ClusterID
 	log = log.WithFields(fields)
@@ -116,6 +122,16 @@ func run(ctx context.Context, log logrus.FieldLogger) (reterr error) {
 	}, 0, ctx.Done())
 
 	return nil
+}
+
+func setupLogExporter(logger *logrus.Logger, clusterID string, castaiclient castai.Client) {
+	logExporter := castailog.NewExporter(castailog.Config{
+		ClusterID:          clusterID,
+		MsgSendTimeoutSecs: 15,
+	}, castaiclient)
+
+	logger.AddHook(logExporter)
+	logrus.RegisterExitHandler(logExporter.Wait)
 }
 
 func kubeConfigFromEnv() (*rest.Config, error) {
