@@ -2,11 +2,7 @@ package controller
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
-	"fmt"
 	"reflect"
-	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +11,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
@@ -29,6 +26,7 @@ import (
 
 type Controller struct {
 	log          logrus.FieldLogger
+	clusterID    string
 	castaiclient castai.Client
 	provider     types.Provider
 	queue        workqueue.RateLimitingInterface
@@ -36,7 +34,7 @@ type Controller struct {
 	prepDuration time.Duration
 	informers    map[reflect.Type]cache.SharedInformer
 
-	delta        *castai.Delta
+	delta        *delta
 	mu           sync.Mutex
 	spotCache    map[string]bool
 	agentVersion *config.AgentVersion
@@ -74,11 +72,12 @@ func New(
 
 	c := &Controller{
 		log:          log,
+		clusterID:    clusterID,
 		castaiclient: castaiclient,
 		provider:     provider,
 		interval:     interval,
 		prepDuration: prepDuration,
-		delta:        &castai.Delta{ClusterID: clusterID, ClusterVersion: v.Full(), FullSnapshot: true},
+		delta:        newDelta(log, clusterID, v.Full()),
 		spotCache:    map[string]bool{},
 		queue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "castai-agent"),
 		informers:    typeInformerMap,
@@ -95,25 +94,25 @@ func New(
 		if typ == reflect.TypeOf(&corev1.Node{}) {
 			h = cache.ResourceEventHandlerFuncs{
 				AddFunc: func(obj interface{}) {
-					c.nodeAddHandler(log, castai.EventAdd, obj)
+					c.nodeAddHandler(log, eventAdd, obj)
 				},
 				UpdateFunc: func(oldObj, newObj interface{}) {
-					c.nodeAddHandler(log, castai.EventUpdate, newObj)
+					c.nodeAddHandler(log, eventUpdate, newObj)
 				},
 				DeleteFunc: func(obj interface{}) {
-					c.nodeDeleteHandler(log, castai.EventDelete, obj)
+					c.nodeDeleteHandler(log, eventDelete, obj)
 				},
 			}
 		} else {
 			h = cache.ResourceEventHandlerFuncs{
 				AddFunc: func(obj interface{}) {
-					genericHandler(log, c.queue, typ, castai.EventAdd, obj)
+					genericHandler(log, c.queue, typ, eventAdd, obj)
 				},
 				UpdateFunc: func(oldObj, newObj interface{}) {
-					genericHandler(log, c.queue, typ, castai.EventUpdate, newObj)
+					genericHandler(log, c.queue, typ, eventUpdate, newObj)
 				},
 				DeleteFunc: func(obj interface{}) {
-					genericHandler(log, c.queue, typ, castai.EventDelete, obj)
+					genericHandler(log, c.queue, typ, eventDelete, obj)
 				},
 			}
 		}
@@ -124,11 +123,7 @@ func New(
 	return c
 }
 
-func (c *Controller) nodeAddHandler(
-	log logrus.FieldLogger,
-	event castai.EventType,
-	obj interface{},
-) {
+func (c *Controller) nodeAddHandler(log logrus.FieldLogger, event event, obj interface{}) {
 	node, ok := obj.(*corev1.Node)
 	if !ok {
 		log.Errorf("expected to get *corev1.Node but got %T", obj)
@@ -153,11 +148,7 @@ func (c *Controller) nodeAddHandler(
 	genericHandler(log, c.queue, reflect.TypeOf(&corev1.Node{}), event, node)
 }
 
-func (c *Controller) nodeDeleteHandler(
-	log logrus.FieldLogger,
-	event castai.EventType,
-	obj interface{},
-) {
+func (c *Controller) nodeDeleteHandler(log logrus.FieldLogger, event event, obj interface{}) {
 	node, ok := obj.(*corev1.Node)
 	if !ok {
 		log.Errorf("expected to get *corev1.Node but got %T", obj)
@@ -173,7 +164,7 @@ func genericHandler(
 	log logrus.FieldLogger,
 	queue workqueue.RateLimitingInterface,
 	expected reflect.Type,
-	event castai.EventType,
+	event event,
 	obj interface{},
 ) {
 	if reflect.TypeOf(obj) != expected {
@@ -181,29 +172,10 @@ func genericHandler(
 		return
 	}
 
-	typeName := expected.String()
-	kind := typeName[strings.LastIndex(typeName, ".")+1:]
-
-	data, err := encode(obj)
-	if err != nil {
-		log.Errorf("failed to encode %T: %v", obj, err)
-		return
-	}
-
-	queue.Add(&castai.DeltaItem{
-		Event:     event,
-		Kind:      kind,
-		Data:      data,
-		CreatedAt: time.Now().UTC(),
+	queue.Add(&item{
+		obj:   obj.(runtime.Object),
+		event: event,
 	})
-}
-
-func encode(obj interface{}) (string, error) {
-	b, err := json.Marshal(obj)
-	if err != nil {
-		return "", fmt.Errorf("marshaling %T to json: %v", obj, err)
-	}
-	return base64.StdEncoding.EncodeToString(b), nil
 }
 
 func (c *Controller) Run(ctx context.Context) {
@@ -230,13 +202,13 @@ func (c *Controller) Run(ctx context.Context) {
 				AgentVersion: c.agentVersion.Version,
 				GitCommit:    c.agentVersion.GitCommit,
 			}
-			cfg, err := c.castaiclient.ExchangeAgentTelemetry(ctx, c.delta.ClusterID, req)
+			cfg, err := c.castaiclient.ExchangeAgentTelemetry(ctx, c.clusterID, req)
 			if err != nil {
 				c.log.Errorf("failed getting agent configuration: %v", err)
 				return
 			}
 			// Resync only when at least one full snapshot has already been sent.
-			if cfg.Resync && !c.delta.FullSnapshot {
+			if cfg.Resync && !c.delta.fullSnapshot {
 				c.log.Info("restarting controller to resync data")
 				cancel()
 			}
@@ -262,19 +234,19 @@ func (c *Controller) Run(ctx context.Context) {
 
 func (c *Controller) pollQueueUntilDone() {
 	for {
-		item, done := c.queue.Get()
+		i, done := c.queue.Get()
 		if done {
 			return
 		}
 
-		di, ok := item.(*castai.DeltaItem)
+		di, ok := i.(*item)
 		if !ok {
-			c.log.Errorf("expected queue item to be of type %T but got %T", &castai.DeltaItem{}, item)
+			c.log.Errorf("expected queue item to be of type %T but got %T", &item{}, i)
 			continue
 		}
 
 		c.mu.Lock()
-		c.delta.Items = append(c.delta.Items, di)
+		c.delta.add(di)
 		c.mu.Unlock()
 	}
 }
@@ -283,11 +255,10 @@ func (c *Controller) send(ctx context.Context) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if err := c.castaiclient.SendDelta(ctx, c.delta); err != nil {
+	if err := c.castaiclient.SendDelta(ctx, c.delta.toCASTAIRequest()); err != nil {
 		c.log.Errorf("failed sending delta: %v", err)
 		return
 	}
 
-	c.delta.Items = nil
-	c.delta.FullSnapshot = false
+	c.delta.clear()
 }
