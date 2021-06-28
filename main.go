@@ -100,7 +100,7 @@ func run(ctx context.Context, castaiclient castai.Client, log logrus.FieldLogger
 		return fmt.Errorf("registering cluster: %w", err)
 	}
 
-	setupLogExporter(logger, reg.ClusterID, castaiclient)
+	castailog.SetupLogExporter(logger, reg.ClusterID, castaiclient)
 
 	fields["cluster_id"] = reg.ClusterID
 	log = log.WithFields(fields)
@@ -122,16 +122,6 @@ func run(ctx context.Context, castaiclient castai.Client, log logrus.FieldLogger
 	}, 0, ctx.Done())
 
 	return nil
-}
-
-func setupLogExporter(logger *logrus.Logger, clusterID string, castaiclient castai.Client) {
-	logExporter := castailog.NewExporter(castailog.Config{
-		ClusterID:          clusterID,
-		MsgSendTimeoutSecs: 15,
-	}, castaiclient)
-
-	logger.AddHook(logExporter)
-	logrus.RegisterExitHandler(logExporter.Wait)
 }
 
 func kubeConfigFromEnv() (*rest.Config, error) {

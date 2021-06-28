@@ -15,7 +15,17 @@ type Exporter interface {
 	Wait()
 }
 
-func NewExporter(cfg Config, client castai.Client) Exporter {
+func SetupLogExporter(logger *logrus.Logger, clusterID string, castaiclient castai.Client) {
+	logExporter := newExporter(Config{
+		ClusterID:          clusterID,
+		MsgSendTimeoutSecs: 15,
+	}, castaiclient)
+
+	logger.AddHook(logExporter)
+	logrus.RegisterExitHandler(logExporter.Wait)
+}
+
+func newExporter(cfg Config, client castai.Client) Exporter {
 	return &exporter{
 		cfg:    cfg,
 		client: client,
