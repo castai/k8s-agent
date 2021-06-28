@@ -39,7 +39,7 @@ type Client interface {
 	// SendDelta sends the kubernetes state change to CAST AI. Function is noop when items are empty.
 	SendDelta(ctx context.Context, delta *Delta) error
 	// SendLogEvent sends agent's log event to CAST AI.
-	SendLogEvent(ctx context.Context, clusterID string, req *SendLogEventRequest) (*SendLogEventResponse, error)
+	SendLogEvent(ctx context.Context, clusterID string, req *SendLogEventRequest) *SendLogEventResponse
 }
 
 // NewClient creates and configures the CAST AI client.
@@ -140,24 +140,22 @@ func (c *client) RegisterCluster(ctx context.Context, req *RegisterClusterReques
 	return body, nil
 }
 
-func (c *client) SendLogEvent(
-	ctx context.Context,
-	clusterID string,
-	req *SendLogEventRequest,
-) (*SendLogEventResponse, error) {
+func (c *client) SendLogEvent(ctx context.Context, clusterID string, req *SendLogEventRequest) *SendLogEventResponse {
 	body := &SendLogEventResponse{}
 	resp, err := c.rest.R().
 		SetBody(req).
 		SetContext(ctx).
 		Post(fmt.Sprintf("/v1/agent/logs/%s", clusterID))
 	if err != nil {
-		return nil, err
+		c.log.Errorf("failed to send logs: %v", err)
+		return nil
 	}
 	if resp.IsError() {
-		return nil, fmt.Errorf("request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
+		c.log.Errorf("request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
+		return nil
 	}
 
-	return body, nil
+	return body
 }
 
 func (c *client) ExchangeAgentTelemetry(ctx context.Context, clusterID string, req *AgentTelemetryRequest) (*AgentTelemetryResponse, error) {

@@ -18,7 +18,7 @@ type Exporter interface {
 func SetupLogExporter(logger *logrus.Logger, clusterID string, castaiclient castai.Client) {
 	logExporter := newExporter(Config{
 		ClusterID:          clusterID,
-		MsgSendTimeoutSecs: 15,
+		MsgSendTimeoutSecs: 15000,
 	}, castaiclient)
 
 	logger.AddHook(logExporter)
@@ -74,10 +74,13 @@ func (ex *exporter) Wait() {
 }
 
 func (ex *exporter) sendLogEvent(clusterID string, e *logrus.Entry) {
-	ctx, cancel := context.WithTimeout(context.Background(), ex.cfg.MsgSendTimeoutSecs)
-	defer cancel()
+	//ctx, cancel := context.WithTimeout(context.Background(), ex.cfg.MsgSendTimeoutSecs)
+	//defer cancel()
+	ctx := context.Background()
 
-	ex.client.SendLogEvent(ctx, clusterID, //nolint:errcheck
+	ex.client.SendLogEvent(
+		ctx,
+		clusterID,
 		&castai.SendLogEventRequest{
 			LogEvent: castai.LogEvent{
 				Level:   e.Level.String(),
