@@ -35,11 +35,7 @@ type Client interface {
 	RegisterCluster(ctx context.Context, req *RegisterClusterRequest) (*RegisterClusterResponse, error)
 	// ExchangeAgentTelemetry is used to send agent information (e.g. version)
 	// as well as poll CAST AI for agent configuration which can be updated via UI or other means.
-	ExchangeAgentTelemetry(
-		ctx context.Context,
-		clusterID string,
-		req *AgentTelemetryRequest,
-	) (*AgentTelemetryResponse, error)
+	ExchangeAgentTelemetry(ctx context.Context, clusterID string, req *AgentTelemetryRequest) (*AgentTelemetryResponse, error)
 	// SendDelta sends the kubernetes state change to CAST AI. Function is noop when items are empty.
 	SendDelta(ctx context.Context, delta *Delta) error
 	// SendLogEvent sends agent's log event to CAST AI.

@@ -39,6 +39,7 @@ func (ex *exporter) Levels() []logrus.Level {
 		logrus.ErrorLevel,
 		logrus.FatalLevel,
 		logrus.PanicLevel,
+		logrus.InfoLevel,
 		logrus.WarnLevel,
 	}
 }
