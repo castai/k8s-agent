@@ -15,11 +15,8 @@ type Exporter interface {
 	Wait()
 }
 
-func SetupLogExporter(logger *logrus.Logger, clusterID string, castaiclient castai.Client) {
-	logExporter := newExporter(Config{
-		ClusterID:          clusterID,
-		MsgSendTimeoutSecs: 15000,
-	}, castaiclient)
+func SetupLogExporter(logger *logrus.Logger, castaiclient castai.Client, cfg Config) {
+	logExporter := newExporter(cfg, castaiclient)
 
 	logger.AddHook(logExporter)
 	logrus.RegisterExitHandler(logExporter.Wait)
@@ -74,9 +71,8 @@ func (ex *exporter) Wait() {
 }
 
 func (ex *exporter) sendLogEvent(clusterID string, e *logrus.Entry) {
-	//ctx, cancel := context.WithTimeout(context.Background(), ex.cfg.MsgSendTimeoutSecs)
-	//defer cancel()
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), ex.cfg.MsgSendTimeoutSecs * time.Second)
+	defer cancel()
 
 	ex.client.SendLogEvent(
 		ctx,

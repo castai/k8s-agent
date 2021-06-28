@@ -31,6 +31,8 @@ var (
 	Version   = "local"
 )
 
+const LogExporterSendTimeoutSeconds = 15
+
 func main() {
 	cfg := config.Get()
 
@@ -100,7 +102,10 @@ func run(ctx context.Context, castaiclient castai.Client, log logrus.FieldLogger
 		return fmt.Errorf("registering cluster: %w", err)
 	}
 
-	castailog.SetupLogExporter(logger, reg.ClusterID, castaiclient)
+	castailog.SetupLogExporter(logger, castaiclient, castailog.Config{
+		ClusterID:          reg.ClusterID,
+		MsgSendTimeoutSecs: LogExporterSendTimeoutSeconds,
+	})
 
 	fields["cluster_id"] = reg.ClusterID
 	log = log.WithFields(fields)
