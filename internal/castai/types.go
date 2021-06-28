@@ -47,9 +47,7 @@ type SendLogEventRequest struct {
 	LogEvent LogEvent `json:"logEvent"`
 }
 
-type SendLogEventResponse struct {
-	Accepted bool `json:"accepted"`
-}
+type SendLogEventResponse struct{}
 
 type LogEvent struct {
 	Level   string        `json:"level"`
