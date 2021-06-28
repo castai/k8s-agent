@@ -1,6 +1,7 @@
 package log
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -8,36 +9,32 @@ import (
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/sirupsen/logrus/hooks/test"
+	"github.com/stretchr/testify/require"
 
+	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
 )
 
 func TestSetupLogExporter(t *testing.T) {
-	tests := []struct {
-		name string
-	}{
-		{
-			name: "exports logs from the client",
-		},
-	}
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			logger, hook := test.NewNullLogger()
-			defer hook.Reset()
-			ctrl := gomock.NewController(t)
-			clusterID := uuid.New().String()
-			mockapi := mock_castai.NewMockClient(ctrl)
-			SetupLogExporter(logger, mockapi, Config{
-				ClusterID:          clusterID,
-				MsgSendTimeoutSecs: 0,
-			})
+	logger, hook := test.NewNullLogger()
+	defer hook.Reset()
+	mockClusterID := uuid.New().String()
+	ctrl := gomock.NewController(t)
+	mockapi := mock_castai.NewMockClient(ctrl)
+	SetupLogExporter(logger, mockapi, Config{ClusterID: mockClusterID, MsgSendTimeoutSecs: 1})
 
-
-			time.Sleep(1 * time.Second)
-
-			logger.Log(logrus.ErrorLevel, "failed to discover account id")
-			mockapi.EXPECT().SendLogEvent(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+	t.Run("sends the log msg", func(t *testing.T) {
+		mockapi.EXPECT().SendLogEvent(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, clusterID string, req *castai.IngestAgentLogsRequest) *castai.IngestAgentLogsResponse {
+			fields := req.LogEvent.Fields
+			require.Equal(t, mockClusterID, fields["cluster_id"])
+			require.Equal(t, "eks", fields["provider"])
+			return &castai.IngestAgentLogsResponse{}
+		}).Times(1)
+		log := logger.WithFields(logrus.Fields{
+			"cluster_id": mockClusterID,
+			"provider": "eks",
 		})
-	}
+		log.Log(logrus.ErrorLevel, "failed to discover account id")
+		time.Sleep(1 * time.Second)
+	})
 }

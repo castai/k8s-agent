@@ -17,7 +17,6 @@ type Exporter interface {
 
 func SetupLogExporter(logger *logrus.Logger, castaiclient castai.Client, cfg Config) {
 	logExporter := newExporter(cfg, castaiclient)
-
 	logger.AddHook(logExporter)
 	logrus.RegisterExitHandler(logExporter.Wait)
 }
