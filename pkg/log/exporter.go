@@ -81,7 +81,7 @@ func (ex *exporter) sendLogEvent(clusterID string, e *logrus.Entry) {
 	ex.client.SendLogEvent(
 		ctx,
 		clusterID,
-		&castai.SendLogEventRequest{
+		&castai.IngestAgentLogsRequest{
 			LogEvent: castai.LogEvent{
 				Level:   e.Level.String(),
 				Time:    e.Time,

@@ -43,11 +43,11 @@ type RegisterClusterResponse struct {
 	Cluster
 }
 
-type SendLogEventRequest struct {
+type IngestAgentLogsRequest struct {
 	LogEvent LogEvent `json:"logEvent"`
 }
 
-type SendLogEventResponse struct{}
+type IngestAgentLogsResponse struct{}
 
 type LogEvent struct {
 	Level   string        `json:"level"`

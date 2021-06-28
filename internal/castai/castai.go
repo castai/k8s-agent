@@ -39,7 +39,7 @@ type Client interface {
 	// SendDelta sends the kubernetes state change to CAST AI. Function is noop when items are empty.
 	SendDelta(ctx context.Context, delta *Delta) error
 	// SendLogEvent sends agent's log event to CAST AI.
-	SendLogEvent(ctx context.Context, clusterID string, req *SendLogEventRequest) *SendLogEventResponse
+	SendLogEvent(ctx context.Context, clusterID string, req *IngestAgentLogsRequest) *IngestAgentLogsResponse
 }
 
 // NewClient creates and configures the CAST AI client.
@@ -140,8 +140,8 @@ func (c *client) RegisterCluster(ctx context.Context, req *RegisterClusterReques
 	return body, nil
 }
 
-func (c *client) SendLogEvent(ctx context.Context, clusterID string, req *SendLogEventRequest) *SendLogEventResponse {
-	body := &SendLogEventResponse{}
+func (c *client) SendLogEvent(ctx context.Context, clusterID string, req *IngestAgentLogsRequest) *IngestAgentLogsResponse {
+	body := &IngestAgentLogsResponse{}
 	resp, err := c.rest.R().
 		SetBody(req).
 		SetContext(ctx).
