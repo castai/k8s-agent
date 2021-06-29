@@ -146,12 +146,13 @@ func (c *client) SendLogEvent(ctx context.Context, clusterID string, req *Ingest
 		SetBody(req).
 		SetContext(ctx).
 		Post(fmt.Sprintf("/v1/agent/logs/%s", clusterID))
+	log := c.log.WithField("skip_send_log", true)
 	if err != nil {
-		c.log.Errorf("failed to send logs: %v", err)
+		log.Errorf("failed to send logs: %v", err)
 		return nil
 	}
 	if resp.IsError() {
-		c.log.Errorf("request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
+		log.Errorf("request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
 		return nil
 	}
 

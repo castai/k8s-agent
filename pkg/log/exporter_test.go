@@ -38,4 +38,15 @@ func TestSetupLogExporter(t *testing.T) {
 		log.Log(logrus.ErrorLevel, "failed to discover account id")
 		time.Sleep(1 * time.Second)
 	})
+
+	t.Run("skips sending log msg", func(t *testing.T) {
+		mockapi.EXPECT().SendLogEvent(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		log := logger.WithFields(logrus.Fields{
+			"cluster_id": mockClusterID,
+			"provider":   "eks",
+			"skip_send_log": true,
+		})
+		log.Log(logrus.ErrorLevel, "failed to discover account id")
+		time.Sleep(1 * time.Second)
+	})
 }

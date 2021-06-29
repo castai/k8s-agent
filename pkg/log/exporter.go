@@ -66,6 +66,9 @@ func (ex *exporter) Wait() {
 }
 
 func (ex *exporter) sendLogEvent(clusterID string, e *logrus.Entry) {
+	if e.Data["skip_send_log"] != nil {
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), ex.cfg.MsgSendTimeoutSecs * time.Second)
 	defer cancel()
 
