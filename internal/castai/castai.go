@@ -153,7 +153,7 @@ func (c *client) SendLogEvent(ctx context.Context, clusterID string, req *Ingest
 	resp, err := c.rest.R().
 		SetBody(req).
 		SetContext(ctx).
-		Post(fmt.Sprintf("/v1/agent/logs/%s", clusterID))
+		Post(fmt.Sprintf("/v1/kubernetes/clusters/%s/agent-logs", clusterID))
 	log := c.log.WithContext(DoNotSendLogsCtx())
 	if err != nil {
 		log.Errorf("failed to send logs: %v", err)
