@@ -51,9 +51,11 @@ func (ex *exporter) Levels() []logrus.Level {
 }
 
 func (ex *exporter) Fire(entry *logrus.Entry) error {
-	if entry.Context != nil && entry.Context.Value(castai.DoNotSendLogs).(string) == "true" {
-		// Don't fire the hook
-		return nil
+	if entry.Context != nil {
+		if v, _ := entry.Context.Value(castai.DoNotSendLogs).(string); v == "true" {
+			// Don't fire the hook
+			return nil
+		}
 	}
 
 	ex.wg.Add(1)
