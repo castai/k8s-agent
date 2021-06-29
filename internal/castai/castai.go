@@ -28,6 +28,14 @@ var (
 	hdrAPIKey      = http.CanonicalHeaderKey(headerAPIKey)
 )
 
+var DoNotSendLogs = struct{}{}
+
+func DoNotSendLogsCtx() context.Context {
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, DoNotSendLogs, "true")
+	return ctx
+}
+
 // Client responsible for communication between the agent and CAST AI API.
 type Client interface {
 	// RegisterCluster sends a request to CAST AI containing discovered cluster properties used to authenticate the
@@ -43,9 +51,9 @@ type Client interface {
 }
 
 // NewClient creates and configures the CAST AI client.
-func NewClient(log logrus.FieldLogger, rest *resty.Client) Client {
+func NewClient(log *logrus.Logger, rest *resty.Client) Client {
 	return &client{
-		log:  log.WithField("client", "castai"),
+		log:  log,
 		rest: rest,
 	}
 }
@@ -64,7 +72,7 @@ func NewDefaultClient() *resty.Client {
 }
 
 type client struct {
-	log  logrus.FieldLogger
+	log  *logrus.Logger
 	rest *resty.Client
 }
 
@@ -146,7 +154,7 @@ func (c *client) SendLogEvent(ctx context.Context, clusterID string, req *Ingest
 		SetBody(req).
 		SetContext(ctx).
 		Post(fmt.Sprintf("/v1/agent/logs/%s", clusterID))
-	log := c.log.WithField("skip_send_log", true)
+	log := c.log.WithContext(DoNotSendLogsCtx())
 	if err != nil {
 		log.Errorf("failed to send logs: %v", err)
 		return nil

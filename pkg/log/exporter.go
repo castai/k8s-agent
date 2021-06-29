@@ -51,7 +51,8 @@ func (ex *exporter) Levels() []logrus.Level {
 }
 
 func (ex *exporter) Fire(entry *logrus.Entry) error {
-	if entry.Data["skip_send_log"] != nil {
+	if entry.Context != nil && entry.Context.Value(castai.DoNotSendLogs).(string) == "true" {
+		// Don't fire the hook
 		return nil
 	}
 
