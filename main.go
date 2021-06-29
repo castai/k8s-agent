@@ -41,19 +41,17 @@ func main() {
 
 	castaiclient := castai.NewClient(logger, castai.NewDefaultClient())
 
-	var log logrus.FieldLogger = logger
-	logger.Info("starting the agent")
-
-	if err := run(signals.SetupSignalHandler(), castaiclient, log, logger); err != nil {
+	log := logrus.WithFields(logrus.Fields{})
+	if err := run(signals.SetupSignalHandler(), castaiclient, logger); err != nil {
 		logErr := &logContextErr{}
 		if errors.As(err, &logErr) {
-			log = log.WithFields(logErr.fields)
+			log = logger.WithFields(logErr.fields)
 		}
 		log.Fatalf("agent failed: %v", err)
 	}
 }
 
-func run(ctx context.Context, castaiclient castai.Client, log logrus.FieldLogger, logger *logrus.Logger) (reterr error) {
+func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger) (reterr error) {
 
 	fields := logrus.Fields{}
 
@@ -74,8 +72,9 @@ func run(ctx context.Context, castaiclient castai.Client, log logrus.FieldLogger
 		Version:   Version,
 	}
 
+
 	fields["version"] = agentVersion.Version
-	log = log.WithFields(fields)
+	log := logger.WithFields(fields)
 	log.Infof("running agent version: %v", agentVersion)
 
 	restconfig, err := retrieveKubeConfig(log)
@@ -94,7 +93,6 @@ func run(ctx context.Context, castaiclient castai.Client, log logrus.FieldLogger
 	}
 
 	fields["provider"] = provider.Name()
-	log = log.WithFields(fields)
 	log.Infof("using provider %q", provider.Name())
 
 	reg, err := provider.RegisterCluster(ctx, castaiclient)

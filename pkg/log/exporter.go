@@ -61,10 +61,6 @@ func (ex *exporter) Fire(entry *logrus.Entry) error {
 	return nil
 }
 
-// Wait will return after all subroutines have returned.
-// Use in conjunction with logrus return handling to ensure all of
-// your logs are delivered before your program exits.
-// `logrus.RegisterExitHandler(h.Wait)`
 func (ex *exporter) Wait() {
 	ex.wg.Wait()
 }
