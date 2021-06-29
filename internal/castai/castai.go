@@ -160,7 +160,7 @@ func (c *client) SendLogEvent(ctx context.Context, clusterID string, req *Ingest
 		return nil
 	}
 	if resp.IsError() {
-		log.Errorf("request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
+		log.Errorf("send log event: request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
 		return nil
 	}
 
