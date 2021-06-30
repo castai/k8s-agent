@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"time"
 
+	castailog "castai-agent/pkg/log"
+
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -29,24 +31,28 @@ var (
 	Version   = "local"
 )
 
+const LogExporterSendTimeoutSeconds = 15
+
 func main() {
 	cfg := config.Get()
+
 	logger := logrus.New()
 	logger.SetLevel(logrus.Level(cfg.Log.Level))
 
-	var log logrus.FieldLogger = logger
-	log.Info("starting the agent")
+	castaiclient := castai.NewClient(logger, castai.NewDefaultClient())
 
-	if err := run(signals.SetupSignalHandler(), log); err != nil {
+	log := logrus.WithFields(logrus.Fields{})
+	if err := run(signals.SetupSignalHandler(), castaiclient, logger); err != nil {
 		logErr := &logContextErr{}
 		if errors.As(err, &logErr) {
-			log = log.WithFields(logErr.fields)
+			log = logger.WithFields(logErr.fields)
 		}
 		log.Fatalf("agent failed: %v", err)
 	}
 }
 
-func run(ctx context.Context, log logrus.FieldLogger) (reterr error) {
+func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger) (reterr error) {
+
 	fields := logrus.Fields{}
 
 	defer func() {
@@ -66,8 +72,9 @@ func run(ctx context.Context, log logrus.FieldLogger) (reterr error) {
 		Version:   Version,
 	}
 
+
 	fields["version"] = agentVersion.Version
-	log = log.WithFields(fields)
+	log := logger.WithFields(fields)
 	log.Infof("running agent version: %v", agentVersion)
 
 	restconfig, err := retrieveKubeConfig(log)
@@ -86,15 +93,17 @@ func run(ctx context.Context, log logrus.FieldLogger) (reterr error) {
 	}
 
 	fields["provider"] = provider.Name()
-	log = log.WithFields(fields)
 	log.Infof("using provider %q", provider.Name())
-
-	castaiclient := castai.NewClient(log, castai.NewDefaultClient())
 
 	reg, err := provider.RegisterCluster(ctx, castaiclient)
 	if err != nil {
 		return fmt.Errorf("registering cluster: %w", err)
 	}
+
+	castailog.SetupLogExporter(logger, castaiclient, castailog.Config{
+		ClusterID:          reg.ClusterID,
+		MsgSendTimeoutSecs: LogExporterSendTimeoutSeconds,
+	})
 
 	fields["cluster_id"] = reg.ClusterID
 	log = log.WithFields(fields)
