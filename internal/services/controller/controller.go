@@ -255,7 +255,7 @@ func (c *Controller) send(ctx context.Context) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if err := c.castaiclient.SendDelta(ctx, c.delta.toCASTAIRequest()); err != nil {
+	if err := c.castaiclient.SendDelta(ctx, c.clusterID, c.delta.toCASTAIRequest()); err != nil {
 		c.log.Errorf("failed sending delta: %v", err)
 		return
 	}
