@@ -45,7 +45,7 @@ type Client interface {
 	// as well as poll CAST AI for agent configuration which can be updated via UI or other means.
 	ExchangeAgentTelemetry(ctx context.Context, clusterID string, req *AgentTelemetryRequest) (*AgentTelemetryResponse, error)
 	// SendDelta sends the kubernetes state change to CAST AI. Function is noop when items are empty.
-	SendDelta(ctx context.Context, delta *Delta) error
+	SendDelta(ctx context.Context, clusterID string, delta *Delta) error
 	// SendLogEvent sends agent's log event to CAST AI.
 	SendLogEvent(ctx context.Context, clusterID string, req *IngestAgentLogsRequest) *IngestAgentLogsResponse
 }
@@ -76,12 +76,12 @@ type client struct {
 	rest *resty.Client
 }
 
-func (c *client) SendDelta(ctx context.Context, delta *Delta) error {
+func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) error {
 	c.log.Debugf("sending delta with items[%d]", len(delta.Items))
 
 	cfg := config.Get().API
 
-	uri, err := url.Parse(fmt.Sprintf("https://%s/v1/agent/cluster-delta", cfg.URL))
+	uri, err := url.Parse(fmt.Sprintf("https://%s/v1/kubernetes/clusters/%s/agent-deltas", cfg.URL, clusterID))
 	if err != nil {
 		return fmt.Errorf("invalid url: %w", err)
 	}
@@ -175,7 +175,7 @@ func (c *client) ExchangeAgentTelemetry(ctx context.Context, clusterID string, r
 	if req != nil {
 		r.SetBody(req)
 	}
-	resp, err := r.Post(fmt.Sprintf("/v1/agent/config/%s", clusterID))
+	resp, err := r.Post(fmt.Sprintf("/v1/kubernetes/clusters/%s/agent-config", clusterID))
 	if err != nil {
 		return nil, err
 	}
