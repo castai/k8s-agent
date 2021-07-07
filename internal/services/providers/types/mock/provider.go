@@ -37,66 +37,6 @@ func (m *MockProvider) EXPECT() *MockProviderMockRecorder {
 	return m.recorder
 }
 
-// AccountID mocks base method.
-func (m *MockProvider) AccountID(arg0 context.Context) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AccountID", arg0)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// AccountID indicates an expected call of AccountID.
-func (mr *MockProviderMockRecorder) AccountID(arg0 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AccountID", reflect.TypeOf((*MockProvider)(nil).AccountID), arg0)
-}
-
-// ClusterName mocks base method.
-func (m *MockProvider) ClusterName(arg0 context.Context) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ClusterName", arg0)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ClusterName indicates an expected call of ClusterName.
-func (mr *MockProviderMockRecorder) ClusterName(arg0 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClusterName", reflect.TypeOf((*MockProvider)(nil).ClusterName), arg0)
-}
-
-// ClusterRegion mocks base method.
-func (m *MockProvider) ClusterRegion(arg0 context.Context) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ClusterRegion", arg0)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ClusterRegion indicates an expected call of ClusterRegion.
-func (mr *MockProviderMockRecorder) ClusterRegion(arg0 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClusterRegion", reflect.TypeOf((*MockProvider)(nil).ClusterRegion), arg0)
-}
-
-// FilterSpot mocks base method.
-func (m *MockProvider) FilterSpot(arg0 context.Context, arg1 []*v1.Node) ([]*v1.Node, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FilterSpot", arg0, arg1)
-	ret0, _ := ret[0].([]*v1.Node)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// FilterSpot indicates an expected call of FilterSpot.
-func (mr *MockProviderMockRecorder) FilterSpot(arg0, arg1 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FilterSpot", reflect.TypeOf((*MockProvider)(nil).FilterSpot), arg0, arg1)
-}
-
 // IsSpot mocks base method.
 func (m *MockProvider) IsSpot(arg0 context.Context, arg1 *v1.Node) (bool, error) {
 	m.ctrl.T.Helper()

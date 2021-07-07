@@ -54,11 +54,11 @@ func Test(t *testing.T) {
 	var invocations int64
 
 	castaiclient.EXPECT().
-		SendDelta(gomock.Any(), gomock.Any()).AnyTimes().
-		DoAndReturn(func(_ context.Context, d *castai.Delta) error {
+		SendDelta(gomock.Any(), clusterID.String(), gomock.Any()).AnyTimes().
+		DoAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
 			defer atomic.AddInt64(&invocations, 1)
 
-			require.Equal(t, clusterID.String(), d.ClusterID)
+			require.Equal(t, clusterID, d.ClusterID)
 			require.Equal(t, "1.19+", d.ClusterVersion)
 			require.True(t, d.FullSnapshot)
 			require.Len(t, d.Items, 2)
