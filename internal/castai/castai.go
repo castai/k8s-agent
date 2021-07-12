@@ -108,7 +108,9 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 	req.Header.Set(hdrContentType, "application/json")
 	req.Header.Set(hdrAPIKey, cfg.Key)
 
-	resp, err := c.rest.GetClient().Do(req)
+	rc := c.rest.GetClient()
+	rc.Timeout = 1 * time.Minute
+	resp, err := rc.Do(req)
 	if err != nil {
 		return fmt.Errorf("sending delta request: %w", err)
 	}
