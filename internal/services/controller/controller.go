@@ -27,6 +27,8 @@ import (
 )
 
 var (
+	// sensitiveValuePattern matches strings which are usually used to name variables holding sensitive values, like
+	// passwords. This is a case-insensitive match of the listed words.
 	sensitiveValuePattern = regexp.MustCompile(`(?i)passwd|pass|password|pwd|secret|token|key`)
 )
 
@@ -201,21 +203,26 @@ func removeManagedFields(obj interface{}) {
 func removeSensitiveEnvVars(obj interface{}) {
 	var containers []*corev1.Container
 
-	if pod, ok := obj.(*corev1.Pod); ok {
-		for i := range pod.Spec.Containers {
-			containers = append(containers, &pod.Spec.Containers[i])
+	switch o := obj.(type) {
+	case *corev1.Pod:
+		for i := range o.Spec.Containers {
+			containers = append(containers, &o.Spec.Containers[i])
 		}
-	} else if deploy, ok := obj.(*appsv1.Deployment); ok {
-		for i := range deploy.Spec.Template.Spec.Containers {
-			containers = append(containers, &deploy.Spec.Template.Spec.Containers[i])
+	case *appsv1.Deployment:
+		for i := range o.Spec.Template.Spec.Containers {
+			containers = append(containers, &o.Spec.Template.Spec.Containers[i])
 		}
-	} else if sts, ok := obj.(*appsv1.StatefulSet); ok {
-		for i := range sts.Spec.Template.Spec.Containers {
-			containers = append(containers, &sts.Spec.Template.Spec.Containers[i])
+	case *appsv1.StatefulSet:
+		for i := range o.Spec.Template.Spec.Containers {
+			containers = append(containers, &o.Spec.Template.Spec.Containers[i])
 		}
-	} else if rs, ok := obj.(*appsv1.ReplicaSet); ok {
-		for i := range rs.Spec.Template.Spec.Containers {
-			containers = append(containers, &rs.Spec.Template.Spec.Containers[i])
+	case *appsv1.ReplicaSet:
+		for i := range o.Spec.Template.Spec.Containers {
+			containers = append(containers, &o.Spec.Template.Spec.Containers[i])
+		}
+	case *appsv1.DaemonSet:
+		for i := range o.Spec.Template.Spec.Containers {
+			containers = append(containers, &o.Spec.Template.Spec.Containers[i])
 		}
 	}
 
