@@ -3,6 +3,7 @@ package castai
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -24,8 +25,9 @@ const (
 )
 
 var (
-	hdrContentType = http.CanonicalHeaderKey("Content-Type")
-	hdrAPIKey      = http.CanonicalHeaderKey(headerAPIKey)
+	hdrContentType     = http.CanonicalHeaderKey("Content-Type")
+	hdrContentEncoding = http.CanonicalHeaderKey("Content-Encoding")
+	hdrAPIKey          = http.CanonicalHeaderKey(headerAPIKey)
 )
 
 var DoNotSendLogs = struct{}{}
@@ -86,26 +88,34 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 		return fmt.Errorf("invalid url: %w", err)
 	}
 
-	r, w := io.Pipe()
+	b, err := json.Marshal(delta)
+	if err != nil {
+		return fmt.Errorf("marshaling delta: %w", err)
+	}
+
+	pipeReader, pipeWriter := io.Pipe()
 
 	go func() {
 		defer func() {
-			if err := w.Close(); err != nil {
-				c.log.Errorf("closing pipe: %v", err)
+			if err := pipeWriter.Close(); err != nil {
+				c.log.Errorf("closing gzip pipe: %v", err)
 			}
 		}()
 
-		if err := json.NewEncoder(w).Encode(delta); err != nil {
-			c.log.Errorf("marshaling delta: %v", err)
+		gzipWriter := gzip.NewWriter(pipeWriter)
+		defer gzipWriter.Close()
+		if _, err := gzipWriter.Write(b); err != nil {
+			c.log.Errorf("compressing json: %v", err)
 		}
 	}()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), r)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), pipeReader)
 	if err != nil {
 		return fmt.Errorf("creating delta request: %w", err)
 	}
 
 	req.Header.Set(hdrContentType, "application/json")
+	req.Header.Set(hdrContentEncoding, "gzip")
 	req.Header.Set(hdrAPIKey, cfg.Key)
 
 	rc := c.rest.GetClient()
