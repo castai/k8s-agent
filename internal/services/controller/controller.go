@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"reflect"
+	"regexp"
 	"sync"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -22,6 +24,12 @@ import (
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/internal/services/version"
 	"castai-agent/pkg/labels"
+)
+
+var (
+	// sensitiveValuePattern matches strings which are usually used to name variables holding sensitive values, like
+	// passwords. This is a case-insensitive match of the listed words.
+	sensitiveValuePattern = regexp.MustCompile(`(?i)passwd|pass|password|pwd|secret|token|key`)
 )
 
 type Controller struct {
@@ -172,10 +180,74 @@ func genericHandler(
 		return
 	}
 
+	cleanObj(obj)
+
 	queue.Add(&item{
 		obj:   obj.(runtime.Object),
 		event: event,
 	})
+}
+
+// cleanObj removes unnecessary or sensitive values from K8s objects.
+func cleanObj(obj interface{}) {
+	removeManagedFields(obj)
+	removeSensitiveEnvVars(obj)
+}
+
+func removeManagedFields(obj interface{}) {
+	if metaobj, ok := obj.(metav1.Object); ok {
+		metaobj.SetManagedFields(nil)
+	}
+}
+
+func removeSensitiveEnvVars(obj interface{}) {
+	var containers []*corev1.Container
+
+	switch o := obj.(type) {
+	case *corev1.Pod:
+		for i := range o.Spec.Containers {
+			containers = append(containers, &o.Spec.Containers[i])
+		}
+	case *appsv1.Deployment:
+		for i := range o.Spec.Template.Spec.Containers {
+			containers = append(containers, &o.Spec.Template.Spec.Containers[i])
+		}
+	case *appsv1.StatefulSet:
+		for i := range o.Spec.Template.Spec.Containers {
+			containers = append(containers, &o.Spec.Template.Spec.Containers[i])
+		}
+	case *appsv1.ReplicaSet:
+		for i := range o.Spec.Template.Spec.Containers {
+			containers = append(containers, &o.Spec.Template.Spec.Containers[i])
+		}
+	case *appsv1.DaemonSet:
+		for i := range o.Spec.Template.Spec.Containers {
+			containers = append(containers, &o.Spec.Template.Spec.Containers[i])
+		}
+	}
+
+	if len(containers) == 0 {
+		return
+	}
+
+	isSensitiveEnvVar := func(envVar corev1.EnvVar) bool {
+		if envVar.Value == "" {
+			return false
+		}
+		return sensitiveValuePattern.MatchString(envVar.Name)
+	}
+
+	for _, c := range containers {
+		validIdx := 0
+		for _, envVar := range c.Env {
+			if isSensitiveEnvVar(envVar) {
+				continue
+			}
+			c.Env[validIdx] = envVar
+			validIdx++
+		}
+		c.Env = c.Env[:validIdx]
+	}
 }
 
 func (c *Controller) Run(ctx context.Context) {
