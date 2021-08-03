@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -93,4 +94,151 @@ func Test(t *testing.T) {
 			cancel()
 		}
 	}, 10*time.Millisecond, ctx.Done())
+}
+
+func TestCleanObj(t *testing.T) {
+	tests := []struct {
+		name    string
+		obj     interface{}
+		matcher func(t *testing.T, obj interface{})
+	}{
+		{
+			name: "should clean managed fields",
+			obj: &v1.Pod{ObjectMeta: metav1.ObjectMeta{
+				ManagedFields: []metav1.ManagedFieldsEntry{
+					{
+						Manager:    "mngr",
+						Operation:  "op",
+						APIVersion: "v",
+						FieldsType: "t",
+					},
+				},
+			}},
+			matcher: func(t *testing.T, obj interface{}) {
+				pod := obj.(*v1.Pod)
+				require.Nil(t, pod.ManagedFields)
+			},
+		},
+		{
+			name: "should remove sensitive env vars from pod",
+			obj: &v1.Pod{Spec: v1.PodSpec{Containers: []v1.Container{
+				{
+					Env: []v1.EnvVar{
+						{
+							Name:  "LOG_LEVEL",
+							Value: "5",
+						},
+						{
+							Name:  "PASSWORD",
+							Value: "secret",
+						},
+						{
+							Name: "TOKEN",
+							ValueFrom: &v1.EnvVarSource{
+								SecretKeyRef: &v1.SecretKeySelector{
+									LocalObjectReference: v1.LocalObjectReference{
+										Name: "secret",
+									},
+								},
+							},
+						},
+					},
+				},
+				{
+					Env: []v1.EnvVar{
+						{
+							Name:  "PWD",
+							Value: "super_secret",
+						},
+					},
+				},
+			}}},
+			matcher: func(t *testing.T, obj interface{}) {
+				pod := obj.(*v1.Pod)
+
+				require.Equal(t, []v1.EnvVar{
+					{
+						Name:  "LOG_LEVEL",
+						Value: "5",
+					},
+					{
+						Name: "TOKEN",
+						ValueFrom: &v1.EnvVarSource{
+							SecretKeyRef: &v1.SecretKeySelector{
+								LocalObjectReference: v1.LocalObjectReference{
+									Name: "secret",
+								},
+							},
+						},
+					},
+				}, pod.Spec.Containers[0].Env)
+
+				require.Empty(t, pod.Spec.Containers[1].Env)
+			},
+		},
+		{
+			name: "should remove sensitive env vars from statefulset",
+			obj: &appsv1.StatefulSet{Spec: appsv1.StatefulSetSpec{Template: v1.PodTemplateSpec{Spec: v1.PodSpec{Containers: []v1.Container{
+				{
+					Env: []v1.EnvVar{
+						{
+							Name:  "LOG_LEVEL",
+							Value: "5",
+						},
+						{
+							Name:  "PASSWORD",
+							Value: "secret",
+						},
+						{
+							Name: "TOKEN",
+							ValueFrom: &v1.EnvVarSource{
+								SecretKeyRef: &v1.SecretKeySelector{
+									LocalObjectReference: v1.LocalObjectReference{
+										Name: "secret",
+									},
+								},
+							},
+						},
+					},
+				},
+				{
+					Env: []v1.EnvVar{
+						{
+							Name:  "PWD",
+							Value: "super_secret",
+						},
+					},
+				},
+			}}}}},
+			matcher: func(t *testing.T, obj interface{}) {
+				sts := obj.(*appsv1.StatefulSet)
+
+				require.Equal(t, []v1.EnvVar{
+					{
+						Name:  "LOG_LEVEL",
+						Value: "5",
+					},
+					{
+						Name: "TOKEN",
+						ValueFrom: &v1.EnvVarSource{
+							SecretKeyRef: &v1.SecretKeySelector{
+								LocalObjectReference: v1.LocalObjectReference{
+									Name: "secret",
+								},
+							},
+						},
+					},
+				}, sts.Spec.Template.Spec.Containers[0].Env)
+
+				require.Empty(t, sts.Spec.Template.Spec.Containers[1].Env)
+			},
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			cleanObj(test.obj)
+			test.matcher(t, test.obj)
+		})
+	}
 }
