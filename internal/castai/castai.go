@@ -88,11 +88,6 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 		return fmt.Errorf("invalid url: %w", err)
 	}
 
-	b, err := json.Marshal(delta)
-	if err != nil {
-		return fmt.Errorf("marshaling delta: %w", err)
-	}
-
 	pipeReader, pipeWriter := io.Pipe()
 
 	go func() {
@@ -103,8 +98,13 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 		}()
 
 		gzipWriter := gzip.NewWriter(pipeWriter)
-		defer gzipWriter.Close()
-		if _, err := gzipWriter.Write(b); err != nil {
+		defer func() {
+			if err := gzipWriter.Close(); err != nil {
+				c.log.Errorf("closing gzip writer: %v", err)
+			}
+		}()
+
+		if err := json.NewEncoder(gzipWriter).Encode(delta); err != nil {
 			c.log.Errorf("compressing json: %v", err)
 		}
 	}()
