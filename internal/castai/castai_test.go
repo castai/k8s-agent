@@ -1,7 +1,6 @@
 package castai
 
 import (
-	"bytes"
 	"compress/gzip"
 	"context"
 	"encoding/json"
@@ -77,12 +76,9 @@ func TestClient_SendDelta(t *testing.T) {
 		zr, err := gzip.NewReader(r.Body)
 		require.NoError(t, err)
 		defer zr.Close()
-		var buf bytes.Buffer
-		_, err = buf.ReadFrom(zr)
-		require.NoError(t, err)
 
 		actualDelta := &Delta{}
-		require.NoError(t, json.Unmarshal(buf.Bytes(), actualDelta))
+		require.NoError(t, json.NewDecoder(zr).Decode(actualDelta))
 		require.Equal(t, delta, actualDelta)
 
 		return httpmock.NewStringResponse(203, ""), nil
