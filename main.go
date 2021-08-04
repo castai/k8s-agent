@@ -72,7 +72,6 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger)
 		Version:   Version,
 	}
 
-
 	fields["version"] = agentVersion.Version
 	log := logger.WithFields(fields)
 	log.Infof("running agent version: %v", agentVersion)
