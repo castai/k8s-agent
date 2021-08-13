@@ -89,7 +89,7 @@ func (p *Provider) IsSpot(ctx context.Context, node *v1.Node) (bool, error) {
 		return true, nil
 	}
 
-	if val, ok := node.Labels[labels.Spot]; ok && val == "true" {
+	if val, ok := node.Labels[labels.CastaiSpot]; ok && val == "true" {
 		return true, nil
 	}
 

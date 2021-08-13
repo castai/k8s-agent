@@ -151,7 +151,7 @@ func (c *Controller) nodeAddHandler(log logrus.FieldLogger, event event, obj int
 	}
 
 	if spot {
-		node.Labels[labels.FakeSpot] = "true"
+		node.Labels[labels.CastaiFakeSpot] = "true"
 	}
 
 	genericHandler(log, c.queue, reflect.TypeOf(&corev1.Node{}), event, node)

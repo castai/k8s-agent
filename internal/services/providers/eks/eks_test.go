@@ -86,7 +86,7 @@ func TestProvider_IsSpot(t *testing.T) {
 		}
 
 		got, err := p.IsSpot(context.Background(), &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
-			labels.Spot: "true",
+			labels.CastaiSpot: "true",
 		}}})
 
 		require.NoError(t, err)

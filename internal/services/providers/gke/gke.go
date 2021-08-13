@@ -49,7 +49,7 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 }
 
 func (p *Provider) IsSpot(_ context.Context, node *corev1.Node) (bool, error) {
-	if val, ok := node.Labels[labels.Spot]; ok && val == "true" {
+	if val, ok := node.Labels[labels.CastaiSpot]; ok && val == "true" {
 		return true, nil
 	}
 

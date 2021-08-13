@@ -81,6 +81,7 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 		opts := []awsclient.Opt{
 			awsclient.WithMetadata("", region, clusterName),
 			awsclient.WithEC2Client(),
+			awsclient.WithValidateCredentials(),
 		}
 		c, err := awsclient.New(ctx, p.log, opts...)
 		if err != nil {
@@ -114,7 +115,11 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 }
 
 func (p *Provider) IsSpot(ctx context.Context, node *v1.Node) (bool, error) {
-	if val, ok := node.Labels[labels.Spot]; ok && val == "true" {
+	if val, ok := node.Labels[labels.CastaiSpot]; ok && val == "true" {
+		return true, nil
+	}
+
+	if val, ok := node.Labels[labels.KopsSpot]; ok && val == "true" {
 		return true, nil
 	}
 
