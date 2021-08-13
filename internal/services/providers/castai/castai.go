@@ -25,7 +25,7 @@ type Provider struct {
 }
 
 func (p *Provider) IsSpot(_ context.Context, node *v1.Node) (bool, error) {
-	if val, ok := node.Labels[labels.Spot]; ok && val == "true" {
+	if val, ok := node.Labels[labels.CastaiSpot]; ok && val == "true" {
 		return true, nil
 	}
 	return false, nil

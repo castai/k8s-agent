@@ -37,7 +37,7 @@ func Test(t *testing.T) {
 
 	node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node1", Labels: map[string]string{}}}
 	expectedNode := node.DeepCopy()
-	expectedNode.Labels[labels.FakeSpot] = "true"
+	expectedNode.Labels[labels.CastaiFakeSpot] = "true"
 	nodeData, err := encode(expectedNode)
 	require.NoError(t, err)
 

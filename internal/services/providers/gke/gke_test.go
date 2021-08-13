@@ -61,7 +61,7 @@ func TestProvider_IsSpot(t *testing.T) {
 	}{
 		{
 			name:     "castai spot node",
-			node:     &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{labels.Spot: "true"}}},
+			node:     &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{labels.CastaiSpot: "true"}}},
 			expected: true,
 		},
 		{

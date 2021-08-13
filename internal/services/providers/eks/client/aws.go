@@ -72,8 +72,19 @@ func WithEC2Client() func(ctx context.Context, c *client) error {
 			return fmt.Errorf("creating aws sdk session: %w", err)
 		}
 
+		c.sess = sess
 		c.ec2Client = ec2.New(sess)
 
+		return nil
+	}
+}
+
+// WithValidateCredentials validates the aws-sdk credentials chain.
+func WithValidateCredentials() func(ctx context.Context, c *client) error {
+	return func(ctx context.Context, c *client) error {
+		if _, err := c.sess.Config.Credentials.Get(); err != nil {
+			return fmt.Errorf("validating aws credentials: %w", err)
+		}
 		return nil
 	}
 }
@@ -112,6 +123,7 @@ func WithMetadataDiscovery() func(ctx context.Context, c *client) error {
 
 type client struct {
 	log         logrus.FieldLogger
+	sess        *session.Session
 	metaClient  *ec2metadata.EC2Metadata
 	ec2Client   *ec2.EC2
 	region      *string
