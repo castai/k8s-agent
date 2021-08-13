@@ -307,7 +307,7 @@ func (c *Controller) Run(ctx context.Context) {
 	c.pollQueueUntilShutdown()
 }
 
-// collectInitialSnapshot is used to add a time buffer to collect the initial snapshot which is larger then periodic
+// collectInitialSnapshot is used to add a time buffer to collect the initial snapshot which is larger than periodic
 // delta because it contains a significant portion of the Kubernetes state. The function has multiple exit points:
 // 	1. Exits when the workqueue.Interface reports queue length of 0.
 //	2. The deadline of prepDuration has expired.
