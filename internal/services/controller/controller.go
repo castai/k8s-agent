@@ -1,3 +1,4 @@
+//go:generate mockgen -destination ./mock/workqueue.go k8s.io/client-go/util/workqueue Interface
 package controller
 
 import (
@@ -98,33 +99,7 @@ func New(
 		informer := informer
 		log := log.WithField("informer", typ.String())
 
-		var h cache.ResourceEventHandler
-
-		if typ == reflect.TypeOf(&corev1.Node{}) {
-			h = cache.ResourceEventHandlerFuncs{
-				AddFunc: func(obj interface{}) {
-					c.nodeAddHandler(log, eventAdd, obj)
-				},
-				UpdateFunc: func(oldObj, newObj interface{}) {
-					c.nodeAddHandler(log, eventUpdate, newObj)
-				},
-				DeleteFunc: func(obj interface{}) {
-					c.nodeDeleteHandler(log, eventDelete, obj)
-				},
-			}
-		} else {
-			h = cache.ResourceEventHandlerFuncs{
-				AddFunc: func(obj interface{}) {
-					genericHandler(log, c.queue, typ, eventAdd, obj)
-				},
-				UpdateFunc: func(oldObj, newObj interface{}) {
-					genericHandler(log, c.queue, typ, eventUpdate, newObj)
-				},
-				DeleteFunc: func(obj interface{}) {
-					genericHandler(log, c.queue, typ, eventDelete, obj)
-				},
-			}
-		}
+		h := c.createEventHandlers(log, typ)
 
 		informer.AddEventHandler(h)
 	}
@@ -132,7 +107,74 @@ func New(
 	return c
 }
 
-func (c *Controller) nodeAddHandler(log logrus.FieldLogger, event event, obj interface{}) {
+func (c *Controller) createEventHandlers(log logrus.FieldLogger, typ reflect.Type) cache.ResourceEventHandler {
+	if typ == reflect.TypeOf(&corev1.Node{}) {
+		return c.createNodeEventHandlers(log, typ)
+	}
+	return c.createGenericEventHandlers(log, typ)
+}
+
+func (c *Controller) createNodeEventHandlers(log logrus.FieldLogger, typ reflect.Type) cache.ResourceEventHandler {
+	return cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			c.deletedUnknownHandler(log, eventAdd, obj, func(log logrus.FieldLogger, e event, obj interface{}) {
+				c.nodeAddHandler(log, eventAdd, obj, func(log logrus.FieldLogger, e event, obj interface{}) {
+					c.genericHandler(log, typ, e, obj)
+				})
+			})
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			c.deletedUnknownHandler(log, eventUpdate, newObj, func(log logrus.FieldLogger, e event, obj interface{}) {
+				c.nodeAddHandler(log, e, obj, func(log logrus.FieldLogger, e event, obj interface{}) {
+					c.genericHandler(log, typ, e, obj)
+				})
+			})
+		},
+		DeleteFunc: func(obj interface{}) {
+			c.deletedUnknownHandler(log, eventDelete, obj, func(log logrus.FieldLogger, e event, obj interface{}) {
+				c.nodeDeleteHandler(log, e, obj, func(log logrus.FieldLogger, e event, obj interface{}) {
+					c.genericHandler(log, typ, e, obj)
+				})
+			})
+		},
+	}
+}
+
+func (c *Controller) createGenericEventHandlers(log logrus.FieldLogger, typ reflect.Type) cache.ResourceEventHandler {
+	return cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			c.deletedUnknownHandler(log, eventAdd, obj, func(log logrus.FieldLogger, e event, obj interface{}) {
+				c.genericHandler(log, typ, e, obj)
+			})
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			c.deletedUnknownHandler(log, eventUpdate, newObj, func(log logrus.FieldLogger, e event, obj interface{}) {
+				c.genericHandler(log, typ, e, obj)
+			})
+		},
+		DeleteFunc: func(obj interface{}) {
+			c.deletedUnknownHandler(log, eventDelete, obj, func(log logrus.FieldLogger, e event, obj interface{}) {
+				c.genericHandler(log, typ, e, obj)
+			})
+		},
+	}
+}
+
+type handlerFunc func(log logrus.FieldLogger, event event, obj interface{})
+
+// deletedUnknownHandler is used to handle cache.DeletedFinalStateUnknown where an object was deleted but the watch
+// deletion event was missed while disconnected from the api-server.
+func (c *Controller) deletedUnknownHandler(log logrus.FieldLogger, e event, obj interface{}, next handlerFunc) {
+	if deleted, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+		next(log, eventDelete, deleted.Obj)
+	} else {
+		next(log, e, obj)
+	}
+}
+
+// nodeAddHandler is used to handle only node events to carry out some node-only logic, like figuring out
+// whether the node is a spot instance.
+func (c *Controller) nodeAddHandler(log logrus.FieldLogger, e event, obj interface{}, next handlerFunc) {
 	node, ok := obj.(*corev1.Node)
 	if !ok {
 		log.Errorf("expected to get *corev1.Node but got %T", obj)
@@ -154,10 +196,12 @@ func (c *Controller) nodeAddHandler(log logrus.FieldLogger, event event, obj int
 		node.Labels[labels.CastaiFakeSpot] = "true"
 	}
 
-	genericHandler(log, c.queue, reflect.TypeOf(&corev1.Node{}), event, node)
+	next(log, e, node)
 }
 
-func (c *Controller) nodeDeleteHandler(log logrus.FieldLogger, event event, obj interface{}) {
+// nodeDeleteHandler is used to handle only node events to carry out some node-only logic, like clearing out the
+// spot cache.
+func (c *Controller) nodeDeleteHandler(log logrus.FieldLogger, e event, obj interface{}, next handlerFunc) {
 	node, ok := obj.(*corev1.Node)
 	if !ok {
 		log.Errorf("expected to get *corev1.Node but got %T", obj)
@@ -166,14 +210,14 @@ func (c *Controller) nodeDeleteHandler(log logrus.FieldLogger, event event, obj 
 
 	delete(c.spotCache, node.Name)
 
-	genericHandler(log, c.queue, reflect.TypeOf(&corev1.Node{}), event, node)
+	next(log, e, node)
 }
 
-func genericHandler(
+// genericHandler is used to add an object to the queue.
+func (c *Controller) genericHandler(
 	log logrus.FieldLogger,
-	queue workqueue.Interface,
 	expected reflect.Type,
-	event event,
+	e event,
 	obj interface{},
 ) {
 	if reflect.TypeOf(obj) != expected {
@@ -183,9 +227,9 @@ func genericHandler(
 
 	cleanObj(obj)
 
-	queue.Add(&item{
+	c.queue.Add(&item{
 		obj:   obj.(runtime.Object),
-		event: event,
+		event: e,
 	})
 }
 

@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -17,10 +18,12 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/cache"
 
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/internal/config"
+	mock_workqueue "castai-agent/internal/services/controller/mock"
 	mock_types "castai-agent/internal/services/providers/types/mock"
 	mock_version "castai-agent/internal/services/version/mock"
 	"castai-agent/pkg/labels"
@@ -241,4 +244,117 @@ func TestCleanObj(t *testing.T) {
 			test.matcher(t, test.obj)
 		})
 	}
+}
+
+func TestEventHandlers(t *testing.T) {
+	t.Run("should handle add events", func(t *testing.T) {
+		queue := mock_workqueue.NewMockInterface(gomock.NewController(t))
+
+		c := &Controller{
+			log:   logrus.New(),
+			queue: queue,
+		}
+
+		handlers := c.createEventHandlers(c.log, reflect.TypeOf(&v1.Pod{}))
+
+		pod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod",
+				Namespace: v1.NamespaceDefault,
+			},
+		}
+
+		queue.EXPECT().Add(&item{
+			obj:   pod,
+			event: eventAdd,
+		})
+
+		handlers.OnAdd(pod)
+	})
+
+	t.Run("should handle update events", func(t *testing.T) {
+		queue := mock_workqueue.NewMockInterface(gomock.NewController(t))
+
+		c := &Controller{
+			log:   logrus.New(),
+			queue: queue,
+		}
+
+		handlers := c.createEventHandlers(c.log, reflect.TypeOf(&v1.Pod{}))
+
+		oldPod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod",
+				Namespace: v1.NamespaceDefault,
+			},
+		}
+
+		newPod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod",
+				Namespace: v1.NamespaceDefault,
+				Labels:    map[string]string{"a": "b"},
+			},
+		}
+
+		queue.EXPECT().Add(&item{
+			obj:   newPod,
+			event: eventUpdate,
+		})
+
+		handlers.OnUpdate(oldPod, newPod)
+	})
+
+	t.Run("should handle delete events", func(t *testing.T) {
+		queue := mock_workqueue.NewMockInterface(gomock.NewController(t))
+
+		c := &Controller{
+			log:   logrus.New(),
+			queue: queue,
+		}
+
+		handlers := c.createEventHandlers(c.log, reflect.TypeOf(&v1.Pod{}))
+
+		pod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod",
+				Namespace: v1.NamespaceDefault,
+			},
+		}
+
+		queue.EXPECT().Add(&item{
+			obj:   pod,
+			event: eventDelete,
+		})
+
+		handlers.OnDelete(pod)
+	})
+
+	t.Run("should handle cache.DeletedFinalStateUnknown events", func(t *testing.T) {
+		queue := mock_workqueue.NewMockInterface(gomock.NewController(t))
+
+		c := &Controller{
+			log:   logrus.New(),
+			queue: queue,
+		}
+
+		handlers := c.createEventHandlers(c.log, reflect.TypeOf(&v1.Pod{}))
+
+		pod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod",
+				Namespace: v1.NamespaceDefault,
+			},
+		}
+
+		queue.EXPECT().Add(&item{
+			obj:   pod,
+			event: eventDelete,
+		})
+
+		handlers.OnDelete(cache.DeletedFinalStateUnknown{
+			Key: "default/pod",
+			Obj: pod,
+		})
+	})
 }
