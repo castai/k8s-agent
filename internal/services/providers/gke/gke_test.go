@@ -73,7 +73,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 		metaclient.EXPECT().GetProjectID().Return("", errors.New("today is a bad day"))
 
 		_, err := p.RegisterCluster(context.Background(), castaiclient)
-		require.Errorf(t, err, "registering cluster: today is a bad day")
+		require.EqualError(t, err, "autodiscovering cluster metadata: today is a bad day\nProvide required GKE_PROJECT_ID environment variable")
 	})
 }
 
