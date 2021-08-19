@@ -4,20 +4,18 @@ import (
 	"context"
 	"fmt"
 
-	"castai-agent/internal/services/providers/gke/client"
-
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
+	"castai-agent/internal/services/providers/gke/client"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/pkg/labels"
 )
 
 const (
-	Name = "gke"
-
+	Name             = "gke"
 	LabelPreemptible = "cloud.google.com/gke-preemptible"
 )
 
@@ -89,8 +87,7 @@ func (p *Provider) clusterAutodiscovery() (*config.GKE, error) {
 	if cfg.Location == "" {
 		cfg.Location, err = p.metadata.GetLocation()
 		if err != nil {
-			// Not required during phase 1 registration. Will fail if not able to get during Phase 2 registration.
-			p.log.Warningf("getting cluster location during autodiscovery: %w", err)
+			return nil, failedAutodiscovery(err, "GKE_LOCATION")
 		}
 	}
 
