@@ -2,6 +2,7 @@ package gke
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 
@@ -21,41 +22,59 @@ import (
 )
 
 func TestProvider_RegisterCluster(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	castaiclient := mock_castai.NewMockClient(ctrl)
-	metaclient := mock_client.NewMockMetadata(ctrl)
+	t.Run("happy path", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		castaiclient := mock_castai.NewMockClient(ctrl)
+		metaclient := mock_client.NewMockMetadata(ctrl)
 
-	p := &Provider{log: logrus.New(), metadata: metaclient}
+		p := &Provider{log: logrus.New(), metadata: metaclient}
 
-	require.NoError(t, os.Setenv("API_KEY", "abc"))
-	require.NoError(t, os.Setenv("API_URL", "example.com"))
+		require.NoError(t, os.Setenv("API_KEY", "abc"))
+		require.NoError(t, os.Setenv("API_URL", "example.com"))
 
-	metaclient.EXPECT().GetClusterName().Return("test-cluster", nil)
-	metaclient.EXPECT().GetRegion().Return("us-east4", nil)
-	metaclient.EXPECT().GetProjectID().Return("test-project", nil)
-	metaclient.EXPECT().GetLocation().Return("us-east4-a", nil)
+		metaclient.EXPECT().GetClusterName().Return("test-cluster", nil)
+		metaclient.EXPECT().GetRegion().Return("us-east4", nil)
+		metaclient.EXPECT().GetProjectID().Return("test-project", nil)
+		metaclient.EXPECT().GetLocation().Return("us-east4-a", nil)
 
-	resp := &castai.RegisterClusterResponse{Cluster: castai.Cluster{
-		ID:             uuid.New().String(),
-		OrganizationID: uuid.New().String(),
-	}}
-	castaiclient.EXPECT().RegisterCluster(gomock.Any(), &castai.RegisterClusterRequest{
-		Name: "test-cluster",
-		GKE: &castai.GKEParams{
-			Region:      "us-east4",
-			ProjectID:   "test-project",
-			ClusterName: "test-cluster",
-			Location:    "us-east4-a",
-		},
-	}).Return(resp, nil)
+		resp := &castai.RegisterClusterResponse{Cluster: castai.Cluster{
+			ID:             uuid.New().String(),
+			OrganizationID: uuid.New().String(),
+		}}
+		castaiclient.EXPECT().RegisterCluster(gomock.Any(), &castai.RegisterClusterRequest{
+			Name: "test-cluster",
+			GKE: &castai.GKEParams{
+				Region:      "us-east4",
+				ProjectID:   "test-project",
+				ClusterName: "test-cluster",
+				Location:    "us-east4-a",
+			},
+		}).Return(resp, nil)
 
-	got, err := p.RegisterCluster(context.Background(), castaiclient)
+		got, err := p.RegisterCluster(context.Background(), castaiclient)
 
-	require.NoError(t, err)
-	require.Equal(t, &types.ClusterRegistration{
-		ClusterID:      resp.ID,
-		OrganizationID: resp.OrganizationID,
-	}, got)
+		require.NoError(t, err)
+		require.Equal(t, &types.ClusterRegistration{
+			ClusterID:      resp.ID,
+			OrganizationID: resp.OrganizationID,
+		}, got)
+	})
+
+	t.Run("autodiscovery failed", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		castaiclient := mock_castai.NewMockClient(ctrl)
+		metaclient := mock_client.NewMockMetadata(ctrl)
+
+		p := &Provider{log: logrus.New(), metadata: metaclient}
+
+		require.NoError(t, os.Setenv("API_KEY", "abc"))
+		require.NoError(t, os.Setenv("API_URL", "example.com"))
+
+		metaclient.EXPECT().GetProjectID().Return("", errors.New("today is a bad day"))
+
+		_, err := p.RegisterCluster(context.Background(), castaiclient)
+		require.Errorf(t, err, "registering cluster: today is a bad day")
+	})
 }
 
 func TestProvider_IsSpot(t *testing.T) {
