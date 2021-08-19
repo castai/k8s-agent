@@ -5,6 +5,8 @@ import (
 	"os"
 	"testing"
 
+	mock_client "castai-agent/internal/services/providers/gke/client/mock"
+
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -19,15 +21,19 @@ import (
 )
 
 func TestProvider_RegisterCluster(t *testing.T) {
-	castaiclient := mock_castai.NewMockClient(gomock.NewController(t))
+	ctrl := gomock.NewController(t)
+	castaiclient := mock_castai.NewMockClient(ctrl)
+	metaclient := mock_client.NewMockMetadata(ctrl)
 
-	p := &Provider{log: logrus.New()}
+	p := &Provider{log: logrus.New(), metadata: metaclient}
 
 	require.NoError(t, os.Setenv("API_KEY", "abc"))
 	require.NoError(t, os.Setenv("API_URL", "example.com"))
-	require.NoError(t, os.Setenv("GKE_REGION", "us-east4"))
-	require.NoError(t, os.Setenv("GKE_PROJECT_ID", "test-abc"))
-	require.NoError(t, os.Setenv("GKE_CLUSTER_NAME", "test-cluster"))
+
+	metaclient.EXPECT().GetClusterName().Return("test-cluster", nil)
+	metaclient.EXPECT().GetRegion().Return("us-east4", nil)
+	metaclient.EXPECT().GetProjectID().Return("test-project", nil)
+	metaclient.EXPECT().GetLocation().Return("us-east4-a", nil)
 
 	resp := &castai.RegisterClusterResponse{Cluster: castai.Cluster{
 		ID:             uuid.New().String(),
@@ -37,8 +43,9 @@ func TestProvider_RegisterCluster(t *testing.T) {
 		Name: "test-cluster",
 		GKE: &castai.GKEParams{
 			Region:      "us-east4",
-			ProjectID:   "test-abc",
+			ProjectID:   "test-project",
 			ClusterName: "test-cluster",
+			Location:    "us-east4-a",
 		},
 	}).Return(resp, nil)
 

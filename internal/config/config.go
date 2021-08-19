@@ -42,6 +42,7 @@ type GKE struct {
 	Region      string
 	ProjectID   string
 	ClusterName string
+	Location    string
 }
 
 type KOPS struct {
@@ -78,6 +79,7 @@ func Get() Config {
 	_ = viper.BindEnv("gke.region", "GKE_REGION")
 	_ = viper.BindEnv("gke.projectid", "GKE_PROJECT_ID")
 	_ = viper.BindEnv("gke.clustername", "GKE_CLUSTER_NAME")
+	_ = viper.BindEnv("gke.location", "GKE_LOCATION")
 
 	_ = viper.BindEnv("kops.csp", "KOPS_CSP")
 	_ = viper.BindEnv("kops.region", "KOPS_REGION")
@@ -118,18 +120,6 @@ func Get() Config {
 		}
 		if cfg.EKS.ClusterName == "" {
 			requiredWhenDiscoveryDisabled("EKS_CLUSTER_NAME")
-		}
-	}
-
-	if cfg.GKE != nil {
-		if cfg.GKE.Region == "" {
-			requiredWhenDiscoveryDisabled("GKE_REGION")
-		}
-		if cfg.GKE.ProjectID == "" {
-			requiredWhenDiscoveryDisabled("GKE_PROJECT_ID")
-		}
-		if cfg.GKE.ClusterName == "" {
-			requiredWhenDiscoveryDisabled("GKE_CLUSTER_NAME")
 		}
 	}
 
