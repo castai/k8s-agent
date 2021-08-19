@@ -17,6 +17,7 @@ type GKEParams struct {
 	Region      string `json:"region"`
 	ProjectID   string `json:"projectId"`
 	ClusterName string `json:"clusterName"`
+	Location    string `json:"location"`
 }
 
 type KOPSParams struct {

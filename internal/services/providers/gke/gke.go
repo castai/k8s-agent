@@ -9,26 +9,33 @@ import (
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
+	"castai-agent/internal/services/providers/gke/client"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/pkg/labels"
 )
 
 const (
-	Name = "gke"
-
+	Name             = "gke"
 	LabelPreemptible = "cloud.google.com/gke-preemptible"
 )
 
 func New(log logrus.FieldLogger) (types.Provider, error) {
-	return &Provider{log: log}, nil
+	return &Provider{
+		log:      log,
+		metadata: client.NewMetadataClient(),
+	}, nil
 }
 
 type Provider struct {
-	log logrus.FieldLogger
+	log      logrus.FieldLogger
+	metadata client.Metadata
 }
 
 func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*types.ClusterRegistration, error) {
-	cfg := config.Get().GKE
+	cfg, err := p.clusterAutodiscovery()
+	if err != nil {
+		return nil, err
+	}
 
 	resp, err := client.RegisterCluster(ctx, &castai.RegisterClusterRequest{
 		Name: cfg.ClusterName,
@@ -36,6 +43,7 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 			Region:      cfg.Region,
 			ProjectID:   cfg.ProjectID,
 			ClusterName: cfg.ClusterName,
+			Location:    cfg.Location,
 		},
 	})
 	if err != nil {
@@ -46,6 +54,48 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 		ClusterID:      resp.ID,
 		OrganizationID: resp.OrganizationID,
 	}, nil
+}
+
+func (p *Provider) clusterAutodiscovery() (*config.GKE, error) {
+	var err error
+	cfg := &config.GKE{}
+	if envCfg := config.Get().GKE; envCfg != nil {
+		cfg = envCfg
+	}
+
+	if cfg.ProjectID == "" {
+		cfg.ProjectID, err = p.metadata.GetProjectID()
+		if err != nil {
+			return nil, failedAutodiscovery(err, "GKE_PROJECT_ID")
+		}
+	}
+
+	if cfg.ClusterName == "" {
+		cfg.ClusterName, err = p.metadata.GetClusterName()
+		if err != nil {
+			return nil, failedAutodiscovery(err, "GKE_CLUSTER_NAME")
+		}
+	}
+
+	if cfg.Region == "" {
+		cfg.Region, err = p.metadata.GetRegion()
+		if err != nil {
+			return nil, failedAutodiscovery(err, "GKE_REGION")
+		}
+	}
+
+	if cfg.Location == "" {
+		cfg.Location, err = p.metadata.GetLocation()
+		if err != nil {
+			return nil, failedAutodiscovery(err, "GKE_LOCATION")
+		}
+	}
+
+	return cfg, nil
+}
+
+func failedAutodiscovery(err error, envVar string) error {
+	return fmt.Errorf("autodiscovering cluster metadata: %w\nProvide required %s environment variable", err, envVar)
 }
 
 func (p *Provider) IsSpot(_ context.Context, node *corev1.Node) (bool, error) {
