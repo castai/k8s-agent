@@ -2,7 +2,6 @@ package castai
 
 import (
 	"context"
-
 	"github.com/sirupsen/logrus"
 	"k8s.io/api/core/v1"
 
@@ -10,10 +9,6 @@ import (
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/pkg/labels"
-)
-
-const (
-	Name = "castai"
 )
 
 func New(_ context.Context, log logrus.FieldLogger) (types.Provider, error) {
@@ -40,5 +35,5 @@ func (p *Provider) RegisterCluster(_ context.Context, _ castai.Client) (*types.C
 }
 
 func (p *Provider) Name() string {
-	return Name
+	return config.ProviderCASTAI
 }

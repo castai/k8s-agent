@@ -9,6 +9,7 @@ import (
 
 	castailog "castai-agent/pkg/log"
 
+	"github.com/labstack/echo/v4"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -42,7 +43,7 @@ func main() {
 	castaiclient := castai.NewClient(logger, castai.NewDefaultClient())
 
 	log := logrus.WithFields(logrus.Fields{})
-	if err := run(signals.SetupSignalHandler(), castaiclient, logger); err != nil {
+	if err := run(signals.SetupSignalHandler(), cfg, castaiclient, logger); err != nil {
 		logErr := &logContextErr{}
 		if errors.As(err, &logErr) {
 			log = logger.WithFields(logErr.fields)
@@ -51,8 +52,7 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger) (reterr error) {
-
+func run(ctx context.Context, cfg *config.Config, castaiclient castai.Client, logger *logrus.Logger) (reterr error) {
 	fields := logrus.Fields{}
 
 	defer func() {
@@ -86,7 +86,7 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger)
 		return err
 	}
 
-	provider, err := providers.GetProvider(ctx, log, clientset)
+	provider, err := providers.GetProvider(ctx, cfg, log, clientset)
 	if err != nil {
 		return fmt.Errorf("getting provider: %w", err)
 	}
@@ -107,6 +107,9 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger)
 	fields["cluster_id"] = reg.ClusterID
 	log = log.WithFields(fields)
 	log.Infof("cluster registered: %v", reg)
+
+	e := echo.New()
+	e.HideBanner = true
 
 	wait.Until(func() {
 		v, err := version.Get(log, clientset)

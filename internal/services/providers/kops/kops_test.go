@@ -20,7 +20,6 @@ import (
 
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
-	"castai-agent/internal/config"
 	mock_awsclient "castai-agent/internal/services/providers/eks/client/mock"
 	"castai-agent/internal/services/providers/gke"
 	"castai-agent/internal/services/providers/types"
@@ -32,7 +31,6 @@ func TestProvider_RegisterCluster(t *testing.T) {
 		require.NoError(t, os.Setenv("API_KEY", "123"))
 		require.NoError(t, os.Setenv("API_URL", "test"))
 
-		t.Cleanup(config.Reset)
 		t.Cleanup(os.Clearenv)
 
 		var objects []runtime.Object
@@ -120,7 +118,6 @@ func TestProvider_RegisterCluster(t *testing.T) {
 		require.NoError(t, os.Setenv("KOPS_CLUSTER_NAME", "test.k8s.local"))
 		require.NoError(t, os.Setenv("KOPS_STATE_STORE", "s3://test-kops"))
 
-		t.Cleanup(config.Reset)
 		t.Cleanup(os.Clearenv)
 
 		namespaceID := uuid.New()

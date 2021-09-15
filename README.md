@@ -1,5 +1,20 @@
 # CAST AI K8S Agent
 
+## Local Development Setup
+
+Agent can be tested locally using [Kind](https://kind.sigs.k8s.io) as a runtime environment.
+
+```shell
+$ brew install kind
+```
+
+```shell
+kind create cluster --name cast-agent-test
+kind get kubeconfig --name cast-agent-test > kind.kubeconfig
+```
+
+
+
 ## Commands
 
 ### build docker image

@@ -52,14 +52,8 @@ type KOPS struct {
 	StateStore  string
 }
 
-var cfg *Config
-
 // Get configuration bound to environment variables.
-func Get() Config {
-	if cfg != nil {
-		return *cfg
-	}
-
+func Get() *Config {
 	_ = viper.BindEnv("log.level", "LOG_LEVEL")
 
 	_ = viper.BindEnv("api.key", "API_KEY")
@@ -86,7 +80,7 @@ func Get() Config {
 	_ = viper.BindEnv("kops.clustername", "KOPS_CLUSTER_NAME")
 	_ = viper.BindEnv("kops.statestore", "KOPS_STATE_STORE")
 
-	cfg = &Config{}
+	cfg := &Config{}
 	if err := viper.Unmarshal(&cfg); err != nil {
 		panic(fmt.Errorf("parsing configuration: %v", err))
 	}
@@ -100,6 +94,10 @@ func Get() Config {
 	}
 	if cfg.API.URL == "" {
 		required("API_URL")
+	}
+
+	if cfg.Provider == ProviderCASTAI && cfg.CASTAI == nil {
+		cfg.CASTAI = &CASTAI{}
 	}
 
 	if cfg.CASTAI != nil {
@@ -138,12 +136,7 @@ func Get() Config {
 		}
 	}
 
-	return *cfg
-}
-
-// Reset is used only for unit testing to reset configuration and rebind variables.
-func Reset() {
-	cfg = nil
+	return cfg
 }
 
 func required(variable string) {
