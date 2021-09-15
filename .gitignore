@@ -4,3 +4,4 @@
 *.iml
 bin
 .env
+/kind.kubeconfig
