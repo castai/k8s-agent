@@ -16,6 +16,7 @@ type Config struct {
 	EKS        *EKS
 	GKE        *GKE
 	KOPS       *KOPS
+	AKS        *AKS
 }
 
 type Log struct {
@@ -52,6 +53,10 @@ type KOPS struct {
 	StateStore  string
 }
 
+type AKS struct {
+	ClusterName string
+}
+
 var cfg *Config
 
 // Get configuration bound to environment variables.
@@ -85,6 +90,8 @@ func Get() Config {
 	_ = viper.BindEnv("kops.region", "KOPS_REGION")
 	_ = viper.BindEnv("kops.clustername", "KOPS_CLUSTER_NAME")
 	_ = viper.BindEnv("kops.statestore", "KOPS_STATE_STORE")
+
+	_ = viper.BindEnv("aks.clustername", "AKS_CLUSTER_NAME")
 
 	cfg = &Config{}
 	if err := viper.Unmarshal(&cfg); err != nil {
@@ -135,6 +142,12 @@ func Get() Config {
 		}
 		if cfg.KOPS.StateStore == "" {
 			requiredWhenDiscoveryDisabled("KOPS_STATE_STORE")
+		}
+	}
+
+	if cfg.AKS != nil {
+		if cfg.AKS.ClusterName == "" {
+			requiredWhenDiscoveryDisabled("AKS_CLUSTER_NAME")
 		}
 	}
 

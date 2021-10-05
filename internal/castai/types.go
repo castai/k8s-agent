@@ -27,12 +27,18 @@ type KOPSParams struct {
 	StateStore  string `json:"stateStore"`
 }
 
+type AKSParams struct {
+	ClusterName string `json:"clusterName"`
+	Region string `json:"region"`
+}
+
 type RegisterClusterRequest struct {
 	ID   uuid.UUID   `json:"id"`
 	Name string      `json:"name"`
 	EKS  *EKSParams  `json:"eks"`
 	GKE  *GKEParams  `json:"gke"`
 	KOPS *KOPSParams `json:"kops"`
+	AKS  *AKSParams  `json:"aks"`
 }
 
 type Cluster struct {
