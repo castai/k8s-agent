@@ -27,12 +27,20 @@ type KOPSParams struct {
 	StateStore  string `json:"stateStore"`
 }
 
+type AKSParams struct {
+	Region string `json:"region"`
+	// NodeResourceGroup resource group where cluster nodes are deployed.
+	NodeResourceGroup string `json:"nodeResourceGroup"`
+	SubscriptionID    string `json:"subscriptionId"`
+}
+
 type RegisterClusterRequest struct {
 	ID   uuid.UUID   `json:"id"`
 	Name string      `json:"name"`
 	EKS  *EKSParams  `json:"eks"`
 	GKE  *GKEParams  `json:"gke"`
 	KOPS *KOPSParams `json:"kops"`
+	AKS  *AKSParams  `json:"aks"`
 }
 
 type Cluster struct {
