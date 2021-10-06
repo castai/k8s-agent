@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -13,56 +16,62 @@ const (
 	timeout     = 2 * time.Second
 )
 
-func NewClient() Client {
-	return Client{}
+type ComputeMetadata struct {
+	Location       string `json:"location"`
+	ResourceGroup  string `json:"resourceGroupName"`
+	SubscriptionID string `json:"subscriptionId"`
 }
-
-type Client struct {
-	metadata *ComputeMetadata
-}
-
-func (c *Client) GetLocation(ctx context.Context) (string, error) {
-	if c.metadata == nil {
-		md, err := getInstanceMetadata(ctx)
-		if err != nil {
-			return "", err
-		}
-		c.metadata = md
-	}
-	return c.metadata.Location, nil
-}
-
-func (c *Client) GetResourceGroup(ctx context.Context) (string, error) {
-	if c.metadata == nil {
-		md, err := getInstanceMetadata(ctx)
-		if err != nil {
-			return "", err
-		}
-		c.metadata = md
-	}
-	return c.metadata.ResourceGroup, nil
-}
-
-func (c *Client) GetSubscriptionID(ctx context.Context) (string, error) {
-	if c.metadata == nil {
-		md, err := getInstanceMetadata(ctx)
-		if err != nil {
-			return "", err
-		}
-		c.metadata = md
-	}
-	return c.metadata.SubscriptionID, nil
-}
-
 
 type instanceMetadata struct {
 	Compute *ComputeMetadata `json:"compute,omitempty"`
 }
 
-type ComputeMetadata struct {
-	Location       string `json:"location"`
-	ResourceGroup  string `json:"resourceGroupName"`
-	SubscriptionID string `json:"subscriptionId"`
+func NewClient(log logrus.FieldLogger) Client {
+	return Client{
+		log: log,
+	}
+}
+
+type Client struct {
+	log      logrus.FieldLogger
+	metadata ComputeMetadata
+	syncOnce sync.Once
+}
+
+func (c *Client) GetLocation() (string, error) {
+	c.syncOnce.Do(c.loadMetadata)
+	if c.metadata.Location == "" {
+		return "", fmt.Errorf("failed to get location metadata")
+	}
+
+	return c.metadata.Location, nil
+}
+
+func (c *Client) GetResourceGroup() (string, error) {
+	c.syncOnce.Do(c.loadMetadata)
+	if c.metadata.ResourceGroup == "" {
+		return "", fmt.Errorf("failed to get resource group metadata")
+	}
+
+	return c.metadata.ResourceGroup, nil
+}
+
+func (c *Client) GetSubscriptionID() (string, error) {
+	c.syncOnce.Do(c.loadMetadata)
+	if c.metadata.SubscriptionID == "" {
+		return "", fmt.Errorf("failed to get subscription metadata")
+	}
+
+	return c.metadata.SubscriptionID, nil
+}
+
+func (c *Client) loadMetadata() {
+	metadata, err := getInstanceMetadata(context.Background())
+	if err == nil {
+		c.log.Errorf("failed to retrieve instance metadata: %v", err)
+		return
+	}
+	c.metadata = *metadata
 }
 
 func getInstanceMetadata(ctx context.Context) (*ComputeMetadata, error) {

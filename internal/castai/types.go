@@ -28,9 +28,10 @@ type KOPSParams struct {
 }
 
 type AKSParams struct {
-	Region         string `json:"region"`
-	ResourceGroup  string `json:"resourceGroup"`
-	SubscriptionID string `json:"subscriptionId"`
+	Region string `json:"region"`
+	// NodeResourceGroup resource group where cluster nodes are deployed.
+	NodeResourceGroup string `json:"nodeResourceGroup"`
+	SubscriptionID    string `json:"subscriptionId"`
 }
 
 type RegisterClusterRequest struct {

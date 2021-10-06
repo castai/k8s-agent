@@ -29,8 +29,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 
 		require.NoError(t, os.Setenv("AKS_SUBSCRIPTION_ID", "test-id"))
 		require.NoError(t, os.Setenv("AKS_LOCATION", "test-location"))
-		require.NoError(t, os.Setenv("AKS_RESOURCE_GROUP", "test-group"))
-
+		require.NoError(t, os.Setenv("AKS_NODE_RESOURCE_GROUP", "test-group"))
 
 		resp := &castai.RegisterClusterResponse{Cluster: castai.Cluster{
 			ID:             uuid.New().String(),
@@ -39,9 +38,9 @@ func TestProvider_RegisterCluster(t *testing.T) {
 
 		castaiclient.EXPECT().RegisterCluster(gomock.Any(), &castai.RegisterClusterRequest{
 			AKS: &castai.AKSParams{
-				Region:      "test-location",
-				SubscriptionID: "test-id",
-				ResourceGroup: "test-group",
+				Region:            "test-location",
+				SubscriptionID:    "test-id",
+				NodeResourceGroup: "test-group",
 			},
 		}).Return(resp, nil)
 
@@ -55,10 +54,10 @@ func TestProvider_RegisterCluster(t *testing.T) {
 	})
 }
 
-func TestProvider_IsSpot(t *testing.T){
-	t.Run("spot instance priority label", func(t *testing.T){
+func TestProvider_IsSpot(t *testing.T) {
+	t.Run("spot instance priority label", func(t *testing.T) {
 		p := &Provider{
-			log:       logrus.New(),
+			log: logrus.New(),
 		}
 
 		got, err := p.IsSpot(context.Background(), &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{

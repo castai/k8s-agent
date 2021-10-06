@@ -54,9 +54,9 @@ type KOPS struct {
 }
 
 type AKS struct {
-	Location       string
-	ResourceGroup  string
-	SubscriptionID string
+	NodeResourceGroup string
+	Location          string
+	SubscriptionID    string
 }
 
 var cfg *Config
@@ -95,7 +95,7 @@ func Get() Config {
 
 	_ = viper.BindEnv("aks.subscriptionid", "AKS_SUBSCRIPTION_ID")
 	_ = viper.BindEnv("aks.location", "AKS_LOCATION")
-	_ = viper.BindEnv("aks.resourcegroup", "AKS_RESOURCE_GROUP")
+	_ = viper.BindEnv("aks.noderesourcegroup", "AKS_NODE_RESOURCE_GROUP")
 
 	cfg = &Config{}
 	if err := viper.Unmarshal(&cfg); err != nil {
@@ -156,10 +156,9 @@ func Get() Config {
 		if cfg.AKS.Location == "" {
 			requiredWhenDiscoveryDisabled("AKS_LOCATION")
 		}
-		if cfg.AKS.ResourceGroup == "" {
-			requiredWhenDiscoveryDisabled("AKS_RESOURCE_GROUP")
+		if cfg.AKS.NodeResourceGroup == "" {
+			requiredWhenDiscoveryDisabled("AKS_NODE_RESOURCE_GROUP")
 		}
-
 	}
 
 	return *cfg
