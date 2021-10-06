@@ -36,7 +36,6 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 	}
 
 	resp, err := client.RegisterCluster(ctx, &castai.RegisterClusterRequest{
-		Name: cfg.ClusterName,
 		AKS: &castai.AKSParams{
 			Region: cfg.Location,
 			ResourceGroup: cfg.ResourceGroup,

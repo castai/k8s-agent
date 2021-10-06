@@ -54,7 +54,6 @@ type KOPS struct {
 }
 
 type AKS struct {
-	ClusterName    string
 	Location       string
 	ResourceGroup  string
 	SubscriptionID string
@@ -94,7 +93,6 @@ func Get() Config {
 	_ = viper.BindEnv("kops.clustername", "KOPS_CLUSTER_NAME")
 	_ = viper.BindEnv("kops.statestore", "KOPS_STATE_STORE")
 
-	_ = viper.BindEnv("aks.clustername", "AKS_CLUSTER_NAME")
 	_ = viper.BindEnv("aks.subscriptionid", "AKS_SUBSCRIPTION_ID")
 	_ = viper.BindEnv("aks.location", "AKS_LOCATION")
 	_ = viper.BindEnv("aks.resourcegroup", "AKS_RESOURCE_GROUP")
@@ -154,9 +152,6 @@ func Get() Config {
 	if cfg.AKS != nil {
 		if cfg.AKS.SubscriptionID == "" {
 			requiredWhenDiscoveryDisabled("AKS_SUBSCRIPTION_ID")
-		}
-		if cfg.AKS.ClusterName == "" {
-			requiredWhenDiscoveryDisabled("AKS_CLUSTER_NAME")
 		}
 		if cfg.AKS.Location == "" {
 			requiredWhenDiscoveryDisabled("AKS_LOCATION")

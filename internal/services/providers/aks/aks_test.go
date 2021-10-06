@@ -27,7 +27,6 @@ func TestProvider_RegisterCluster(t *testing.T) {
 		require.NoError(t, os.Setenv("API_KEY", "abc"))
 		require.NoError(t, os.Setenv("API_URL", "example.com"))
 
-		require.NoError(t, os.Setenv("AKS_CLUSTER_NAME", "test-cluster"))
 		require.NoError(t, os.Setenv("AKS_SUBSCRIPTION_ID", "test-id"))
 		require.NoError(t, os.Setenv("AKS_LOCATION", "test-location"))
 		require.NoError(t, os.Setenv("AKS_RESOURCE_GROUP", "test-group"))
@@ -39,7 +38,6 @@ func TestProvider_RegisterCluster(t *testing.T) {
 		}}
 
 		castaiclient.EXPECT().RegisterCluster(gomock.Any(), &castai.RegisterClusterRequest{
-			Name: "test-cluster",
 			AKS: &castai.AKSParams{
 				Region:      "test-location",
 				SubscriptionID: "test-id",
