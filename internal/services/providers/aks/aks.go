@@ -38,8 +38,7 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 	resp, err := client.RegisterCluster(ctx, &castai.RegisterClusterRequest{
 		Name: cfg.ClusterName,
 		AKS: &castai.AKSParams{
-			ClusterName: cfg.ClusterName,
-			Location: cfg.Location,
+			Region: cfg.Location,
 			ResourceGroup: cfg.ResourceGroup,
 			SubscriptionID: cfg.SubscriptionID,
 		},
@@ -65,12 +64,6 @@ func (p *Provider) clusterAutodiscovery(ctx context.Context) (*config.AKS, error
 			cfg.Location, err = p.client.GetLocation(ctx)
 			if err != nil {
 				return nil, failedAutodiscovery(err, "AKS_LOCATION")
-			}
-		}
-		if cfg.ClusterName == "" {
-			cfg.ClusterName, err = p.client.GetClusterName(ctx)
-			if err != nil {
-				return nil, failedAutodiscovery(err, "AKS_CLUSTER_NAME")
 			}
 		}
 		if cfg.ResourceGroup == "" {

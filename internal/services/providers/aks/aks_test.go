@@ -41,8 +41,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 		castaiclient.EXPECT().RegisterCluster(gomock.Any(), &castai.RegisterClusterRequest{
 			Name: "test-cluster",
 			AKS: &castai.AKSParams{
-				Location:      "test-location",
-				ClusterName: "test-cluster",
+				Region:      "test-location",
 				SubscriptionID: "test-id",
 				ResourceGroup: "test-group",
 			},

@@ -32,17 +32,6 @@ func (c *Client) GetLocation(ctx context.Context) (string, error) {
 	return c.metadata.Location, nil
 }
 
-func (c *Client) GetClusterName(ctx context.Context) (string, error) {
-	if c.metadata == nil {
-		md, err := getInstanceMetadata(ctx)
-		if err != nil {
-			return "", err
-		}
-		c.metadata = md
-	}
-	return c.metadata.ClusterName, nil
-}
-
 func (c *Client) GetResourceGroup(ctx context.Context) (string, error) {
 	if c.metadata == nil {
 		md, err := getInstanceMetadata(ctx)
@@ -71,7 +60,6 @@ type instanceMetadata struct {
 }
 
 type ComputeMetadata struct {
-	ClusterName    string `json:"clusterName,omitempty"`
 	Location       string `json:"location"`
 	ResourceGroup  string `json:"resourceGroupName"`
 	SubscriptionID string `json:"subscriptionId"`
