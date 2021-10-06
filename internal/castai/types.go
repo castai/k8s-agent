@@ -28,8 +28,10 @@ type KOPSParams struct {
 }
 
 type AKSParams struct {
-	ClusterName string `json:"clusterName"`
-	Region string `json:"region"`
+	ClusterName    string `json:"clusterName"`
+	Location       string `json:"location"`
+	ResourceGroup  string `json:"resourceGroup"`
+	SubscriptionID string `json:"subscriptionId"`
 }
 
 type RegisterClusterRequest struct {

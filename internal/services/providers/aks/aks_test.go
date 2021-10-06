@@ -9,6 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
@@ -25,16 +27,24 @@ func TestProvider_RegisterCluster(t *testing.T) {
 		require.NoError(t, os.Setenv("API_KEY", "abc"))
 		require.NoError(t, os.Setenv("API_URL", "example.com"))
 
+		require.NoError(t, os.Setenv("AKS_CLUSTER_NAME", "test-cluster"))
+		require.NoError(t, os.Setenv("AKS_SUBSCRIPTION_ID", "test-id"))
+		require.NoError(t, os.Setenv("AKS_LOCATION", "test-location"))
+		require.NoError(t, os.Setenv("AKS_RESOURCE_GROUP", "test-group"))
+
 
 		resp := &castai.RegisterClusterResponse{Cluster: castai.Cluster{
 			ID:             uuid.New().String(),
 			OrganizationID: uuid.New().String(),
 		}}
+
 		castaiclient.EXPECT().RegisterCluster(gomock.Any(), &castai.RegisterClusterRequest{
 			Name: "test-cluster",
 			AKS: &castai.AKSParams{
-				Region:      "us-east4",
+				Location:      "test-location",
 				ClusterName: "test-cluster",
+				SubscriptionID: "test-id",
+				ResourceGroup: "test-group",
 			},
 		}).Return(resp, nil)
 
@@ -45,5 +55,20 @@ func TestProvider_RegisterCluster(t *testing.T) {
 			ClusterID:      resp.ID,
 			OrganizationID: resp.OrganizationID,
 		}, got)
+	})
+}
+
+func TestProvider_IsSpot(t *testing.T){
+	t.Run("spot instance priority label", func(t *testing.T){
+		p := &Provider{
+			log:       logrus.New(),
+		}
+
+		got, err := p.IsSpot(context.Background(), &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			SpotLabelKey: SpotLabelVal,
+		}}})
+
+		require.NoError(t, err)
+		require.True(t, got)
 	})
 }

@@ -35,7 +35,7 @@ func GetProvider(ctx context.Context, log logrus.FieldLogger, clientset kubernet
 		return kops.New(log.WithField("provider", kops.Name), clientset)
 	}
 
-	if cfg.Provider == aks.Name {
+	if cfg.Provider == aks.Name || cfg.AKS != nil {
 		return aks.New(log.WithField("provider", aks.Name))
 	}
 
