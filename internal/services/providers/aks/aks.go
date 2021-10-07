@@ -86,7 +86,7 @@ func (p *Provider) clusterAutodiscovery(ctx context.Context) (*config.AKS, error
 }
 
 func failedAutodiscovery(err error, envVar string) error {
-	return fmt.Errorf("autodiscovering cluster metadata: %w\nProvide required %s environment variable", err, envVar)
+	return fmt.Errorf("autodiscovering cluster metadata: %w: provide required %s environment variable", err, envVar)
 }
 
 func (p *Provider) IsSpot(_ context.Context, node *corev1.Node) (bool, error) {

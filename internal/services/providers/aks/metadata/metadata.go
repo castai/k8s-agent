@@ -67,7 +67,7 @@ func (c *Client) GetSubscriptionID() (string, error) {
 
 func (c *Client) loadMetadata() {
 	metadata, err := getInstanceMetadata(context.Background())
-	if err == nil {
+	if err != nil {
 		c.log.Errorf("failed to retrieve instance metadata: %v", err)
 		return
 	}
