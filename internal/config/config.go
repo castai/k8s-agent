@@ -17,6 +17,7 @@ type Config struct {
 	GKE        *GKE
 	KOPS       *KOPS
 	AKS        *AKS
+	PprofPort  int
 }
 
 type Log struct {
@@ -96,6 +97,8 @@ func Get() Config {
 	_ = viper.BindEnv("aks.subscriptionid", "AKS_SUBSCRIPTION_ID")
 	_ = viper.BindEnv("aks.location", "AKS_LOCATION")
 	_ = viper.BindEnv("aks.noderesourcegroup", "AKS_NODE_RESOURCE_GROUP")
+
+	_ = viper.BindEnv("pprofport", "PPROF_PORT")
 
 	cfg = &Config{}
 	if err := viper.Unmarshal(&cfg); err != nil {

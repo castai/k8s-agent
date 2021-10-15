@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net/http"
+	_ "net/http/pprof"
 	"time"
 
 	castailog "castai-agent/pkg/log"
@@ -42,7 +44,7 @@ func main() {
 	castaiclient := castai.NewClient(logger, castai.NewDefaultClient())
 
 	log := logrus.WithFields(logrus.Fields{})
-	if err := run(signals.SetupSignalHandler(), castaiclient, logger); err != nil {
+	if err := run(signals.SetupSignalHandler(), castaiclient, logger, cfg.PprofPort); err != nil {
 		logErr := &logContextErr{}
 		if errors.As(err, &logErr) {
 			log = logger.WithFields(logErr.fields)
@@ -51,7 +53,7 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger) (reterr error) {
+func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger, pprofPort int) (reterr error) {
 
 	fields := logrus.Fields{}
 
@@ -108,6 +110,16 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger)
 	log = log.WithFields(fields)
 	log.Infof("cluster registered: %v", reg)
 
+	if pprofPort != 0 {
+		go func() {
+			addr := fmt.Sprintf(":%d", pprofPort)
+			log.Infof("starting pprof server on %s", addr)
+			if err := http.ListenAndServe(addr, http.DefaultServeMux); err != nil {
+				log.Errorf("failed to start pprof http server: %v", err)
+			}
+		}()
+	}
+
 	wait.Until(func() {
 		v, err := version.Get(log, clientset)
 		if err != nil {
@@ -118,7 +130,7 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger)
 		log = log.WithFields(fields)
 
 		f := informers.NewSharedInformerFactory(clientset, 0)
-		ctrl := controller.New(log, f, castaiclient, provider, reg.ClusterID, 15*time.Second, 30*time.Second, v, agentVersion)
+		ctrl := controller.New(log, f, castaiclient, provider, reg.ClusterID, 15*time.Second, 10*time.Minute, v, agentVersion)
 		f.Start(ctx.Done())
 		ctrl.Run(ctx)
 	}, 0, ctx.Done())

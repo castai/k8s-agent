@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/goleak"
+
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -29,7 +31,14 @@ import (
 	"castai-agent/pkg/labels"
 )
 
-func Test(t *testing.T) {
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(
+		m,
+		goleak.IgnoreTopFunction("k8s.io/klog/v2.(*loggingT).flushDaemon"),
+	)
+}
+
+func TestController_HappyPath(t *testing.T) {
 	mockctrl := gomock.NewController(t)
 	castaiclient := mock_castai.NewMockClient(mockctrl)
 	version := mock_version.NewMockInterface(mockctrl)
@@ -87,7 +96,9 @@ func Test(t *testing.T) {
 	provider.EXPECT().IsSpot(gomock.Any(), node).Return(true, nil)
 
 	f := informers.NewSharedInformerFactory(clientset, 0)
-	ctrl := New(logrus.New(), f, castaiclient, provider, clusterID.String(), 15*time.Second, 100*time.Millisecond, version, agentVersion)
+	log := logrus.New()
+	log.SetLevel(logrus.DebugLevel)
+	ctrl := New(log, f, castaiclient, provider, clusterID.String(), 15*time.Second, 2*time.Second, version, agentVersion)
 	f.Start(ctx.Done())
 
 	go ctrl.Run(ctx)
