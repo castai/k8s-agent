@@ -35,6 +35,7 @@ func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(
 		m,
 		goleak.IgnoreTopFunction("k8s.io/klog/v2.(*loggingT).flushDaemon"),
+		goleak.IgnoreTopFunction("k8s.io/client-go/util/workqueue.(*Type).updateUnfinishedWorkLoop"),
 	)
 }
 
