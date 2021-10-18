@@ -44,7 +44,7 @@ jobs:
           CGO_ENABLED: 0
 
       - name: Test
-        run: go test ./...
+        run: go test -race ./...
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1

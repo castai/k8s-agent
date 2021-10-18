@@ -3,7 +3,7 @@ package controller
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"reflect"
 	"regexp"
 	"sync"
@@ -44,9 +44,12 @@ type Controller struct {
 	prepDuration time.Duration
 	informers    map[reflect.Type]cache.SharedInformer
 
-	delta        *delta
-	mu           sync.Mutex
-	spotCache    map[string]bool
+	delta   *delta
+	deltaMu sync.Mutex
+
+	spotCache   map[string]bool
+	spotCacheMu sync.Mutex
+
 	agentVersion *config.AgentVersion
 }
 
@@ -94,17 +97,17 @@ func New(
 		agentVersion: agentVersion,
 	}
 
+	return c
+}
+
+func (c *Controller) registerEventHandlers() {
 	for typ, informer := range c.informers {
 		typ := typ
 		informer := informer
-		log := log.WithField("informer", typ.String())
-
+		log := c.log.WithField("informer", typ.String())
 		h := c.createEventHandlers(log, typ)
-
 		informer.AddEventHandler(h)
 	}
-
-	return c
 }
 
 func (c *Controller) createEventHandlers(log logrus.FieldLogger, typ reflect.Type) cache.ResourceEventHandler {
@@ -181,6 +184,9 @@ func (c *Controller) nodeAddHandler(log logrus.FieldLogger, e event, obj interfa
 		return
 	}
 
+	c.spotCacheMu.Lock()
+	defer c.spotCacheMu.Unlock()
+
 	spot, ok := c.spotCache[node.Name]
 	if !ok {
 		var err error
@@ -208,7 +214,9 @@ func (c *Controller) nodeDeleteHandler(log logrus.FieldLogger, e event, obj inte
 		return
 	}
 
+	c.spotCacheMu.Lock()
 	delete(c.spotCache, node.Name)
+	c.spotCacheMu.Unlock()
 
 	next(log, e, node)
 }
@@ -226,6 +234,8 @@ func (c *Controller) genericHandler(
 	}
 
 	cleanObj(obj)
+
+	c.log.Debugf("generic handler called: %s: %s", e, reflect.TypeOf(obj))
 
 	c.queue.Add(&item{
 		obj:   obj.(runtime.Object),
@@ -306,10 +316,13 @@ func (c *Controller) Run(ctx context.Context) {
 		syncs = append(syncs, informer.HasSynced)
 	}
 
+	waitStartedAt := time.Now()
+	c.log.Info("waiting for informers cache to sync")
 	if !cache.WaitForCacheSync(ctx.Done(), syncs...) {
-		c.log.Errorf("failed to sync")
+		c.log.Error("failed to sync")
 		return
 	}
+	c.log.Infof("informers cache synced after %v", time.Now().Sub(waitStartedAt))
 
 	go func() {
 		const dur = 15 * time.Second
@@ -334,8 +347,12 @@ func (c *Controller) Run(ctx context.Context) {
 
 	go func() {
 		if err := c.collectInitialSnapshot(ctx); err != nil {
-			c.log.Errorf("error while collecting initial snapshot: %v", err)
+			// Crash agent in case it's not able to collect full snapshot from informers cache.
+			c.log.Fatalf("error while collecting initial snapshot: %v", err)
 		}
+
+		// At this point we can register informer event handlers for delta updates.
+		c.registerEventHandlers()
 
 		c.log.Infof("sending cluster deltas every %s", c.interval)
 		wait.Until(func() {
@@ -352,41 +369,47 @@ func (c *Controller) Run(ctx context.Context) {
 }
 
 // collectInitialSnapshot is used to add a time buffer to collect the initial snapshot which is larger than periodic
-// delta because it contains a significant portion of the Kubernetes state. The function has multiple exit points:
-// 	1. Exits when the workqueue.Interface reports queue length of 0.
-//	2. The deadline of prepDuration has expired.
+// delta because it contains a significant portion of the Kubernetes state.
 func (c *Controller) collectInitialSnapshot(ctx context.Context) error {
 	c.log.Info("collecting initial cluster snapshot")
-	start := time.Now().UTC()
-	deadline := start.Add(c.prepDuration)
+
+	startedAt := time.Now()
+
+	ctx, cancel := context.WithTimeout(ctx, c.prepDuration)
+	defer cancel()
+
+	// Collect initial state from cached informers and push to deltas queue.
+	for objType, informer := range c.informers {
+		items := informer.GetStore().List()
+		switch objType {
+		case reflect.TypeOf(&corev1.Node{}):
+			for _, item := range items {
+				c.nodeAddHandler(c.log, eventAdd, item, func(log logrus.FieldLogger, event event, obj interface{}) {
+					c.genericHandler(log, objType, event, obj)
+				})
+			}
+		default:
+			for _, item := range items {
+				c.genericHandler(c.log, objType, eventAdd, item)
+			}
+		}
+	}
 
 	cond := func() (done bool, err error) {
-		defer func() {
-			if !done {
-				return
-			}
-			c.log.Infof("done waiting for initial cluster snapshot collection after %v", time.Now().UTC().Sub(start))
-		}()
-
 		queueLen := c.queue.Len()
 		log := c.log.WithField("queue_length", queueLen)
 		log.Debug("waiting until initial queue empty")
 
 		if queueLen == 0 {
-			log.Debug("initial workqueue is empty")
-			return true, nil
-		}
-
-		if time.Now().UTC().After(deadline) {
-			log.Debug("initial cluster snapshot collection deadline reached")
+			c.log.Infof("done waiting for initial cluster snapshot collection after %v", time.Now().Sub(startedAt))
 			return true, nil
 		}
 
 		return false, nil
 	}
 
-	if err := wait.PollImmediateUntil(time.Second, cond, ctx.Done()); err != nil && !errors.Is(err, wait.ErrWaitTimeout) {
-		return err
+	if err := wait.PollImmediateUntil(time.Second, cond, ctx.Done()); err != nil {
+		return fmt.Errorf("waiting for initial snapshot collection: %w", err)
 	}
 	return nil
 }
@@ -410,14 +433,14 @@ func (c *Controller) processItem(i interface{}) {
 		return
 	}
 
-	c.mu.Lock()
+	c.deltaMu.Lock()
 	c.delta.add(di)
-	c.mu.Unlock()
+	c.deltaMu.Unlock()
 }
 
 func (c *Controller) send(ctx context.Context) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.deltaMu.Lock()
+	defer c.deltaMu.Unlock()
 
 	if err := c.castaiclient.SendDelta(ctx, c.clusterID, c.delta.toCASTAIRequest()); err != nil {
 		c.log.Errorf("failed sending delta: %v", err)
