@@ -130,7 +130,18 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger,
 		log = log.WithFields(fields)
 
 		f := informers.NewSharedInformerFactory(clientset, 0)
-		ctrl := controller.New(log, f, castaiclient, provider, reg.ClusterID, 15*time.Second, 10*time.Minute, v, agentVersion)
+		ctrl := controller.New(
+			log,
+			f,
+			castaiclient,
+			provider,
+			reg.ClusterID,
+			15*time.Second,
+			10*time.Minute,
+			30*time.Second,
+			v,
+			agentVersion,
+		)
 		f.Start(ctx.Done())
 		ctrl.Run(ctx)
 	}, 0, ctx.Done())
