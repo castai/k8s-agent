@@ -35,14 +35,15 @@ var (
 )
 
 type Controller struct {
-	log          logrus.FieldLogger
-	clusterID    string
-	castaiclient castai.Client
-	provider     types.Provider
-	queue        workqueue.Interface
-	interval     time.Duration
-	prepDuration time.Duration
-	informers    map[reflect.Type]cache.SharedInformer
+	log                  logrus.FieldLogger
+	clusterID            string
+	castaiclient         castai.Client
+	provider             types.Provider
+	queue                workqueue.Interface
+	interval             time.Duration
+	prepDuration         time.Duration
+	initialSleepDuration time.Duration
+	informers            map[reflect.Type]cache.SharedInformer
 
 	delta   *delta
 	deltaMu sync.Mutex
@@ -61,6 +62,7 @@ func New(
 	clusterID string,
 	interval time.Duration,
 	prepDuration time.Duration,
+	initialSleepDuration time.Duration,
 	v version.Interface,
 	agentVersion *config.AgentVersion,
 ) *Controller {
@@ -84,18 +86,21 @@ func New(
 	}
 
 	c := &Controller{
-		log:          log,
-		clusterID:    clusterID,
-		castaiclient: castaiclient,
-		provider:     provider,
-		interval:     interval,
-		prepDuration: prepDuration,
-		delta:        newDelta(log, clusterID, v.Full()),
-		spotCache:    map[string]bool{},
-		queue:        workqueue.NewNamed("castai-agent"),
-		informers:    typeInformerMap,
-		agentVersion: agentVersion,
+		log:                  log,
+		clusterID:            clusterID,
+		castaiclient:         castaiclient,
+		provider:             provider,
+		interval:             interval,
+		prepDuration:         prepDuration,
+		initialSleepDuration: initialSleepDuration,
+		delta:                newDelta(log, clusterID, v.Full()),
+		spotCache:            map[string]bool{},
+		queue:                workqueue.NewNamed("castai-agent"),
+		informers:            typeInformerMap,
+		agentVersion:         agentVersion,
 	}
+
+	c.registerEventHandlers()
 
 	return c
 }
@@ -351,8 +356,10 @@ func (c *Controller) Run(ctx context.Context) {
 			c.log.Fatalf("error while collecting initial snapshot: %v", err)
 		}
 
-		// At this point we can register informer event handlers for delta updates.
-		c.registerEventHandlers()
+		// Since both initial snapshot collection and event handlers writes to the same delta queue add
+		// some sleep to prevent sending few large deltas on initial agent startup.
+		c.log.Infof("sleeping for %s before starting to send cluster deltas", c.initialSleepDuration)
+		time.Sleep(c.initialSleepDuration)
 
 		c.log.Infof("sending cluster deltas every %s", c.interval)
 		wait.Until(func() {
