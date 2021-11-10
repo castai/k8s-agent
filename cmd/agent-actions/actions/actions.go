@@ -66,7 +66,7 @@ func (s *service) Run(ctx context.Context) {
 					return
 				}
 
-				s.log.Error("cycle failed: %v", err)
+				s.log.Errorf("cycle failed: %v", err)
 				continue
 			}
 		case <-ctx.Done():
