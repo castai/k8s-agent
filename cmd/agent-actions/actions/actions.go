@@ -59,26 +59,41 @@ func (s *service) Run(ctx context.Context) {
 	for {
 		select {
 		case <-time.After(s.cfg.PollInterval):
-			s.log.Debug("polling actions")
-			actions, err := s.pollActions(ctx)
+			err := s.doWork(ctx)
 			if err != nil {
-				// Skip deadline errors. These are expected for long polling requests.
-				if !errors.Is(err, context.DeadlineExceeded) {
-					s.log.Errorf("polling actions: %v", err)
-				} else {
-					s.log.Debugf("no actions returned in given duration=%s, will continue", s.cfg.PollTimeout)
+				if errors.Is(err, context.Canceled) {
+					s.log.Debug("actions service stopped")
+					return
 				}
+
+				s.log.Error("cycle failed: %v", err)
 				continue
 			}
-
-			s.log.Debugf("received actions, len=%d", len(actions))
-			if err := s.handleActions(ctx, actions); err != nil {
-				s.log.Errorf("handling actions: %v", err)
-			}
 		case <-ctx.Done():
+			s.log.Debug("actions service stopped")
 			return
 		}
 	}
+}
+
+func (s *service) doWork(ctx context.Context) error {
+	s.log.Debug("polling actions")
+	actions, err := s.pollActions(ctx)
+	if err != nil {
+		// Skip deadline errors. These are expected for long polling requests.
+		if errors.Is(err, context.DeadlineExceeded) {
+			s.log.Debugf("no actions returned in given duration=%s, will continue", s.cfg.PollTimeout)
+			return nil
+		}
+
+		return fmt.Errorf("polling actions: %w", err)
+	}
+
+	s.log.Debugf("received actions, len=%d", len(actions))
+	if err := s.handleActions(ctx, actions); err != nil {
+		return fmt.Errorf("handling actions: %w", err)
+	}
+	return nil
 }
 
 func (s *service) pollActions(ctx context.Context) ([]*telemetry.AgentAction, error) {
@@ -93,17 +108,17 @@ func (s *service) pollActions(ctx context.Context) ([]*telemetry.AgentAction, er
 
 func (s *service) handleActions(ctx context.Context, actions []*telemetry.AgentAction) error {
 	for _, action := range actions {
-		var actionErrors []error
+		var err error
 		handleErr := s.handleAction(ctx, action)
 		ackErr := s.ackAction(ctx, action, handleErr)
 		if handleErr != nil {
-			actionErrors = append(actionErrors, handleErr)
+			err = handleErr
 		}
 		if ackErr != nil {
-			actionErrors = append(actionErrors, ackErr)
+			err = fmt.Errorf("%v:%w", err, ackErr)
 		}
-		if len(actionErrors) > 0 {
-			return fmt.Errorf("action handling failed: %v", actionErrors)
+		if err != nil {
+			return fmt.Errorf("action handling failed: %w", err)
 		}
 	}
 
