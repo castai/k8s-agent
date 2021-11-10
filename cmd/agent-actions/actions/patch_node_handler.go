@@ -13,8 +13,9 @@ import (
 	"castai-agent/cmd/agent-actions/telemetry"
 )
 
-func newPatchNodeHandler(clientset kubernetes.Interface) ActionHandler {
+func newPatchNodeHandler(log logrus.FieldLogger, clientset kubernetes.Interface) ActionHandler {
 	return &patchNodeHandler{
+		log:       log,
 		clientset: clientset,
 	}
 }

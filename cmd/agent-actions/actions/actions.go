@@ -43,7 +43,7 @@ func NewService(
 		actionHandlers: map[telemetry.AgentActionType]ActionHandler{
 			telemetry.AgentActionTypeDeleteNode: newDeleteNodeHandler(log, clientset),
 			telemetry.AgentActionTypeDrainNode:  newDrainNodeHandler(log, clientset),
-			telemetry.AgentActionTypePatchNode:  newPatchNodeHandler(clientset),
+			telemetry.AgentActionTypePatchNode:  newPatchNodeHandler(log, clientset),
 		},
 	}
 }
