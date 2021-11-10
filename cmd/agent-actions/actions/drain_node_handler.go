@@ -60,12 +60,8 @@ func (h *drainNodeHandler) Handle(ctx context.Context, data []byte) error {
 
 	node, err := h.clientset.CoreV1().Nodes().Get(ctx, req.NodeName, metav1.GetOptions{})
 	if err != nil {
-		return err
-	}
-
-	if err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info("node not found, skip draining")
+			log.Info("node not found, skipping draining")
 			return nil
 		}
 		return err

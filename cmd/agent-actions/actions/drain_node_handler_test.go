@@ -55,7 +55,33 @@ func TestDrainNodeHandler(t *testing.T) {
 		r.True(apierrors.IsNotFound(err))
 	})
 
-	t.Run("fail to drain", func(t *testing.T) {
+	t.Run("skip drain when node not found", func(t *testing.T) {
+		nodeName := "node1"
+		podName := "pod1"
+		clientset := setupFakeClientWithNodePodEviction(nodeName, podName)
+		prependEvictionReaction(t, clientset, true)
+
+		h := drainNodeHandler{
+			log:       log,
+			clientset: clientset,
+			cfg:       drainNodeConfig{},
+		}
+
+		req := telemetry.AgentActionDrainNode{
+			NodeName:            "already-deleted-node",
+			DrainTimeoutSeconds: 1,
+			Force:               true,
+		}
+		reqData, _ := json.Marshal(req)
+
+		err := h.Handle(context.Background(), reqData)
+		r.NoError(err)
+
+		_, err = clientset.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+		r.NoError(err)
+	})
+
+	t.Run("fail to drain when internal pod eviction error occur", func(t *testing.T) {
 		nodeName := "node1"
 		podName := "pod1"
 		clientset := setupFakeClientWithNodePodEviction(nodeName, podName)
