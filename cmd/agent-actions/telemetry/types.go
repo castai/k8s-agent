@@ -34,7 +34,9 @@ type AgentAction struct {
 }
 
 type AgentActionDrainNode struct {
-	NodeName string `json:"nodeName"`
+	NodeName            string `json:"nodeName"`
+	DrainTimeoutSeconds int    `json:"drainTimeoutSeconds"`
+	Force               bool   `json:"force"`
 }
 
 type AgentActionDeleteNode struct {
@@ -52,4 +54,3 @@ type NodeTaint struct {
 	Value  string `json:"value"`
 	Effect string `json:"effect"`
 }
-

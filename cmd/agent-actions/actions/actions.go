@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/sirupsen/logrus"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 
 	"castai-agent/cmd/agent-actions/telemetry"
@@ -42,7 +42,7 @@ func NewService(
 		telemetryClient: telemetryClient,
 		actionHandlers: map[telemetry.AgentActionType]ActionHandler{
 			telemetry.AgentActionTypeDeleteNode: newDeleteNodeHandler(clientset),
-			telemetry.AgentActionTypeDrainNode:  newDrainNodeHandler(clientset),
+			telemetry.AgentActionTypeDrainNode:  newDrainNodeHandler(log, clientset),
 			telemetry.AgentActionTypePatchNode:  newPatchNodeHandler(clientset),
 		},
 	}
@@ -125,26 +125,25 @@ func (s *service) handleAction(ctx context.Context, action *telemetry.AgentActio
 
 func (s *service) ackAction(ctx context.Context, action *telemetry.AgentAction, handleErr error) error {
 	s.log.Infof("ack action, id=%s, type=%s", action.ID, action.Type)
-	backoffOpts := wait.Backoff{
-		Duration: s.cfg.AckRetryWait,
-		Factor:   1,
-		Steps:    s.cfg.AckRetriesCount,
-	}
-	return wait.ExponentialBackoffWithContext(ctx, backoffOpts, func() (done bool, err error) {
+
+	return backoff.RetryNotify(func() error {
 		ctx, cancel := context.WithTimeout(ctx, s.cfg.AckTimeout)
 		defer cancel()
-
-		err = s.telemetryClient.AckActions(ctx, s.cfg.ClusterID, []*telemetry.AgentActionAck{
+		return s.telemetryClient.AckActions(ctx, s.cfg.ClusterID, []*telemetry.AgentActionAck{
 			{
 				ID:    action.ID,
 				Error: getHandlerError(handleErr),
 			},
 		})
+	}, backoff.WithContext(
+		backoff.WithMaxRetries(
+			backoff.NewConstantBackOff(s.cfg.AckRetryWait), uint64(s.cfg.AckRetriesCount),
+		),
+		ctx,
+	), func(err error, duration time.Duration) {
 		if err != nil {
 			s.log.Debugf("ack failed, will retry: %v", err)
-			return false, err
 		}
-		return true, nil
 	})
 }
 
