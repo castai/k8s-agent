@@ -8,14 +8,13 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
 	"castai-agent/cmd/agent-actions/telemetry"
 )
 
-func TestDeleteNodeHandler(t *testing.T) {
+func TestPatchNodeHandler(t *testing.T) {
 	r := require.New(t)
 
 	log := logrus.New()
@@ -29,31 +28,40 @@ func TestDeleteNodeHandler(t *testing.T) {
 	}
 	clientset := fake.NewSimpleClientset(node)
 
-	t.Run("delete successfully", func(t *testing.T) {
-		h := deleteNodeHandler{
+	t.Run("patch successfully", func(t *testing.T) {
+		h := patchNodeHandler{
 			log:       log,
 			clientset: clientset,
-			cfg:       deleteNodeConfig{},
 		}
 
-		req := telemetry.AgentActionDeleteNode{
+		req := telemetry.AgentActionPatchNode{
 			NodeName: "node1",
+			Labels: map[string]string{
+				"label": "ok",
+			},
+			Taints: []telemetry.NodeTaint{
+				{
+					Key:    "taint",
+					Value:  "ok2",
+					Effect: "NoSchedule",
+				},
+			},
 		}
 		reqData, _ := json.Marshal(req)
 
 		err := h.Handle(context.Background(), reqData)
 		r.NoError(err)
 
-		_, err = clientset.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
-		r.Error(err)
-		r.True(apierrors.IsNotFound(err))
+		n, err := clientset.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+		r.NoError(err)
+		r.Equal("ok", n.Labels["label"])
+		r.Equal([]v1.Taint{{Key: "taint", Value: "ok2", Effect: "NoSchedule", TimeAdded: (*metav1.Time)(nil)}}, n.Spec.Taints)
 	})
 
-	t.Run("skip delete when node not found", func(t *testing.T) {
-		h := deleteNodeHandler{
+	t.Run("skip patch when node not found", func(t *testing.T) {
+		h := patchNodeHandler{
 			log:       log,
 			clientset: clientset,
-			cfg:       deleteNodeConfig{},
 		}
 
 		req := telemetry.AgentActionDeleteNode{
