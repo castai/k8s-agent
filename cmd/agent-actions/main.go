@@ -15,7 +15,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	"castai-agent/cmd/agent-actions/actions"
-	"castai-agent/cmd/agent-actions/castai"
 	"castai-agent/cmd/agent-actions/config"
 	"castai-agent/cmd/agent-actions/telemetry"
 	"castai-agent/cmd/agent-actions/version"
@@ -38,10 +37,9 @@ func main() {
 	logger.SetLevel(logrus.Level(cfg.Log.Level))
 
 	telemetryClient := telemetry.NewClient(logger, telemetry.NewDefaultClient(cfg.API.TelemetryURL, cfg.API.Key, logLevel))
-	castaiclient := castai.NewClient(logger, castai.NewDefaultClient(cfg.API.URL, cfg.API.Key, logLevel))
 
 	log := logrus.WithFields(logrus.Fields{})
-	if err := run(signals.SetupSignalHandler(), castaiclient, telemetryClient, logger, cfg); err != nil {
+	if err := run(signals.SetupSignalHandler(), telemetryClient, logger, cfg); err != nil {
 		logErr := &logContextErr{}
 		if errors.As(err, &logErr) {
 			log = logger.WithFields(logErr.fields)
@@ -50,7 +48,7 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, castaiclient castai.Client, telemetryClient telemetry.Client, logger *logrus.Logger, cfg config.Config) (reterr error) {
+func run(ctx context.Context, telemetryClient telemetry.Client, logger *logrus.Logger, cfg config.Config) (reterr error) {
 	fields := logrus.Fields{}
 
 	defer func() {
