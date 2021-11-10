@@ -21,15 +21,15 @@ func TestDeleteNodeHandler(t *testing.T) {
 	log := logrus.New()
 	log.SetLevel(logrus.DebugLevel)
 
-	nodeName := "node1"
-	node := &v1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: nodeName,
-		},
-	}
-	clientset := fake.NewSimpleClientset(node)
-
 	t.Run("delete successfully", func(t *testing.T) {
+		nodeName := "node1"
+		node := &v1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: nodeName,
+			},
+		}
+		clientset := fake.NewSimpleClientset(node)
+
 		h := deleteNodeHandler{
 			log:       log,
 			clientset: clientset,
@@ -50,6 +50,14 @@ func TestDeleteNodeHandler(t *testing.T) {
 	})
 
 	t.Run("skip delete when node not found", func(t *testing.T) {
+		nodeName := "node1"
+		node := &v1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: nodeName,
+			},
+		}
+		clientset := fake.NewSimpleClientset(node)
+
 		h := deleteNodeHandler{
 			log:       log,
 			clientset: clientset,

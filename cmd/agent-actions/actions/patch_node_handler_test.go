@@ -20,15 +20,15 @@ func TestPatchNodeHandler(t *testing.T) {
 	log := logrus.New()
 	log.SetLevel(logrus.DebugLevel)
 
-	nodeName := "node1"
-	node := &v1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: nodeName,
-		},
-	}
-	clientset := fake.NewSimpleClientset(node)
-
 	t.Run("patch successfully", func(t *testing.T) {
+		nodeName := "node1"
+		node := &v1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: nodeName,
+			},
+		}
+		clientset := fake.NewSimpleClientset(node)
+
 		h := patchNodeHandler{
 			log:       log,
 			clientset: clientset,
@@ -59,6 +59,14 @@ func TestPatchNodeHandler(t *testing.T) {
 	})
 
 	t.Run("skip patch when node not found", func(t *testing.T) {
+		nodeName := "node1"
+		node := &v1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: nodeName,
+			},
+		}
+		clientset := fake.NewSimpleClientset(node)
+
 		h := patchNodeHandler{
 			log:       log,
 			clientset: clientset,
