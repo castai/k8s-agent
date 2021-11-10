@@ -5,7 +5,6 @@ go 1.16
 require (
 	cloud.google.com/go v0.92.3
 	github.com/aws/aws-sdk-go v1.37.23
-	github.com/cenkalti/backoff/v4 v4.1.1
 	github.com/go-resty/resty/v2 v2.5.0
 	github.com/golang/mock v1.6.0
 	github.com/google/uuid v1.1.2

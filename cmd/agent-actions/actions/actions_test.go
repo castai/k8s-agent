@@ -13,16 +13,19 @@ import (
 	"castai-agent/cmd/agent-actions/telemetry"
 )
 
-func TestActions(t *testing.T)  {
+func TestActions(t *testing.T) {
 	r := require.New(t)
 
 	log := logrus.New()
 	log.SetLevel(logrus.DebugLevel)
 	cfg := Config{
-		PollInterval: 1 * time.Millisecond,
-		ClusterID:    uuid.New().String(),
+		PollInterval:    1 * time.Millisecond,
+		PollTimeout:     100 * time.Millisecond,
+		AckTimeout:      1 * time.Second,
+		AckRetriesCount: 3,
+		AckRetryWait:    1 * time.Millisecond,
+		ClusterID:       uuid.New().String(),
 	}
-
 
 	newTestService := func(handler ActionHandler, telemetryClient telemetry.Client) Service {
 		svc := NewService(log, cfg, nil, telemetryClient)
@@ -50,7 +53,7 @@ func TestActions(t *testing.T)  {
 		telemetryClient := newMockTelemetryClient(apiActions)
 		handler := &mockAgentActionHandler{}
 		svc := newTestService(handler, telemetryClient)
-		ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
 		defer func() {
 			cancel()
 			r.Len(telemetryClient.acks, 2)
@@ -72,7 +75,7 @@ func TestActions(t *testing.T)  {
 		telemetryClient := newMockTelemetryClient(apiActions)
 		handler := &mockAgentActionHandler{err: errors.New("ups")}
 		svc := newTestService(handler, telemetryClient)
-		ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
 		defer func() {
 			cancel()
 			r.Empty(telemetryClient.actions)
@@ -98,7 +101,7 @@ func newMockTelemetryClient(actions []*telemetry.AgentAction) *mockTelemetryClie
 
 type mockTelemetryClient struct {
 	actions []*telemetry.AgentAction
-	acks []*telemetry.AgentActionAck
+	acks    []*telemetry.AgentActionAck
 }
 
 func (m *mockTelemetryClient) GetActions(ctx context.Context, clusterID string) ([]*telemetry.AgentAction, error) {
@@ -112,7 +115,7 @@ func (m *mockTelemetryClient) AckActions(ctx context.Context, clusterID string, 
 	return nil
 }
 
-func (m *mockTelemetryClient) removeAckedActions(ack []*telemetry.AgentActionAck)  {
+func (m *mockTelemetryClient) removeAckedActions(ack []*telemetry.AgentActionAck) {
 	var remaining []*telemetry.AgentAction
 	isAcked := func(id string) bool {
 		for _, actionAck := range ack {

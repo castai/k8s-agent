@@ -10,14 +10,14 @@ import (
 	"castai-agent/cmd/agent-actions/telemetry"
 )
 
-func newDeleteNodeHandler(clientset *kubernetes.Clientset) ActionHandler {
+func newDeleteNodeHandler(clientset kubernetes.Interface) ActionHandler {
 	return &deleteNodeHandler{
 		clientset: clientset,
 	}
 }
 
 type deleteNodeHandler struct {
-	clientset *kubernetes.Clientset
+	clientset kubernetes.Interface
 }
 
 func (d *deleteNodeHandler) Handle(ctx context.Context, data []byte) error {

@@ -7,9 +7,8 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
-
-	"github.com/cenkalti/backoff/v4"
 
 	"castai-agent/cmd/agent-actions/telemetry"
 )
@@ -125,31 +124,34 @@ func (s *service) handleAction(ctx context.Context, action *telemetry.AgentActio
 }
 
 func (s *service) ackAction(ctx context.Context, action *telemetry.AgentAction, handleErr error) error {
-	ctx, cancel := context.WithTimeout(ctx, s.cfg.AckTimeout)
-	defer cancel()
-
 	s.log.Infof("ack action, id=%s, type=%s", action.ID, action.Type)
-	var err *string
-	if handleErr != nil {
-		handleErrStr := handleErr.Error()
-		err = &handleErrStr
+	backoffOpts := wait.Backoff{
+		Duration: s.cfg.AckRetryWait,
+		Factor:   1,
+		Steps:    s.cfg.AckRetriesCount,
 	}
+	return wait.ExponentialBackoffWithContext(ctx, backoffOpts, func() (done bool, err error) {
+		ctx, cancel := context.WithTimeout(ctx, s.cfg.AckTimeout)
+		defer cancel()
 
-	return backoff.RetryNotify(func() error {
-		return s.telemetryClient.AckActions(ctx, s.cfg.ClusterID, []*telemetry.AgentActionAck{
+		err = s.telemetryClient.AckActions(ctx, s.cfg.ClusterID, []*telemetry.AgentActionAck{
 			{
 				ID:    action.ID,
-				Error: err,
+				Error: getHandlerError(handleErr),
 			},
 		})
-	}, backoff.WithContext(
-		backoff.WithMaxRetries(
-			backoff.NewConstantBackOff(s.cfg.AckRetryWait), uint64(s.cfg.AckRetriesCount),
-		),
-		ctx,
-	), func(err error, duration time.Duration) {
 		if err != nil {
 			s.log.Debugf("ack failed, will retry: %v", err)
+			return false, err
 		}
+		return true, nil
 	})
+}
+
+func getHandlerError(err error) *string {
+	if err != nil {
+		str := err.Error()
+		return &str
+	}
+	return nil
 }

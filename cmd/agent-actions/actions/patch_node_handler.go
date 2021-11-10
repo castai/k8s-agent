@@ -10,14 +10,14 @@ import (
 	"castai-agent/cmd/agent-actions/telemetry"
 )
 
-func newPatchNodeHandler(clientset *kubernetes.Clientset) ActionHandler {
+func newPatchNodeHandler(clientset kubernetes.Interface) ActionHandler {
 	return &patchNodeHandler{
 		clientset: clientset,
 	}
 }
 
 type patchNodeHandler struct {
-	clientset *kubernetes.Clientset
+	clientset kubernetes.Interface
 }
 
 func (d *patchNodeHandler) Handle(ctx context.Context, data []byte) error {

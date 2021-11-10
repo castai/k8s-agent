@@ -10,14 +10,14 @@ import (
 	"castai-agent/cmd/agent-actions/telemetry"
 )
 
-func newDrainNodeHandler(clientset *kubernetes.Clientset) ActionHandler {
+func newDrainNodeHandler(clientset kubernetes.Interface) ActionHandler {
 	return &drainNodeHandler{
 		clientset: clientset,
 	}
 }
 
 type drainNodeHandler struct {
-	clientset *kubernetes.Clientset
+	clientset kubernetes.Interface
 }
 
 func (d *drainNodeHandler) Handle(ctx context.Context, data []byte) error {
