@@ -17,7 +17,6 @@ import (
 	"castai-agent/cmd/agent-actions/actions"
 	"castai-agent/cmd/agent-actions/castai"
 	"castai-agent/cmd/agent-actions/config"
-	castailog "castai-agent/cmd/agent-actions/log"
 	"castai-agent/cmd/agent-actions/telemetry"
 	"castai-agent/cmd/agent-actions/version"
 )
@@ -84,11 +83,6 @@ func run(ctx context.Context, castaiclient castai.Client, telemetryClient teleme
 	if err != nil {
 		return err
 	}
-
-	castailog.SetupLogExporter(logger, castaiclient, castailog.Config{
-		ClusterID:          cfg.ClusterID,
-		MsgSendTimeoutSecs: LogExporterSendTimeoutSeconds,
-	})
 
 	fields["cluster_id"] = cfg.ClusterID
 	log = log.WithFields(fields)
