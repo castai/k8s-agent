@@ -27,8 +27,6 @@ var (
 	Version   = "local"
 )
 
-const LogExporterSendTimeoutSeconds = 15
-
 func main() {
 	cfg := config.Get()
 
