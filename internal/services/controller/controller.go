@@ -35,15 +35,13 @@ var (
 )
 
 type Controller struct {
-	log                  logrus.FieldLogger
-	clusterID            string
-	castaiclient         castai.Client
-	provider             types.Provider
-	queue                workqueue.Interface
-	interval             time.Duration
-	prepDuration         time.Duration
-	initialSleepDuration time.Duration
-	informers            map[reflect.Type]cache.SharedInformer
+	log          logrus.FieldLogger
+	clusterID    string
+	castaiclient castai.Client
+	provider     types.Provider
+	queue        workqueue.Interface
+	cfg          *config.Controller
+	informers    map[reflect.Type]cache.SharedInformer
 
 	delta   *delta
 	deltaMu sync.Mutex
@@ -57,9 +55,7 @@ func New(
 	castaiclient castai.Client,
 	provider types.Provider,
 	clusterID string,
-	interval time.Duration,
-	prepDuration time.Duration,
-	initialSleepDuration time.Duration,
+	cfg *config.Controller,
 	v version.Interface,
 	agentVersion *config.AgentVersion,
 ) *Controller {
@@ -83,17 +79,15 @@ func New(
 	}
 
 	c := &Controller{
-		log:                  log,
-		clusterID:            clusterID,
-		castaiclient:         castaiclient,
-		provider:             provider,
-		interval:             interval,
-		prepDuration:         prepDuration,
-		initialSleepDuration: initialSleepDuration,
-		delta:                newDelta(log, clusterID, v.Full()),
-		queue:                workqueue.NewNamed("castai-agent"),
-		informers:            typeInformerMap,
-		agentVersion:         agentVersion,
+		log:          log,
+		clusterID:    clusterID,
+		castaiclient: castaiclient,
+		provider:     provider,
+		cfg:          cfg,
+		delta:        newDelta(log, clusterID, v.Full()),
+		queue:        workqueue.NewNamed("castai-agent"),
+		informers:    typeInformerMap,
+		agentVersion: agentVersion,
 	}
 
 	c.registerEventHandlers()
@@ -342,13 +336,13 @@ func (c *Controller) Run(ctx context.Context) {
 
 		// Since both initial snapshot collection and event handlers writes to the same delta queue add
 		// some sleep to prevent sending few large deltas on initial agent startup.
-		c.log.Infof("sleeping for %s before starting to send cluster deltas", c.initialSleepDuration)
-		time.Sleep(c.initialSleepDuration)
+		c.log.Infof("sleeping for %s before starting to send cluster deltas", c.cfg.InitialSleepDuration)
+		time.Sleep(c.cfg.InitialSleepDuration)
 
-		c.log.Infof("sending cluster deltas every %s", c.interval)
+		c.log.Infof("sending cluster deltas every %s", c.cfg.Interval)
 		wait.Until(func() {
 			c.send(ctx)
-		}, c.interval, ctx.Done())
+		}, c.cfg.Interval, ctx.Done())
 	}()
 
 	go func() {
@@ -366,7 +360,7 @@ func (c *Controller) collectInitialSnapshot(ctx context.Context) error {
 
 	startedAt := time.Now()
 
-	ctx, cancel := context.WithTimeout(ctx, c.prepDuration)
+	ctx, cancel := context.WithTimeout(ctx, c.cfg.PrepTimeout)
 	defer cancel()
 
 	// Collect initial state from cached informers and push to deltas queue.

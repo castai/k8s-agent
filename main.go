@@ -33,12 +33,7 @@ var (
 	Version   = "local"
 )
 
-const (
-	DeltaSendInterval            = 15 * time.Second
-	InitialSnapshotWaitTimeout   = 10 * time.Minute
-	InitialSnapshotSleepDuration = 30 * time.Second
-	LogExporterSendTimeout       = 15 * time.Second
-)
+const LogExporterSendTimeout = 15 * time.Second
 
 func main() {
 	cfg := config.Get()
@@ -49,7 +44,7 @@ func main() {
 	castaiclient := castai.NewClient(logger, castai.NewDefaultRestyClient(), castai.NewDefaultDeltaHTTPClient())
 
 	log := logrus.WithFields(logrus.Fields{})
-	if err := run(signals.SetupSignalHandler(), castaiclient, logger, cfg.PprofPort); err != nil {
+	if err := run(signals.SetupSignalHandler(), castaiclient, logger, cfg); err != nil {
 		logErr := &logContextErr{}
 		if errors.As(err, &logErr) {
 			log = logger.WithFields(logErr.fields)
@@ -58,7 +53,7 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger, pprofPort int) (reterr error) {
+func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger, cfg config.Config) (reterr error) {
 	fields := logrus.Fields{}
 
 	defer func() {
@@ -114,9 +109,9 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger,
 	log = log.WithFields(fields)
 	log.Infof("cluster registered: %v", reg)
 
-	if pprofPort != 0 {
+	if cfg.PprofPort != 0 {
 		go func() {
-			addr := fmt.Sprintf(":%d", pprofPort)
+			addr := fmt.Sprintf(":%d", cfg.PprofPort)
 			log.Infof("starting pprof server on %s", addr)
 			if err := http.ListenAndServe(addr, http.DefaultServeMux); err != nil {
 				log.Errorf("failed to start pprof http server: %v", err)
@@ -143,9 +138,7 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger,
 			castaiclient,
 			provider,
 			reg.ClusterID,
-			DeltaSendInterval,
-			InitialSnapshotWaitTimeout,
-			InitialSnapshotSleepDuration,
+			&cfg.Controller,
 			v,
 			agentVersion,
 		)
