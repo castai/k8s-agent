@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -65,7 +66,13 @@ func NewDefaultClient() *resty.Client {
 	cfg := config.Get().API
 
 	client := resty.New()
-	client.SetHostURL(fmt.Sprintf("https://%s", cfg.URL))
+
+	apiURL := cfg.URL
+	if !strings.HasPrefix(apiURL, "https://") && !strings.HasPrefix(apiURL, "http://") {
+		apiURL = fmt.Sprintf("https://%s", apiURL)
+	}
+
+	client.SetHostURL(apiURL)
 	client.SetRetryCount(defaultRetryCount)
 	client.SetTimeout(defaultTimeout)
 	client.Header.Set(hdrAPIKey, cfg.Key)
