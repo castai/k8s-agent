@@ -90,7 +90,7 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 
 	cfg := config.Get().API
 
-	uri, err := url.Parse(fmt.Sprintf("https://%s/v1/kubernetes/clusters/%s/agent-deltas", cfg.URL, clusterID))
+	uri, err := url.Parse(fmt.Sprintf("%s/v1/kubernetes/clusters/%s/agent-deltas", cfg.URL, clusterID))
 	if err != nil {
 		return fmt.Errorf("invalid url: %w", err)
 	}
