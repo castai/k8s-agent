@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -114,6 +115,10 @@ func Get() Config {
 	}
 	if cfg.API.URL == "" {
 		required("API_URL")
+	}
+
+	if !strings.HasPrefix(cfg.API.URL, "https://") && !strings.HasPrefix(cfg.API.URL, "http://") {
+		cfg.API.URL = fmt.Sprintf("https://%s", cfg.API.URL)
 	}
 
 	if cfg.CASTAI != nil {

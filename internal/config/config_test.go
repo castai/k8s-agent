@@ -9,7 +9,7 @@ import (
 
 func TestConfig(t *testing.T) {
 	require.NoError(t, os.Setenv("API_KEY", "abc"))
-	require.NoError(t, os.Setenv("API_URL", "cast.ai"))
+	require.NoError(t, os.Setenv("API_URL", "api.cast.ai"))
 
 	require.NoError(t, os.Setenv("KUBECONFIG", "~/.kube/config"))
 
@@ -22,7 +22,7 @@ func TestConfig(t *testing.T) {
 	cfg := Get()
 
 	require.Equal(t, "abc", cfg.API.Key)
-	require.Equal(t, "cast.ai", cfg.API.URL)
+	require.Equal(t, "https://api.cast.ai", cfg.API.URL)
 
 	require.Equal(t, "~/.kube/config", cfg.Kubeconfig)
 

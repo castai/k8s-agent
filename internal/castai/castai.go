@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -67,12 +66,7 @@ func NewDefaultClient() *resty.Client {
 
 	client := resty.New()
 
-	apiURL := cfg.URL
-	if !strings.HasPrefix(apiURL, "https://") && !strings.HasPrefix(apiURL, "http://") {
-		apiURL = fmt.Sprintf("https://%s", apiURL)
-	}
-
-	client.SetHostURL(apiURL)
+	client.SetHostURL(cfg.URL)
 	client.SetRetryCount(defaultRetryCount)
 	client.SetTimeout(defaultTimeout)
 	client.Header.Set(hdrAPIKey, cfg.Key)
@@ -90,7 +84,7 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 
 	cfg := config.Get().API
 
-	uri, err := url.Parse(fmt.Sprintf("https://%s/v1/kubernetes/clusters/%s/agent-deltas", cfg.URL, clusterID))
+	uri, err := url.Parse(fmt.Sprintf("%s/v1/kubernetes/clusters/%s/agent-deltas", cfg.URL, clusterID))
 	if err != nil {
 		return fmt.Errorf("invalid url: %w", err)
 	}
