@@ -91,7 +91,7 @@ func TestDelta(t *testing.T) {
 			},
 		},
 		{
-			name: "debounce: entirely remove added item when it is deleted",
+			name: "debounce: keep only delete event when an added item is deleted",
 			items: []*item{
 				{
 					obj:   pod1,
@@ -106,6 +106,13 @@ func TestDelta(t *testing.T) {
 				ClusterID:      clusterID,
 				ClusterVersion: version,
 				FullSnapshot:   true,
+				Items: []*castai.DeltaItem{
+					{
+						Event: castai.EventDelete,
+						Kind:  "Pod",
+						Data:  mustEncode(t, pod1),
+					},
+				},
 			},
 		},
 		{
@@ -198,7 +205,7 @@ func TestDelta(t *testing.T) {
 			require.Equal(t, clusterID, got.ClusterID)
 			require.Equal(t, version, got.ClusterVersion)
 			require.True(t, got.FullSnapshot)
-			require.Equal(t, len(got.Items), len(test.expected.Items))
+			require.Equal(t, len(test.expected.Items), len(got.Items))
 			for _, expectedItem := range test.expected.Items {
 				requireContains(t, got.Items, expectedItem)
 			}

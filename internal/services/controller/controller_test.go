@@ -107,7 +107,7 @@ func TestController_HappyPath(t *testing.T) {
 		clusterID.String(),
 		15*time.Second,
 		2*time.Second,
-		10 * time.Millisecond,
+		10*time.Millisecond,
 		version,
 		agentVersion,
 	)
