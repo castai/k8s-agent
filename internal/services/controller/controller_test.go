@@ -107,7 +107,7 @@ func TestController_HappyPath(t *testing.T) {
 		clusterID.String(),
 		15*time.Second,
 		2*time.Second,
-		10 * time.Millisecond,
+		10*time.Millisecond,
 		version,
 		agentVersion,
 	)
@@ -380,4 +380,120 @@ func TestEventHandlers(t *testing.T) {
 			Obj: pod,
 		})
 	})
+}
+
+func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
+	mockctrl := gomock.NewController(t)
+	castaiclient := mock_castai.NewMockClient(mockctrl)
+	version := mock_version.NewMockInterface(mockctrl)
+	provider := mock_types.NewMockProvider(mockctrl)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "pod1"}}
+	podData, err := encode(pod)
+	require.NoError(t, err)
+
+	clientset := fake.NewSimpleClientset()
+	f := informers.NewSharedInformerFactory(clientset, 0)
+
+	version.EXPECT().MinorInt().Return(19)
+	version.EXPECT().Full().Return("1.19+")
+
+	clusterID := uuid.New()
+
+	var invocations int64
+
+	// initial full snapshot
+	castaiclient.EXPECT().
+		SendDelta(gomock.Any(), clusterID.String(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
+			defer atomic.AddInt64(&invocations, 1)
+
+			require.Equal(t, clusterID, d.ClusterID)
+			require.Equal(t, "1.19+", d.ClusterVersion)
+			require.True(t, d.FullSnapshot)
+			require.Len(t, d.Items, 0)
+
+			clientset.CoreV1().Pods("default").Create(ctx, pod, metav1.CreateOptions{})
+
+			return nil
+		})
+
+	// first delta add pod - fail and trigger pod delete
+	castaiclient.EXPECT().
+		SendDelta(gomock.Any(), clusterID.String(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
+			defer atomic.AddInt64(&invocations, 1)
+
+			require.Equal(t, clusterID, d.ClusterID)
+			require.Equal(t, "1.19+", d.ClusterVersion)
+			require.False(t, d.FullSnapshot)
+			require.Len(t, d.Items, 1)
+
+			var actualValues []string
+			for _, item := range d.Items {
+				actualValues = append(actualValues, fmt.Sprintf("%s-%s-%s", item.Event, item.Kind, item.Data))
+			}
+
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%s", castai.EventAdd, "Pod", podData))
+
+			clientset.CoreV1().Pods("default").Delete(ctx, pod.Name, metav1.DeleteOptions{})
+
+			return fmt.Errorf("testError")
+		})
+
+	// second attempt to send data when pod delete is received
+	castaiclient.EXPECT().
+		SendDelta(gomock.Any(), clusterID.String(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
+			defer atomic.AddInt64(&invocations, 1)
+
+			require.Equal(t, clusterID, d.ClusterID)
+			require.Equal(t, "1.19+", d.ClusterVersion)
+			require.False(t, d.FullSnapshot)
+			require.Len(t, d.Items, 1)
+
+			var actualValues []string
+			for _, item := range d.Items {
+				actualValues = append(actualValues, fmt.Sprintf("%s-%s-%s", item.Event, item.Kind, item.Data))
+			}
+
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%s", castai.EventDelete, "Pod", podData))
+
+			return nil
+		})
+
+	agentVersion := &config.AgentVersion{Version: "1.2.3"}
+	castaiclient.EXPECT().ExchangeAgentTelemetry(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
+		Return(&castai.AgentTelemetryResponse{}, nil).
+		Do(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
+			require.Equalf(t, "1.2.3", req.AgentVersion, "got request: %+v", req)
+		})
+
+	log := logrus.New()
+	log.SetLevel(logrus.DebugLevel)
+	ctrl := New(
+		log,
+		f,
+		castaiclient,
+		provider,
+		clusterID.String(),
+		2*time.Second,
+		2*time.Second,
+		10*time.Millisecond,
+		version,
+		agentVersion,
+	)
+
+	f.Start(ctx.Done())
+
+	go ctrl.Run(ctx)
+
+	wait.Until(func() {
+		if atomic.LoadInt64(&invocations) >= 3 {
+			cancel()
+		}
+	}, 10*time.Millisecond, ctx.Done())
 }

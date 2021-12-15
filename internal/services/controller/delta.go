@@ -40,9 +40,7 @@ type delta struct {
 func (d *delta) add(i *item) {
 	key := mustKeyObject(i.obj)
 
-	if other, ok := d.cache[key]; ok && other.event == eventAdd && i.event == eventDelete {
-		delete(d.cache, key)
-	} else if ok && other.event == eventAdd && i.event == eventUpdate {
+	if other, ok := d.cache[key]; ok && other.event == eventAdd && i.event == eventUpdate {
 		i.event = eventAdd
 		d.cache[key] = i
 	} else if ok && other.event == eventDelete && (i.event == eventAdd || i.event == eventUpdate) {
