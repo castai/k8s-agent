@@ -91,8 +91,13 @@ func TestProvider_IsSpot(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "gke spot node",
+			name:     "gke preemptible node",
 			node:     &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{LabelPreemptible: "true"}}},
+			expected: true,
+		},
+		{
+			name:     "gke spot node",
+			node:     &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{LabelSpot: "true"}}},
 			expected: true,
 		},
 		{
