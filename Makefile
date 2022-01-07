@@ -1,5 +1,5 @@
 build:
-	GOOS=linux go build -o bin/castai-agent .
+	GOOS=linux -ldflags="-s -w" go build -o bin/castai-agent .
 	docker build -t castai/agent:$(VERSION) .
 
 push:
