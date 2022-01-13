@@ -67,6 +67,7 @@ func TestProvider_IsSpot(t *testing.T) {
 		p := &Provider{
 			log:       logrus.New(),
 			awsClient: awsClient,
+			spotCache: map[string]bool{},
 		}
 
 		got, err := p.IsSpot(context.Background(), &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
@@ -83,6 +84,7 @@ func TestProvider_IsSpot(t *testing.T) {
 		p := &Provider{
 			log:       logrus.New(),
 			awsClient: awsClient,
+			spotCache: map[string]bool{},
 		}
 
 		got, err := p.IsSpot(context.Background(), &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
@@ -99,6 +101,7 @@ func TestProvider_IsSpot(t *testing.T) {
 		p := &Provider{
 			log:       logrus.New(),
 			awsClient: awsClient,
+			spotCache: map[string]bool{},
 		}
 
 		awsClient.EXPECT().GetInstancesByPrivateDNS(gomock.Any(), []string{"hostname"}).Return([]*ec2.Instance{
@@ -121,6 +124,7 @@ func TestProvider_IsSpot(t *testing.T) {
 		p := &Provider{
 			log:       logrus.New(),
 			awsClient: awsClient,
+			spotCache: map[string]bool{},
 		}
 
 		awsClient.EXPECT().GetInstancesByPrivateDNS(gomock.Any(), []string{"hostname"}).Return([]*ec2.Instance{
