@@ -33,7 +33,12 @@ var (
 	Version   = "local"
 )
 
-const LogExporterSendTimeoutSeconds = 15
+const (
+	DeltaSendInterval            = 15 * time.Second
+	InitialSnapshotWaitTimeout   = 10 * time.Minute
+	InitialSnapshotSleepDuration = 30 * time.Second
+	LogExporterSendTimeout       = 15 * time.Second
+)
 
 func main() {
 	cfg := config.Get()
@@ -54,7 +59,6 @@ func main() {
 }
 
 func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger, pprofPort int) (reterr error) {
-
 	fields := logrus.Fields{}
 
 	defer func() {
@@ -102,8 +106,8 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger,
 	}
 
 	castailog.SetupLogExporter(logger, castaiclient, castailog.Config{
-		ClusterID:          reg.ClusterID,
-		MsgSendTimeoutSecs: LogExporterSendTimeoutSeconds,
+		ClusterID:   reg.ClusterID,
+		SendTimeout: LogExporterSendTimeout,
 	})
 
 	fields["cluster_id"] = reg.ClusterID
@@ -121,9 +125,12 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger,
 	}
 
 	wait.Until(func() {
+		ctrlCtx, cancelCtrlCtx := context.WithCancel(ctx)
+		defer cancelCtrlCtx()
+
 		v, err := version.Get(log, clientset)
 		if err != nil {
-			panic(fmt.Errorf("failed getting kubernetes version: %v", err))
+			log.Fatalf("failed getting kubernetes version: %v", err)
 		}
 
 		fields["k8s_version"] = v.Full()
@@ -136,14 +143,14 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger,
 			castaiclient,
 			provider,
 			reg.ClusterID,
-			15*time.Second,
-			10*time.Minute,
-			30*time.Second,
+			DeltaSendInterval,
+			InitialSnapshotWaitTimeout,
+			InitialSnapshotSleepDuration,
 			v,
 			agentVersion,
 		)
-		f.Start(ctx.Done())
-		ctrl.Run(ctx)
+		f.Start(ctrlCtx.Done())
+		ctrl.Run(ctrlCtx)
 	}, 0, ctx.Done())
 
 	return nil
