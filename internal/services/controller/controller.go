@@ -48,9 +48,6 @@ type Controller struct {
 	delta   *delta
 	deltaMu sync.Mutex
 
-	spotCache   map[string]bool
-	spotCacheMu sync.Mutex
-
 	agentVersion *config.AgentVersion
 }
 
@@ -94,7 +91,6 @@ func New(
 		prepDuration:         prepDuration,
 		initialSleepDuration: initialSleepDuration,
 		delta:                newDelta(log, clusterID, v.Full()),
-		spotCache:            map[string]bool{},
 		queue:                workqueue.NewNamed("castai-agent"),
 		informers:            typeInformerMap,
 		agentVersion:         agentVersion,
@@ -189,18 +185,10 @@ func (c *Controller) nodeAddHandler(log logrus.FieldLogger, e event, obj interfa
 		return
 	}
 
-	c.spotCacheMu.Lock()
-	defer c.spotCacheMu.Unlock()
-
-	spot, ok := c.spotCache[node.Name]
-	if !ok {
-		var err error
-		spot, err = c.provider.IsSpot(context.Background(), node)
-		if err != nil {
-			log.Warnf("failed to determine whether node %q is spot: %v", node.Name, err)
-		} else {
-			c.spotCache[node.Name] = spot
-		}
+	var err error
+	spot, err := c.provider.IsSpot(context.Background(), node)
+	if err != nil {
+		log.Warnf("failed to determine whether node %q is spot: %v", node.Name, err)
 	}
 
 	if spot {
@@ -218,10 +206,6 @@ func (c *Controller) nodeDeleteHandler(log logrus.FieldLogger, e event, obj inte
 		log.Errorf("expected to get *corev1.Node but got %T", obj)
 		return
 	}
-
-	c.spotCacheMu.Lock()
-	delete(c.spotCache, node.Name)
-	c.spotCacheMu.Unlock()
 
 	next(log, e, node)
 }
