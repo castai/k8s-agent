@@ -36,8 +36,8 @@ type exporter struct {
 }
 
 type Config struct {
-	ClusterID          string
-	MsgSendTimeoutSecs time.Duration
+	ClusterID   string
+	SendTimeout time.Duration
 }
 
 func (ex *exporter) Levels() []logrus.Level {
@@ -73,7 +73,7 @@ func (ex *exporter) Wait() {
 }
 
 func (ex *exporter) sendLogEvent(clusterID string, e *logrus.Entry) {
-	ctx, cancel := context.WithTimeout(context.Background(), ex.cfg.MsgSendTimeoutSecs * time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ex.cfg.SendTimeout)
 	defer cancel()
 
 	ex.client.SendLogEvent(

@@ -60,7 +60,8 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 			require.True(t, d.FullSnapshot)
 			require.Len(t, d.Items, 0)
 
-			clientset.CoreV1().Pods("default").Create(ctx, pod, metav1.CreateOptions{})
+			_, err := clientset.CoreV1().Pods("default").Create(ctx, pod, metav1.CreateOptions{})
+			require.NoError(t, err)
 
 			return nil
 		})
@@ -83,7 +84,8 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%s", castai.EventAdd, "Pod", podData))
 
-			clientset.CoreV1().Pods("default").Delete(ctx, pod.Name, metav1.DeleteOptions{})
+			err := clientset.CoreV1().Pods("default").Delete(ctx, pod.Name, metav1.DeleteOptions{})
+			require.NoError(t, err)
 
 			return fmt.Errorf("testError")
 		})

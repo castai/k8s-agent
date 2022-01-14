@@ -122,7 +122,7 @@ func (c *Controller) createNodeEventHandlers(log logrus.FieldLogger, typ reflect
 	return cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			c.deletedUnknownHandler(log, eventAdd, obj, func(log logrus.FieldLogger, e event, obj interface{}) {
-				c.nodeAddHandler(log, eventAdd, obj, func(log logrus.FieldLogger, e event, obj interface{}) {
+				c.nodeAddHandler(log, e, obj, func(log logrus.FieldLogger, e event, obj interface{}) {
 					c.genericHandler(log, typ, e, obj)
 				})
 			})
@@ -311,7 +311,7 @@ func (c *Controller) Run(ctx context.Context) {
 		c.log.Error("failed to sync")
 		return
 	}
-	c.log.Infof("informers cache synced after %v", time.Now().Sub(waitStartedAt))
+	c.log.Infof("informers cache synced after %v", time.Since(waitStartedAt))
 
 	go func() {
 		const dur = 15 * time.Second
@@ -392,7 +392,7 @@ func (c *Controller) collectInitialSnapshot(ctx context.Context) error {
 		log.Debug("waiting until initial queue empty")
 
 		if queueLen == 0 {
-			c.log.Infof("done waiting for initial cluster snapshot collection after %v", time.Now().Sub(startedAt))
+			c.log.Infof("done waiting for initial cluster snapshot collection after %v", time.Since(startedAt))
 			return true, nil
 		}
 

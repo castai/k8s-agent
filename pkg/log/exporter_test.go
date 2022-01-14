@@ -21,7 +21,7 @@ func TestSetupLogExporter(t *testing.T) {
 	mockClusterID := uuid.New().String()
 	ctrl := gomock.NewController(t)
 	mockapi := mock_castai.NewMockClient(ctrl)
-	SetupLogExporter(logger, mockapi, Config{ClusterID: mockClusterID, MsgSendTimeoutSecs: 1})
+	SetupLogExporter(logger, mockapi, Config{ClusterID: mockClusterID, SendTimeout: time.Second})
 
 	t.Run("sends the log msg", func(t *testing.T) {
 		r := require.New(t)
