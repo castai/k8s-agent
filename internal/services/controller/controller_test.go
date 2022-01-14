@@ -94,7 +94,9 @@ func TestController_HappyPath(t *testing.T) {
 		Do(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
 			require.Equalf(t, "1.2.3", req.AgentVersion, "got request: %+v", req)
 		})
-	provider.EXPECT().IsSpot(gomock.Any(), node).Return(true, nil)
+
+	provider.EXPECT().IsSpot(gomock.Any(), node).Return(true, nil).Times(1)
+	provider.EXPECT().IsSpot(gomock.Any(), expectedNode).Return(true, nil).Times(1)
 
 	f := informers.NewSharedInformerFactory(clientset, 0)
 	log := logrus.New()
