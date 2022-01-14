@@ -118,6 +118,35 @@ func TestProvider_IsSpot(t *testing.T) {
 		require.True(t, got)
 	})
 
+	t.Run("spot instance lifecycle cached API response", func(t *testing.T) {
+		awsClient := mock_client.NewMockClient(gomock.NewController(t))
+
+		p := &Provider{
+			log:       logrus.New(),
+			awsClient: awsClient,
+			spotCache: map[string]bool{},
+		}
+
+		awsClient.EXPECT().GetInstancesByPrivateDNS(gomock.Any(), []string{"hostname"}).Return([]*ec2.Instance{
+			{
+				InstanceLifecycle: pointer.StringPtr("spot"),
+			},
+		}, nil).Times(1)
+
+		got, err := p.IsSpot(context.Background(), &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			v1.LabelHostname: "hostname",
+		}}})
+
+		require.NoError(t, err)
+		require.True(t, got)
+
+		got, err = p.IsSpot(context.Background(), &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			v1.LabelHostname: "hostname",
+		}}})
+		require.NoError(t, err)
+		require.True(t, got)
+	})
+
 	t.Run("on-demand instance", func(t *testing.T) {
 		awsClient := mock_client.NewMockClient(gomock.NewController(t))
 
