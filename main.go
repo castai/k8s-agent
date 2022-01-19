@@ -46,7 +46,7 @@ func main() {
 	logger := logrus.New()
 	logger.SetLevel(logrus.Level(cfg.Log.Level))
 
-	castaiclient := castai.NewClient(logger, castai.NewDefaultClient())
+	castaiclient := castai.NewClient(logger, castai.NewDefaultRestyClient(), castai.NewDefaultDeltaHTTPClient())
 
 	log := logrus.WithFields(logrus.Fields{})
 	if err := run(signals.SetupSignalHandler(), castaiclient, logger, cfg.PprofPort); err != nil {
