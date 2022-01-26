@@ -1,18 +1,54 @@
-# CAST AI K8S Agent
+# CAST AI Kubernetes Agent
 
-## Commands
+A component that connects your Kubernetes cluster to the [CAST AI](https://www.cast.ai) platform to enable Kubernetes automation and cost optimization features.
 
-### build docker image
+## Getting started
 
-```make build```
+Visit the [docs](https://docs.cast.ai/getting-started/external-cluster/overview/) to connect your cluster.
 
-### build & push docker image
+## Helm chart
 
-```make release```
+The helm chart for the CAST AI Kubernetes agent is published in the [castai/helm-charts](https://github.com/castai/helm-charts) repo.
 
-### deploy to current K8S context
+## Contributing
 
-Deploys agent, to current K8S context, using environment variables as listed in `.env.example`
+### Run the agent in your IDE
 
-```make deploy```
+You must provide the these environment variables:
 
+```text
+API_KEY=your-castai-api-key
+API_URL=api.cast.ai
+KUBECONFIG=/path/to/kubeconfig
+```
+
+Then, based on the Kubernetes provider, you need to provide additional environment variables.
+
+#### EKS
+
+```text
+PROVIDER=eks
+EKS_ACCOUNT_ID=your-aws-account-id
+EKS_REGION=your-cluster-region
+EKS_CLUSTER_NAME=your-cluster-name
+```
+
+#### GKE
+
+```text
+PROVIDER=gke
+GKE_PROJECT_ID=your-gke-project-id
+GKE_CLUSTER_NAME=your-cluster-name
+GKE_REGION=your-cluster-region
+GKE_LOCATION=your-cluster-location
+```
+
+#### kOps
+
+```text
+PROVIDER=kops
+```
+
+## Licence
+
+[Apache 2.0 License](LICENSE)
