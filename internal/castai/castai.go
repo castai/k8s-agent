@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -19,9 +21,11 @@ import (
 )
 
 const (
-	defaultRetryCount = 3
-	defaultTimeout    = 10 * time.Second
-	headerAPIKey      = "X-API-Key"
+	defaultRetryCount     = 3
+	defaultTimeout        = 10 * time.Second
+	sendDeltaReadTimeout  = 1 * time.Minute
+	totalSendDeltaTimeout = 3 * time.Minute
+	headerAPIKey          = "X-API-Key"
 )
 
 var (
@@ -53,30 +57,57 @@ type Client interface {
 }
 
 // NewClient creates and configures the CAST AI client.
-func NewClient(log *logrus.Logger, rest *resty.Client) Client {
+func NewClient(log *logrus.Logger, rest *resty.Client, deltaHTTPClient *http.Client) Client {
 	return &client{
-		log:  log,
-		rest: rest,
+		log:             log,
+		rest:            rest,
+		deltaHTTPClient: deltaHTTPClient,
 	}
 }
 
-// NewDefaultClient configures a default instance of the resty.Client used to do HTTP requests.
-func NewDefaultClient() *resty.Client {
+// NewDefaultRestyClient configures a default instance of the resty.Client used to do HTTP requests.
+func NewDefaultRestyClient() *resty.Client {
 	cfg := config.Get().API
 
-	client := resty.New()
+	restyClient := resty.NewWithClient(&http.Client{
+		Timeout:   defaultTimeout,
+		Transport: createHTTPTransport(),
+	})
 
-	client.SetHostURL(cfg.URL)
-	client.SetRetryCount(defaultRetryCount)
-	client.SetTimeout(defaultTimeout)
-	client.Header.Set(hdrAPIKey, cfg.Key)
+	restyClient.SetHostURL(cfg.URL)
+	restyClient.SetRetryCount(defaultRetryCount)
+	restyClient.Header.Set(hdrAPIKey, cfg.Key)
 
-	return client
+	return restyClient
+}
+
+// NewDefaultDeltaHTTPClient configures a default http client used for sending delta requests. Delta requests use a
+// different client due to the need to access various low-level features of the http.Client.
+func NewDefaultDeltaHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout:   sendDeltaReadTimeout,
+		Transport: createHTTPTransport(),
+	}
+}
+
+func createHTTPTransport() *http.Transport {
+	return &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout: 5 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
 }
 
 type client struct {
-	log  *logrus.Logger
-	rest *resty.Client
+	log             *logrus.Logger
+	rest            *resty.Client
+	deltaHTTPClient *http.Client
 }
 
 func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) error {
@@ -110,6 +141,9 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 		}
 	}()
 
+	ctx, cancel := context.WithTimeout(ctx, totalSendDeltaTimeout)
+	defer cancel()
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), pipeReader)
 	if err != nil {
 		return fmt.Errorf("creating delta request: %w", err)
@@ -119,11 +153,24 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 	req.Header.Set(hdrContentEncoding, "gzip")
 	req.Header.Set(hdrAPIKey, cfg.Key)
 
-	rc := c.rest.GetClient()
-	rc.Timeout = 1 * time.Minute
-	resp, err := rc.Do(req)
+	var resp *http.Response
+
+	backoff := wait.Backoff{
+		Duration: 10 * time.Millisecond,
+		Factor:   1.5,
+		Jitter:   0.2,
+		Steps:    3,
+	}
+	err = wait.ExponentialBackoffWithContext(ctx, backoff, func() (done bool, err error) {
+		resp, err = c.deltaHTTPClient.Do(req)
+		if err != nil {
+			c.log.Warnf("failed sending delta request: %v", err)
+			return false, fmt.Errorf("sending delta request: %w", err)
+		}
+		return true, nil
+	})
 	if err != nil {
-		return fmt.Errorf("sending delta request: %w", err)
+		return err
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
