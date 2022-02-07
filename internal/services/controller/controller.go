@@ -2,7 +2,6 @@
 package controller
 
 import (
-	"castai-agent/pkg/labels"
 	"context"
 	"fmt"
 	"reflect"
@@ -25,6 +24,7 @@ import (
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/internal/services/version"
+	"castai-agent/pkg/labels"
 )
 
 var (

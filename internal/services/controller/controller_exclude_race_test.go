@@ -10,11 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"castai-agent/internal/castai"
-	mock_castai "castai-agent/internal/castai/mock"
-	"castai-agent/internal/config"
-	mock_types "castai-agent/internal/services/providers/types/mock"
-	mock_version "castai-agent/internal/services/version/mock"
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -24,6 +19,12 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
+
+	"castai-agent/internal/castai"
+	mock_castai "castai-agent/internal/castai/mock"
+	"castai-agent/internal/config"
+	mock_types "castai-agent/internal/services/providers/types/mock"
+	mock_version "castai-agent/internal/services/version/mock"
 )
 
 func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {

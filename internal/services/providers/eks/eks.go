@@ -3,6 +3,7 @@ package eks
 import (
 	"context"
 	"fmt"
+
 	"github.com/sirupsen/logrus"
 	"k8s.io/api/core/v1"
 
