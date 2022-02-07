@@ -2,7 +2,6 @@ package castai
 
 import (
 	"context"
-
 	"github.com/sirupsen/logrus"
 	"k8s.io/api/core/v1"
 
@@ -24,11 +23,16 @@ type Provider struct {
 	log logrus.FieldLogger
 }
 
-func (p *Provider) IsSpot(_ context.Context, node *v1.Node) (bool, error) {
-	if val, ok := node.Labels[labels.CastaiSpot]; ok && val == "true" {
-		return true, nil
+func (p *Provider) FilterSpot(_ context.Context, nodes []*v1.Node) ([]*v1.Node, error) {
+	var ret []*v1.Node
+
+	for _, node := range nodes {
+		if val, ok := node.Labels[labels.CastaiSpot]; ok && val == "true" {
+			ret = append(ret, node)
+		}
 	}
-	return false, nil
+
+	return ret, nil
 }
 
 func (p *Provider) RegisterCluster(_ context.Context, _ castai.Client) (*types.ClusterRegistration, error) {

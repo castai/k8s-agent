@@ -38,7 +38,7 @@ type delta struct {
 
 // add will add an item to the delta cache. It will debounce the objects.
 func (d *delta) add(i *item) {
-	key := mustKeyObject(i.obj)
+	key := keyObject(i.obj)
 
 	if other, ok := d.cache[key]; ok && other.event == eventAdd && i.event == eventUpdate {
 		i.event = eventAdd
@@ -103,8 +103,13 @@ func encode(obj interface{}) (string, error) {
 	return base64.StdEncoding.EncodeToString(b), nil
 }
 
+type object interface {
+	runtime.Object
+	metav1.Object
+}
+
 type item struct {
-	obj   runtime.Object
+	obj   object
 	event event
 }
 
@@ -128,19 +133,6 @@ func (e event) toCASTAIEvent() castai.EventType {
 	return ""
 }
 
-// keyObject generates a unique key for an object, for example: `*v1.Pod::namespace/name`.
-func keyObject(obj runtime.Object) (string, error) {
-	metaObj, ok := obj.(metav1.Object)
-	if !ok {
-		return "", fmt.Errorf("expected object of type %T to implement metav1.Object", obj)
-	}
-	return fmt.Sprintf("%s::%s/%s", reflect.TypeOf(obj).String(), metaObj.GetNamespace(), metaObj.GetName()), nil
-}
-
-func mustKeyObject(obj runtime.Object) string {
-	k, err := keyObject(obj)
-	if err != nil {
-		panic(fmt.Errorf("getting object key: %w", err))
-	}
-	return k
+func keyObject(obj object) string {
+	return fmt.Sprintf("%s::%s/%s", reflect.TypeOf(obj).String(), obj.GetNamespace(), obj.GetName())
 }

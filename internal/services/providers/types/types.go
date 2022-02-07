@@ -14,10 +14,10 @@ import (
 type Provider interface {
 	// RegisterCluster retrieves cluster registration data needed to correctly identify the cluster.
 	RegisterCluster(ctx context.Context, client castclient.Client) (*ClusterRegistration, error)
-	// IsSpot checks provider specific properties whether the node lifecycle is spot/preemtible.
-	IsSpot(ctx context.Context, node *v1.Node) (bool, error)
 	// Name of the provider.
 	Name() string
+	// FilterSpot checks the provider specific properties and returns only spot/preemtible nodes.
+	FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node, error)
 }
 
 // ClusterRegistration holds information needed to identify the cluster.

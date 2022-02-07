@@ -114,7 +114,24 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 	}, nil
 }
 
-func (p *Provider) IsSpot(ctx context.Context, node *v1.Node) (bool, error) {
+func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node, error) {
+	var ret []*v1.Node
+
+	for _, node := range nodes {
+		spot, err := p.isSpot(ctx, node)
+		if err != nil {
+			return nil, fmt.Errorf("determining whether node %s is spot: %w", node.Name, err)
+		}
+
+		if spot {
+			ret = append(ret, node)
+		}
+	}
+
+	return ret, nil
+}
+
+func (p *Provider) isSpot(ctx context.Context, node *v1.Node) (bool, error) {
 	if val, ok := node.Labels[labels.CastaiSpot]; ok && val == "true" {
 		return true, nil
 	}

@@ -2,6 +2,7 @@
 package controller
 
 import (
+	"castai-agent/pkg/labels"
 	"context"
 	"fmt"
 	"reflect"
@@ -15,7 +16,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
@@ -25,7 +25,6 @@ import (
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/internal/services/version"
-	"castai-agent/pkg/labels"
 )
 
 var (
@@ -112,39 +111,6 @@ func (c *Controller) registerEventHandlers() {
 }
 
 func (c *Controller) createEventHandlers(log logrus.FieldLogger, typ reflect.Type) cache.ResourceEventHandler {
-	if typ == reflect.TypeOf(&corev1.Node{}) {
-		return c.createNodeEventHandlers(log, typ)
-	}
-	return c.createGenericEventHandlers(log, typ)
-}
-
-func (c *Controller) createNodeEventHandlers(log logrus.FieldLogger, typ reflect.Type) cache.ResourceEventHandler {
-	return cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			c.deletedUnknownHandler(log, eventAdd, obj, func(log logrus.FieldLogger, e event, obj interface{}) {
-				c.nodeAddHandler(log, e, obj, func(log logrus.FieldLogger, e event, obj interface{}) {
-					c.genericHandler(log, typ, e, obj)
-				})
-			})
-		},
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			c.deletedUnknownHandler(log, eventUpdate, newObj, func(log logrus.FieldLogger, e event, obj interface{}) {
-				c.nodeAddHandler(log, e, obj, func(log logrus.FieldLogger, e event, obj interface{}) {
-					c.genericHandler(log, typ, e, obj)
-				})
-			})
-		},
-		DeleteFunc: func(obj interface{}) {
-			c.deletedUnknownHandler(log, eventDelete, obj, func(log logrus.FieldLogger, e event, obj interface{}) {
-				c.nodeDeleteHandler(log, e, obj, func(log logrus.FieldLogger, e event, obj interface{}) {
-					c.genericHandler(log, typ, e, obj)
-				})
-			})
-		},
-	}
-}
-
-func (c *Controller) createGenericEventHandlers(log logrus.FieldLogger, typ reflect.Type) cache.ResourceEventHandler {
 	return cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			c.deletedUnknownHandler(log, eventAdd, obj, func(log logrus.FieldLogger, e event, obj interface{}) {
@@ -176,40 +142,6 @@ func (c *Controller) deletedUnknownHandler(log logrus.FieldLogger, e event, obj 
 	}
 }
 
-// nodeAddHandler is used to handle only node events to carry out some node-only logic, like figuring out
-// whether the node is a spot instance.
-func (c *Controller) nodeAddHandler(log logrus.FieldLogger, e event, obj interface{}, next handlerFunc) {
-	node, ok := obj.(*corev1.Node)
-	if !ok {
-		log.Errorf("expected to get *corev1.Node but got %T", obj)
-		return
-	}
-
-	var err error
-	spot, err := c.provider.IsSpot(context.Background(), node)
-	if err != nil {
-		log.Warnf("failed to determine whether node %q is spot: %v", node.Name, err)
-	}
-
-	if spot {
-		node.Labels[labels.CastaiFakeSpot] = "true"
-	}
-
-	next(log, e, node)
-}
-
-// nodeDeleteHandler is used to handle only node events to carry out some node-only logic, like clearing out the
-// spot cache.
-func (c *Controller) nodeDeleteHandler(log logrus.FieldLogger, e event, obj interface{}, next handlerFunc) {
-	node, ok := obj.(*corev1.Node)
-	if !ok {
-		log.Errorf("expected to get *corev1.Node but got %T", obj)
-		return
-	}
-
-	next(log, e, node)
-}
-
 // genericHandler is used to add an object to the queue.
 func (c *Controller) genericHandler(
 	log logrus.FieldLogger,
@@ -227,7 +159,7 @@ func (c *Controller) genericHandler(
 	c.log.Debugf("generic handler called: %s: %s", e, reflect.TypeOf(obj))
 
 	c.queue.Add(&item{
-		obj:   obj.(runtime.Object),
+		obj:   obj.(object),
 		event: e,
 	})
 }
@@ -371,18 +303,8 @@ func (c *Controller) collectInitialSnapshot(ctx context.Context) error {
 
 	// Collect initial state from cached informers and push to deltas queue.
 	for objType, informer := range c.informers {
-		items := informer.GetStore().List()
-		switch objType {
-		case reflect.TypeOf(&corev1.Node{}):
-			for _, item := range items {
-				c.nodeAddHandler(c.log, eventAdd, item, func(log logrus.FieldLogger, event event, obj interface{}) {
-					c.genericHandler(log, objType, event, obj)
-				})
-			}
-		default:
-			for _, item := range items {
-				c.genericHandler(c.log, objType, eventAdd, item)
-			}
+		for _, item := range informer.GetStore().List() {
+			c.genericHandler(c.log, objType, eventAdd, item)
 		}
 	}
 
@@ -432,6 +354,30 @@ func (c *Controller) processItem(i interface{}) {
 func (c *Controller) send(ctx context.Context) {
 	c.deltaMu.Lock()
 	defer c.deltaMu.Unlock()
+
+	nodesByName := map[string]*corev1.Node{}
+	var nodes []*corev1.Node
+
+	for _, item := range c.delta.cache {
+		n, ok := item.obj.(*corev1.Node)
+		if !ok {
+			continue
+		}
+
+		nodesByName[n.Name] = n
+		nodes = append(nodes, n)
+	}
+
+	if len(nodes) > 0 {
+		spots, err := c.provider.FilterSpot(ctx, nodes)
+		if err != nil {
+			c.log.Warnf("failed to determine node lifecycle, some functionality might be limited: %v", err)
+		}
+
+		for _, spot := range spots {
+			nodesByName[spot.Name].Labels[labels.CastaiFakeSpot] = "true"
+		}
+	}
 
 	if err := c.castaiclient.SendDelta(ctx, c.clusterID, c.delta.toCASTAIRequest()); err != nil {
 		c.log.Errorf("failed sending delta: %v", err)

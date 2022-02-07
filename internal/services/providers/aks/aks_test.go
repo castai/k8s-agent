@@ -60,11 +60,13 @@ func TestProvider_IsSpot(t *testing.T) {
 			log: logrus.New(),
 		}
 
-		got, err := p.IsSpot(context.Background(), &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
-			SpotLabelKey: SpotLabelVal,
-		}}})
+		node := &v1.Node{
+			ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{SpotLabelKey: SpotLabelVal}},
+		}
+
+		got, err := p.FilterSpot(context.Background(), []*v1.Node{node})
 
 		require.NoError(t, err)
-		require.True(t, got)
+		require.Equal(t, []*v1.Node{node}, got)
 	})
 }

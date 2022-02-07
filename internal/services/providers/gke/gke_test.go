@@ -109,9 +109,14 @@ func TestProvider_IsSpot(t *testing.T) {
 	for _, test := range tests {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
-			got, err := p.IsSpot(context.Background(), test.node)
+			got, err := p.FilterSpot(context.Background(), []*v1.Node{test.node})
 			require.NoError(t, err)
-			require.Equal(t, test.expected, got)
+
+			if test.expected {
+				require.Equal(t, []*v1.Node{test.node}, got)
+			} else {
+				require.Empty(t, got)
+			}
 		})
 	}
 }
