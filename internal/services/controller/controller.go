@@ -3,6 +3,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -330,8 +331,11 @@ func (c *Controller) Run(ctx context.Context) {
 
 	go func() {
 		if err := c.collectInitialSnapshot(ctx); err != nil {
+			const maxItems = 5
+			queueContent := c.debugQueueContent(maxItems)
+			log := c.log.WithField("queue_content", queueContent)
 			// Crash agent in case it's not able to collect full snapshot from informers cache.
-			c.log.Fatalf("error while collecting initial snapshot: %v", err)
+			log.Fatalf("error while collecting initial snapshot: %v", err)
 		}
 
 		// Since both initial snapshot collection and event handlers writes to the same delta queue add
@@ -433,4 +437,26 @@ func (c *Controller) send(ctx context.Context) {
 	}
 
 	c.delta.clear()
+}
+
+func (c *Controller) debugQueueContent(maxItems int) string {
+	l := c.queue.Len()
+	if l > maxItems {
+		l = maxItems
+	}
+	queueItems := make([]interface{}, l)
+	for i := 0; i < l; i++ {
+		item, done := c.queue.Get()
+		if done {
+			break
+		}
+		queueItems[i] = item
+	}
+	bytes, err := json.Marshal(queueItems)
+	content := string(bytes)
+	if err != nil {
+		content = "err: " + err.Error()
+	}
+
+	return content
 }
