@@ -1,6 +1,6 @@
 module castai-agent
 
-go 1.16
+go 1.18
 
 require (
 	cloud.google.com/go v0.92.3
