@@ -15,6 +15,7 @@ import (
 	"castai-agent/internal/config"
 	mock_types "castai-agent/internal/services/providers/types/mock"
 	mock_version "castai-agent/internal/services/version/mock"
+
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -126,9 +127,11 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 		castaiclient,
 		provider,
 		clusterID.String(),
-		2*time.Second,
-		2*time.Second,
-		10*time.Millisecond,
+		&config.Controller{
+			Interval:             2 * time.Second,
+			PrepTimeout:          2 * time.Second,
+			InitialSleepDuration: 10 * time.Millisecond,
+		},
 		version,
 		agentVersion,
 	)

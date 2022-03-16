@@ -138,7 +138,7 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger,
 			castaiclient,
 			provider,
 			reg.ClusterID,
-			&cfg.Controller,
+			cfg.Controller,
 			v,
 			agentVersion,
 		)
