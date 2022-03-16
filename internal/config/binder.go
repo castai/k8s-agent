@@ -19,7 +19,7 @@ func bindEnvs(iface interface{}, parts ...string) {
 			continue
 		}
 		// Resolve pointers to strcuts
-		if v.Kind() == reflect.Pointer && v.Type().Elem().Kind() == reflect.Struct {
+		if v.Kind() == reflect.Ptr && v.Type().Elem().Kind() == reflect.Struct {
 			v = reflect.New(v.Type().Elem()).Elem()
 		}
 		switch v.Kind() {
