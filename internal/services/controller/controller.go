@@ -347,6 +347,10 @@ func (c *Controller) Run(ctx context.Context) {
 			if config.Debug {
 				log.Errorf("error while collecting initial snapshot: %v", err)
 				log.Warnf("agent will now sleep forver. Dumped events available at: %q", eventsDumpPath)
+				for {
+					log.Infof("sleeping.... check %s for saved events", eventsDumpPath)
+					time.Sleep(2 * time.Minute)
+				}
 			}
 			// Crash agent in case it's not able to collect full snapshot from informers cache.
 			log.Fatalf("error while collecting initial snapshot: %v", err)
