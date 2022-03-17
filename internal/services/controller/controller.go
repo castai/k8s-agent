@@ -219,7 +219,7 @@ func (c *Controller) genericHandler(
 
 	cleanObj(obj)
 
-	c.log.Debugf("generic handler called: %s: %s", e, reflect.TypeOf(obj))
+	c.log.WithField("queue_size", c.queue.Len()).Debugf("generic handler called: %s: %s", e, reflect.TypeOf(obj))
 
 	c.queue.Add(&item{
 		obj:   obj.(runtime.Object),
