@@ -361,7 +361,7 @@ func (c *Controller) Run(ctx context.Context) {
 // delta because it contains a significant portion of the Kubernetes state.
 func (c *Controller) collectInitialSnapshot(ctx context.Context) error {
 	timeout := c.cfg.PrepTimeout
-	c.log.Info("collecting initial cluster snapshot with timeout of %v", timeout)
+	c.log.Infof("collecting initial cluster snapshot with timeout of %v", timeout)
 
 	startedAt := time.Now()
 
