@@ -3,65 +3,82 @@ package config
 import (
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
 
 type Config struct {
-	Log        Log
-	API        API
-	Kubeconfig string
-	Provider   string
-	CASTAI     *CASTAI
-	EKS        *EKS
-	GKE        *GKE
-	KOPS       *KOPS
-	AKS        *AKS
-	PprofPort  int
+	Log        Log         `mapstructure:"log"`
+	API        API         `mapstructure:"api"`
+	Kubeconfig string      `mapstructure:"kubeconfig"`
+	Provider   string      `mapstructure:"provider"`
+	CASTAI     *CASTAI     `mapstructure:"castai"`
+	EKS        *EKS        `mapstructure:"eks"`
+	GKE        *GKE        `mapstructure:"gke"`
+	KOPS       *KOPS       `mapstructure:"kops"`
+	AKS        *AKS        `mapstructure:"aks"`
+	Static     *Static     `mapstructure:"static"`
+	Controller *Controller `mapstructure:"controller"`
+	PprofPort  int         `mapstructure:"pprof.port"`
 }
 
 type Log struct {
-	Level int
+	Level int `mapstructure:"level"`
 }
 
 type API struct {
-	Key string
-	URL string
+	Key string `mapstructure:"key"`
+	URL string `mapstructure:"url"`
 }
 
 type CASTAI struct {
-	ClusterID      string
-	OrganizationID string
+	ClusterID      string `mapstructure:"cluster_id"`
+	OrganizationID string `mapstructure:"organization_id"`
 }
 
 type EKS struct {
-	AccountID   string
-	Region      string
-	ClusterName string
+	AccountID   string `mapstructure:"account_id"`
+	Region      string `mapstructure:"region"`
+	ClusterName string `mapstructure:"cluster_name"`
 }
 
 type GKE struct {
-	Region      string
-	ProjectID   string
-	ClusterName string
-	Location    string
+	Region      string `mapstructure:"region"`
+	ProjectID   string `mapstructure:"project_id"`
+	ClusterName string `mapstructure:"cluster_name"`
+	Location    string `mapstructure:"location"`
 }
 
 type KOPS struct {
-	CSP         string
-	Region      string
-	ClusterName string
-	StateStore  string
+	CSP         string `mapstructure:"csp"`
+	Region      string `mapstructure:"region"`
+	ClusterName string `mapstructure:"cluster_name"`
+	StateStore  string `mapstructure:"state_store"`
 }
 
 type AKS struct {
-	NodeResourceGroup string
-	Location          string
-	SubscriptionID    string
+	NodeResourceGroup string `mapstructure:"node_resource_group"`
+	Location          string `mapstructure:"location"`
+	SubscriptionID    string `mapstructure:"subscription_id"`
+}
+
+type Static struct {
+	SkipClusterRegistration bool   `mapstructure:"skip_cluster_registration"`
+	ClusterID               string `mapstructure:"cluster_id"`
+	OrganizationID          string `mapstructure:"organization_id"`
+}
+
+type Controller struct {
+	Interval             time.Duration `mapstructure:"interval"`
+	PrepTimeout          time.Duration `mapstructure:"prep_timeout"`
+	InitialSleepDuration time.Duration `mapstructure:"initial_sleep_duration"`
 }
 
 var cfg *Config
+var mu sync.Mutex
 
 // Get configuration bound to environment variables.
 func Get() Config {
@@ -69,39 +86,22 @@ func Get() Config {
 		return *cfg
 	}
 
-	_ = viper.BindEnv("log.level", "LOG_LEVEL")
+	mu.Lock()
+	defer mu.Unlock()
+	if cfg != nil {
+		return *cfg
+	}
 
-	_ = viper.BindEnv("api.key", "API_KEY")
-	_ = viper.BindEnv("api.url", "API_URL")
+	viper.SetDefault("controller.interval", 15*time.Second)
+	viper.SetDefault("controller.prep_timeout", 10*time.Minute)
+	viper.SetDefault("controller.initial_sleep_duration", 30*time.Second)
 
-	_ = viper.BindEnv("kubeconfig")
-
-	_ = viper.BindEnv("provider")
-
-	_ = viper.BindEnv("castai.clusterid", "CASTAI_CLUSTER_ID")
-	_ = viper.BindEnv("castai.organizationid", "CASTAI_ORGANIZATION_ID")
-
-	_ = viper.BindEnv("eks.accountid", "EKS_ACCOUNT_ID")
-	_ = viper.BindEnv("eks.region", "EKS_REGION")
-	_ = viper.BindEnv("eks.clustername", "EKS_CLUSTER_NAME")
-
-	_ = viper.BindEnv("gke.region", "GKE_REGION")
-	_ = viper.BindEnv("gke.projectid", "GKE_PROJECT_ID")
-	_ = viper.BindEnv("gke.clustername", "GKE_CLUSTER_NAME")
-	_ = viper.BindEnv("gke.location", "GKE_LOCATION")
-
-	_ = viper.BindEnv("kops.csp", "KOPS_CSP")
-	_ = viper.BindEnv("kops.region", "KOPS_REGION")
-	_ = viper.BindEnv("kops.clustername", "KOPS_CLUSTER_NAME")
-	_ = viper.BindEnv("kops.statestore", "KOPS_STATE_STORE")
-
-	_ = viper.BindEnv("aks.subscriptionid", "AKS_SUBSCRIPTION_ID")
-	_ = viper.BindEnv("aks.location", "AKS_LOCATION")
-	_ = viper.BindEnv("aks.noderesourcegroup", "AKS_NODE_RESOURCE_GROUP")
-
-	_ = viper.BindEnv("pprofport", "PPROF_PORT")
+	viper.AutomaticEnv()
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.AllowEmptyEnv(true)
 
 	cfg = &Config{}
+	bindEnvs(*cfg)
 	if err := viper.Unmarshal(&cfg); err != nil {
 		panic(fmt.Errorf("parsing configuration: %v", err))
 	}

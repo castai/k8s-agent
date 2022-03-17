@@ -107,9 +107,11 @@ func TestController_HappyPath(t *testing.T) {
 		castaiclient,
 		provider,
 		clusterID.String(),
-		15*time.Second,
-		2*time.Second,
-		10*time.Millisecond,
+		&config.Controller{
+			Interval:             15 * time.Second,
+			PrepTimeout:          2 * time.Second,
+			InitialSleepDuration: 10 * time.Millisecond,
+		},
 		version,
 		agentVersion,
 	)

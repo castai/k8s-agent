@@ -3,6 +3,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -35,15 +36,13 @@ var (
 )
 
 type Controller struct {
-	log                  logrus.FieldLogger
-	clusterID            string
-	castaiclient         castai.Client
-	provider             types.Provider
-	queue                workqueue.Interface
-	interval             time.Duration
-	prepDuration         time.Duration
-	initialSleepDuration time.Duration
-	informers            map[reflect.Type]cache.SharedInformer
+	log          logrus.FieldLogger
+	clusterID    string
+	castaiclient castai.Client
+	provider     types.Provider
+	queue        workqueue.Interface
+	cfg          *config.Controller
+	informers    map[reflect.Type]cache.SharedInformer
 
 	delta   *delta
 	deltaMu sync.Mutex
@@ -57,9 +56,7 @@ func New(
 	castaiclient castai.Client,
 	provider types.Provider,
 	clusterID string,
-	interval time.Duration,
-	prepDuration time.Duration,
-	initialSleepDuration time.Duration,
+	cfg *config.Controller,
 	v version.Interface,
 	agentVersion *config.AgentVersion,
 ) *Controller {
@@ -83,17 +80,15 @@ func New(
 	}
 
 	c := &Controller{
-		log:                  log,
-		clusterID:            clusterID,
-		castaiclient:         castaiclient,
-		provider:             provider,
-		interval:             interval,
-		prepDuration:         prepDuration,
-		initialSleepDuration: initialSleepDuration,
-		delta:                newDelta(log, clusterID, v.Full()),
-		queue:                workqueue.NewNamed("castai-agent"),
-		informers:            typeInformerMap,
-		agentVersion:         agentVersion,
+		log:          log,
+		clusterID:    clusterID,
+		castaiclient: castaiclient,
+		provider:     provider,
+		cfg:          cfg,
+		delta:        newDelta(log, clusterID, v.Full()),
+		queue:        workqueue.NewNamed("castai-agent"),
+		informers:    typeInformerMap,
+		agentVersion: agentVersion,
 	}
 
 	c.registerEventHandlers()
@@ -336,19 +331,22 @@ func (c *Controller) Run(ctx context.Context) {
 
 	go func() {
 		if err := c.collectInitialSnapshot(ctx); err != nil {
+			const maxItems = 5
+			queueContent := c.debugQueueContent(maxItems)
+			log := c.log.WithField("queue_content", queueContent)
 			// Crash agent in case it's not able to collect full snapshot from informers cache.
-			c.log.Fatalf("error while collecting initial snapshot: %v", err)
+			log.Fatalf("error while collecting initial snapshot: %v", err)
 		}
 
 		// Since both initial snapshot collection and event handlers writes to the same delta queue add
 		// some sleep to prevent sending few large deltas on initial agent startup.
-		c.log.Infof("sleeping for %s before starting to send cluster deltas", c.initialSleepDuration)
-		time.Sleep(c.initialSleepDuration)
+		c.log.Infof("sleeping for %s before starting to send cluster deltas", c.cfg.InitialSleepDuration)
+		time.Sleep(c.cfg.InitialSleepDuration)
 
-		c.log.Infof("sending cluster deltas every %s", c.interval)
+		c.log.Infof("sending cluster deltas every %s", c.cfg.Interval)
 		wait.Until(func() {
 			c.send(ctx)
-		}, c.interval, ctx.Done())
+		}, c.cfg.Interval, ctx.Done())
 	}()
 
 	go func() {
@@ -366,7 +364,7 @@ func (c *Controller) collectInitialSnapshot(ctx context.Context) error {
 
 	startedAt := time.Now()
 
-	ctx, cancel := context.WithTimeout(ctx, c.prepDuration)
+	ctx, cancel := context.WithTimeout(ctx, c.cfg.PrepTimeout)
 	defer cancel()
 
 	// Collect initial state from cached informers and push to deltas queue.
@@ -439,4 +437,26 @@ func (c *Controller) send(ctx context.Context) {
 	}
 
 	c.delta.clear()
+}
+
+func (c *Controller) debugQueueContent(maxItems int) string {
+	l := c.queue.Len()
+	if l > maxItems {
+		l = maxItems
+	}
+	queueItems := make([]interface{}, l)
+	for i := 0; i < l; i++ {
+		item, done := c.queue.Get()
+		if done {
+			break
+		}
+		queueItems[i] = item
+	}
+	bytes, err := json.Marshal(queueItems)
+	content := string(bytes)
+	if err != nil {
+		content = "err: " + err.Error()
+	}
+
+	return content
 }
