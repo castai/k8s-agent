@@ -370,7 +370,7 @@ func (c *Controller) collectInitialSnapshot(ctx context.Context) error {
 
 	// Collect initial state from cached informers and push to deltas queue.
 	for objType, informer := range c.informers {
-		c.log.Info("processing informer type %v", objType)
+		c.log.Debugf("processing informer type %v", objType)
 		items := informer.GetStore().List()
 		switch objType {
 		case reflect.TypeOf(&corev1.Node{}):
