@@ -102,6 +102,14 @@ func (c *Controller) registerEventHandlers() {
 		informer := informer
 		log := c.log.WithField("informer", typ.String())
 		h := c.createEventHandlers(log, typ)
+		if config.Debug {
+			sink, _, err := wrapWithFileSink("/tmp/events.jsonlines", log, h)
+			if err != nil {
+				log.Warnf("failed to wrap informer: %v", err)
+			} else {
+				h = sink
+			}
+		}
 		informer.AddEventHandler(h)
 	}
 }
@@ -375,14 +383,14 @@ func (c *Controller) collectInitialSnapshot(ctx context.Context) error {
 		switch objType {
 		case reflect.TypeOf(&corev1.Node{}):
 			for _, item := range items {
-				c.log.Info("processing node type %v", item)
+				c.log.Debugf("processing node type %v", item)
 				c.nodeAddHandler(c.log, eventAdd, item, func(log logrus.FieldLogger, event event, obj interface{}) {
 					c.genericHandler(log, objType, event, obj)
 				})
 			}
 		default:
 			for _, item := range items {
-				c.log.Info("processing generic type %v", item)
+				c.log.Debugf("processing generic type %v", item)
 				c.genericHandler(c.log, objType, eventAdd, item)
 			}
 		}
