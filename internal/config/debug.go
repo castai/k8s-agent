@@ -1,3 +1,3 @@
 package config
 
-var Debug = false
+var Debug = true

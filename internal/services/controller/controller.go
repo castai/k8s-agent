@@ -96,7 +96,7 @@ func New(
 	return c
 }
 
-const eventsDumpPath = "/tmp/events.jsonlines"
+var eventsDumpPath = fmt.Sprintf("/tmp/events-%d.jsonlines", time.Now().Unix())
 
 func (c *Controller) registerEventHandlers() {
 	for typ, informer := range c.informers {

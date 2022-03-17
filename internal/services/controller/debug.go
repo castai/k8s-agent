@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/tools/cache"
@@ -44,13 +45,15 @@ func dumpObj(w io.Writer, log logrus.FieldLogger, oldObj, newObj interface{}) {
 	}
 
 	err := json.NewEncoder(w).Encode(struct {
-		Event  event
-		OldObj interface{}
-		NewObj interface{}
+		Event     event
+		OldObj    interface{}
+		NewObj    interface{}
+		UnixMicro int64
 	}{
-		Event:  e,
-		OldObj: oldObj,
-		NewObj: newObj,
+		Event:     e,
+		OldObj:    oldObj,
+		NewObj:    newObj,
+		UnixMicro: time.Now().UnixMicro(),
 	})
 	if err != nil {
 		log.WithField("event_type", e).Warnf("failed to dump event %q: %w", e, err)
