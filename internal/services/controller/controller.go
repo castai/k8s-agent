@@ -360,25 +360,29 @@ func (c *Controller) Run(ctx context.Context) {
 // collectInitialSnapshot is used to add a time buffer to collect the initial snapshot which is larger than periodic
 // delta because it contains a significant portion of the Kubernetes state.
 func (c *Controller) collectInitialSnapshot(ctx context.Context) error {
-	c.log.Info("collecting initial cluster snapshot")
+	timeout := c.cfg.PrepTimeout
+	c.log.Info("collecting initial cluster snapshot with timeout of %v", timeout)
 
 	startedAt := time.Now()
 
-	ctx, cancel := context.WithTimeout(ctx, c.cfg.PrepTimeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	// Collect initial state from cached informers and push to deltas queue.
 	for objType, informer := range c.informers {
+		c.log.Info("processing informer type %v", objType)
 		items := informer.GetStore().List()
 		switch objType {
 		case reflect.TypeOf(&corev1.Node{}):
 			for _, item := range items {
+				c.log.Info("processing node type %v", item)
 				c.nodeAddHandler(c.log, eventAdd, item, func(log logrus.FieldLogger, event event, obj interface{}) {
 					c.genericHandler(log, objType, event, obj)
 				})
 			}
 		default:
 			for _, item := range items {
+				c.log.Info("processing generic type %v", item)
 				c.genericHandler(c.log, objType, eventAdd, item)
 			}
 		}
