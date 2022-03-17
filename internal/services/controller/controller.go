@@ -96,6 +96,8 @@ func New(
 	return c
 }
 
+const eventsDumpPath = "/tmp/events.jsonlines"
+
 func (c *Controller) registerEventHandlers() {
 	for typ, informer := range c.informers {
 		typ := typ
@@ -103,7 +105,7 @@ func (c *Controller) registerEventHandlers() {
 		log := c.log.WithField("informer", typ.String())
 		h := c.createEventHandlers(log, typ)
 		if config.Debug {
-			sink, _, err := wrapWithFileSink("/tmp/events.jsonlines", log, h)
+			sink, _, err := wrapWithFileSink(eventsDumpPath, log, h)
 			if err != nil {
 				log.Warnf("failed to wrap informer: %v", err)
 			} else {
@@ -342,6 +344,10 @@ func (c *Controller) Run(ctx context.Context) {
 			const maxItems = 5
 			queueContent := c.debugQueueContent(maxItems)
 			log := c.log.WithField("queue_content", queueContent)
+			if config.Debug {
+				log.Errorf("error while collecting initial snapshot: %v", err)
+				log.Warnf("agent will now sleep forver. Dumped events available at: %q", eventsDumpPath)
+			}
 			// Crash agent in case it's not able to collect full snapshot from informers cache.
 			log.Fatalf("error while collecting initial snapshot: %v", err)
 		}

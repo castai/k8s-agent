@@ -97,7 +97,7 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger,
 	log.Infof("using provider %q", provider.Name())
 
 	var reg *types.ClusterRegistration
-	if cfg.Static.SkipClusterRegistration {
+	if cfg.Static != nil && cfg.Static.SkipClusterRegistration {
 		reg = &types.ClusterRegistration{
 			ClusterID:      cfg.Static.ClusterID,
 			OrganizationID: cfg.Static.OrganizationID,
