@@ -30,8 +30,9 @@ type Log struct {
 }
 
 type API struct {
-	Key string `mapstructure:"key"`
-	URL string `mapstructure:"url"`
+	Key              string `mapstructure:"key"`
+	URL              string `mapstructure:"url"`
+	DisableTelemetry bool   `mapstructure:"disable_telemetry"`
 }
 
 type CASTAI struct {

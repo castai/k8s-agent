@@ -9,6 +9,7 @@ import (
 	_ "net/http/pprof"
 	"time"
 
+	"castai-agent/internal/services/providers/types"
 	castailog "castai-agent/pkg/log"
 
 	"github.com/sirupsen/logrus"
@@ -95,15 +96,25 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger,
 	fields["provider"] = provider.Name()
 	log.Infof("using provider %q", provider.Name())
 
-	reg, err := provider.RegisterCluster(ctx, castaiclient)
-	if err != nil {
-		return fmt.Errorf("registering cluster: %w", err)
+	var reg *types.ClusterRegistration
+	if cfg.Static.SkipClusterRegistration {
+		reg = &types.ClusterRegistration{
+			ClusterID:      cfg.Static.ClusterID,
+			OrganizationID: cfg.Static.OrganizationID,
+		}
+	} else {
+		reg, err = provider.RegisterCluster(ctx, castaiclient)
+		if err != nil {
+			return fmt.Errorf("registering cluster: %w", err)
+		}
 	}
 
-	castailog.SetupLogExporter(logger, castaiclient, castailog.Config{
-		ClusterID:   reg.ClusterID,
-		SendTimeout: LogExporterSendTimeout,
-	})
+	if !cfg.API.DisableTelemetry {
+		castailog.SetupLogExporter(logger, castaiclient, castailog.Config{
+			ClusterID:   reg.ClusterID,
+			SendTimeout: LogExporterSendTimeout,
+		})
+	}
 
 	fields["cluster_id"] = reg.ClusterID
 	log = log.WithFields(fields)
