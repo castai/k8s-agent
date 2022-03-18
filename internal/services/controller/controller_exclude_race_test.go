@@ -132,6 +132,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 			PrepTimeout:          2 * time.Second,
 			InitialSleepDuration: 10 * time.Millisecond,
 		},
+		config.Debug{},
 		version,
 		agentVersion,
 	)

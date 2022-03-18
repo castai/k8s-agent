@@ -150,6 +150,7 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger,
 			provider,
 			reg.ClusterID,
 			cfg.Controller,
+			cfg.Debug,
 			v,
 			agentVersion,
 		)

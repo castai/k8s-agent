@@ -112,6 +112,7 @@ func TestController_HappyPath(t *testing.T) {
 			PrepTimeout:          2 * time.Second,
 			InitialSleepDuration: 10 * time.Millisecond,
 		},
+		config.Debug{},
 		version,
 		agentVersion,
 	)
@@ -276,6 +277,7 @@ func TestCleanObj(t *testing.T) {
 func TestEventHandlers(t *testing.T) {
 	t.Run("should handle add events", func(t *testing.T) {
 		queue := mock_workqueue.NewMockInterface(gomock.NewController(t))
+		queue.EXPECT().Len().AnyTimes()
 
 		c := &Controller{
 			log:   logrus.New(),
@@ -301,6 +303,7 @@ func TestEventHandlers(t *testing.T) {
 
 	t.Run("should handle update events", func(t *testing.T) {
 		queue := mock_workqueue.NewMockInterface(gomock.NewController(t))
+		queue.EXPECT().Len().AnyTimes()
 
 		c := &Controller{
 			log:   logrus.New(),
@@ -334,6 +337,7 @@ func TestEventHandlers(t *testing.T) {
 
 	t.Run("should handle delete events", func(t *testing.T) {
 		queue := mock_workqueue.NewMockInterface(gomock.NewController(t))
+		queue.EXPECT().Len().AnyTimes()
 
 		c := &Controller{
 			log:   logrus.New(),
@@ -359,6 +363,7 @@ func TestEventHandlers(t *testing.T) {
 
 	t.Run("should handle cache.DeletedFinalStateUnknown events", func(t *testing.T) {
 		queue := mock_workqueue.NewMockInterface(gomock.NewController(t))
+		queue.EXPECT().Len().AnyTimes()
 
 		c := &Controller{
 			log:   logrus.New(),

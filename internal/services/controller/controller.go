@@ -48,6 +48,7 @@ type Controller struct {
 	deltaMu sync.Mutex
 
 	agentVersion *config.AgentVersion
+	debugCfg     config.Debug
 }
 
 func New(
@@ -57,6 +58,7 @@ func New(
 	provider types.Provider,
 	clusterID string,
 	cfg *config.Controller,
+	debugCfg config.Debug,
 	v version.Interface,
 	agentVersion *config.AgentVersion,
 ) *Controller {
@@ -85,6 +87,7 @@ func New(
 		castaiclient: castaiclient,
 		provider:     provider,
 		cfg:          cfg,
+		debugCfg:     debugCfg,
 		delta:        newDelta(log, clusterID, v.Full()),
 		queue:        workqueue.NewNamed("castai-agent"),
 		informers:    typeInformerMap,
@@ -104,7 +107,7 @@ func (c *Controller) registerEventHandlers() {
 		informer := informer
 		log := c.log.WithField("informer", typ.String())
 		h := c.createEventHandlers(log, typ)
-		if config.Debug {
+		if c.debugCfg.DumpObjectUpdatesToFile {
 			sink, _, err := wrapWithFileSink(eventsDumpPath, log, h)
 			if err != nil {
 				log.Warnf("failed to wrap informer: %v", err)
@@ -344,7 +347,7 @@ func (c *Controller) Run(ctx context.Context) {
 			const maxItems = 5
 			queueContent := c.debugQueueContent(maxItems)
 			log := c.log.WithField("queue_content", queueContent)
-			if config.Debug {
+			if c.debugCfg.HangOnInitialSnapshotError {
 				log.Errorf("error while collecting initial snapshot: %v", err)
 				log.Warnf("agent will now sleep forver. Dumped events available at: %q", eventsDumpPath)
 				for {

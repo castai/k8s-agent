@@ -23,6 +23,7 @@ type Config struct {
 	Static     *Static     `mapstructure:"static"`
 	Controller *Controller `mapstructure:"controller"`
 	PprofPort  int         `mapstructure:"pprof.port"`
+	Debug      Debug       `mapstructure:"debug"`
 }
 
 type Log struct {
@@ -76,6 +77,11 @@ type Controller struct {
 	Interval             time.Duration `mapstructure:"interval"`
 	PrepTimeout          time.Duration `mapstructure:"prep_timeout"`
 	InitialSleepDuration time.Duration `mapstructure:"initial_sleep_duration"`
+}
+
+type Debug struct {
+	DumpObjectUpdatesToFile    bool `mapstructure:"dump_object_updates_to_file"`
+	HangOnInitialSnapshotError bool `mapstructure:"hang_on_initial_snapshot_error"`
 }
 
 var cfg *Config

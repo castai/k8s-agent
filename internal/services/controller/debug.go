@@ -56,6 +56,6 @@ func dumpObj(w io.Writer, log logrus.FieldLogger, oldObj, newObj interface{}) {
 		UnixMicro: time.Now().UnixMicro(),
 	})
 	if err != nil {
-		log.WithField("event_type", e).Warnf("failed to dump event %q: %w", e, err)
+		log.WithField("event_type", e).Warnf("failed to dump event %q: %v", e, err)
 	}
 }
