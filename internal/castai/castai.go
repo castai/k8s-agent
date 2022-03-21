@@ -8,11 +8,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"net"
 	"net/http"
 	"net/url"
 	"time"
+
+	"k8s.io/apimachinery/pkg/util/wait"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/sirupsen/logrus"

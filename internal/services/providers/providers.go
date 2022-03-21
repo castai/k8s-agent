@@ -1,9 +1,10 @@
 package providers
 
 import (
-	"castai-agent/internal/services/providers/aks"
 	"context"
 	"fmt"
+
+	"castai-agent/internal/services/providers/aks"
 
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/kubernetes"

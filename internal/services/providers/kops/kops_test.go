@@ -177,7 +177,7 @@ func TestProvider_IsSpot(t *testing.T) {
 
 		p := &Provider{}
 
-		got, err := p.IsSpot(context.Background(), node)
+		got, err := p.isSpot(context.Background(), node)
 
 		require.NoError(t, err)
 		require.True(t, got)
@@ -194,7 +194,7 @@ func TestProvider_IsSpot(t *testing.T) {
 
 		p := &Provider{}
 
-		got, err := p.IsSpot(context.Background(), node)
+		got, err := p.isSpot(context.Background(), node)
 
 		require.NoError(t, err)
 		require.True(t, got)
@@ -222,7 +222,7 @@ func TestProvider_IsSpot(t *testing.T) {
 			},
 		}, nil)
 
-		got, err := p.IsSpot(context.Background(), node)
+		got, err := p.isSpot(context.Background(), node)
 
 		require.NoError(t, err)
 		require.True(t, got)
@@ -241,7 +241,7 @@ func TestProvider_IsSpot(t *testing.T) {
 			csp: "gcp",
 		}
 
-		got, err := p.IsSpot(context.Background(), node)
+		got, err := p.isSpot(context.Background(), node)
 
 		require.NoError(t, err)
 		require.True(t, got)
@@ -269,7 +269,7 @@ func TestProvider_IsSpot(t *testing.T) {
 			},
 		}, nil)
 
-		got, err := p.IsSpot(context.Background(), node)
+		got, err := p.isSpot(context.Background(), node)
 
 		require.NoError(t, err)
 		require.False(t, got)

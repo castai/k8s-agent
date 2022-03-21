@@ -70,12 +70,14 @@ func TestProvider_IsSpot(t *testing.T) {
 			spotCache: map[string]bool{},
 		}
 
-		got, err := p.IsSpot(context.Background(), &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+		node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
 			LabelCapacity: ValueCapacitySpot,
-		}}})
+		}}}
+
+		got, err := p.FilterSpot(context.Background(), []*v1.Node{node})
 
 		require.NoError(t, err)
-		require.True(t, got)
+		require.Equal(t, []*v1.Node{node}, got)
 	})
 
 	t.Run("spot instance CAST AI label", func(t *testing.T) {
@@ -87,12 +89,14 @@ func TestProvider_IsSpot(t *testing.T) {
 			spotCache: map[string]bool{},
 		}
 
-		got, err := p.IsSpot(context.Background(), &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+		node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
 			labels.CastaiSpot: "true",
-		}}})
+		}}}
+
+		got, err := p.FilterSpot(context.Background(), []*v1.Node{node})
 
 		require.NoError(t, err)
-		require.True(t, got)
+		require.Equal(t, []*v1.Node{node}, got)
 	})
 
 	t.Run("spot instance lifecycle response", func(t *testing.T) {
@@ -106,45 +110,24 @@ func TestProvider_IsSpot(t *testing.T) {
 
 		awsClient.EXPECT().GetInstancesByPrivateDNS(gomock.Any(), []string{"hostname"}).Return([]*ec2.Instance{
 			{
-				InstanceLifecycle: pointer.StringPtr("spot"),
-			},
-		}, nil)
-
-		got, err := p.IsSpot(context.Background(), &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
-			v1.LabelHostname: "hostname",
-		}}})
-
-		require.NoError(t, err)
-		require.True(t, got)
-	})
-
-	t.Run("spot instance lifecycle cached API response", func(t *testing.T) {
-		awsClient := mock_client.NewMockClient(gomock.NewController(t))
-
-		p := &Provider{
-			log:       logrus.New(),
-			awsClient: awsClient,
-			spotCache: map[string]bool{},
-		}
-
-		awsClient.EXPECT().GetInstancesByPrivateDNS(gomock.Any(), []string{"hostname"}).Return([]*ec2.Instance{
-			{
+				PrivateDnsName:    pointer.StringPtr("hostname"),
 				InstanceLifecycle: pointer.StringPtr("spot"),
 			},
 		}, nil).Times(1)
 
-		got, err := p.IsSpot(context.Background(), &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+		node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
 			v1.LabelHostname: "hostname",
-		}}})
+		}}}
+
+		got, err := p.FilterSpot(context.Background(), []*v1.Node{node})
 
 		require.NoError(t, err)
-		require.True(t, got)
+		require.Equal(t, []*v1.Node{node}, got)
 
-		got, err = p.IsSpot(context.Background(), &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
-			v1.LabelHostname: "hostname",
-		}}})
+		got, err = p.FilterSpot(context.Background(), []*v1.Node{node})
+
 		require.NoError(t, err)
-		require.True(t, got)
+		require.Equal(t, []*v1.Node{node}, got)
 	})
 
 	t.Run("on-demand instance", func(t *testing.T) {
@@ -158,15 +141,18 @@ func TestProvider_IsSpot(t *testing.T) {
 
 		awsClient.EXPECT().GetInstancesByPrivateDNS(gomock.Any(), []string{"hostname"}).Return([]*ec2.Instance{
 			{
+				PrivateDnsName:    pointer.StringPtr("hostname"),
 				InstanceLifecycle: pointer.StringPtr("on-demand"),
 			},
 		}, nil)
 
-		got, err := p.IsSpot(context.Background(), &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+		node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
 			v1.LabelHostname: "hostname",
-		}}})
+		}}}
+
+		got, err := p.FilterSpot(context.Background(), []*v1.Node{node})
 
 		require.NoError(t, err)
-		require.False(t, got)
+		require.Empty(t, got)
 	})
 }

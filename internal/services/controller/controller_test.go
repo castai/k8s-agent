@@ -95,8 +95,7 @@ func TestController_HappyPath(t *testing.T) {
 			require.Equalf(t, "1.2.3", req.AgentVersion, "got request: %+v", req)
 		})
 
-	provider.EXPECT().IsSpot(gomock.Any(), node).Return(true, nil).Times(1)
-	provider.EXPECT().IsSpot(gomock.Any(), expectedNode).Return(true, nil).Times(1)
+	provider.EXPECT().FilterSpot(gomock.Any(), []*v1.Node{node}).Return([]*v1.Node{node}, nil)
 
 	f := informers.NewSharedInformerFactory(clientset, 0)
 	log := logrus.New()

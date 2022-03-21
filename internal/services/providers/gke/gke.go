@@ -99,20 +99,32 @@ func failedAutodiscovery(err error, envVar string) error {
 	return fmt.Errorf("autodiscovering cluster metadata: %w\nProvide required %s environment variable", err, envVar)
 }
 
-func (p *Provider) IsSpot(_ context.Context, node *corev1.Node) (bool, error) {
+func isSpot(node *corev1.Node) bool {
 	if val, ok := node.Labels[labels.CastaiSpot]; ok && val == "true" {
-		return true, nil
+		return true
 	}
 
 	if val, ok := node.Labels[LabelPreemptible]; ok && val == "true" {
-		return true, nil
+		return true
 	}
 
 	if val, ok := node.Labels[LabelSpot]; ok && val == "true" {
-		return true, nil
+		return true
 	}
 
-	return false, nil
+	return false
+}
+
+func (p *Provider) FilterSpot(_ context.Context, nodes []*corev1.Node) ([]*corev1.Node, error) {
+	var ret []*corev1.Node
+
+	for _, node := range nodes {
+		if isSpot(node) {
+			ret = append(ret, node)
+		}
+	}
+
+	return ret, nil
 }
 
 func (p *Provider) Name() string {

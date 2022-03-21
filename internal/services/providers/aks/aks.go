@@ -89,11 +89,18 @@ func failedAutodiscovery(err error, envVar string) error {
 	return fmt.Errorf("autodiscovering cluster metadata: %w: provide required %s environment variable", err, envVar)
 }
 
-func (p *Provider) IsSpot(_ context.Context, node *corev1.Node) (bool, error) {
-	if val, ok := node.ObjectMeta.Labels["kubernetes.azure.com/scalesetpriority"]; ok {
-		return val == "spot", nil
+func (p *Provider) FilterSpot(_ context.Context, nodes []*corev1.Node) ([]*corev1.Node, error) {
+	var ret []*corev1.Node
+
+	for _, node := range nodes {
+		if val, ok := node.ObjectMeta.Labels["kubernetes.azure.com/scalesetpriority"]; !ok || val != "spot" {
+			continue
+		}
+
+		ret = append(ret, node)
 	}
-	return false, nil
+
+	return ret, nil
 }
 
 func (p *Provider) Name() string {
