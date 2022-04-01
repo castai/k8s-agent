@@ -75,3 +75,16 @@ jobs:
           tags: |
             castai/agent:${{ env.RELEASE_TAG }}
             castai/agent:latest
+
+      - name: FOSSA scan docker image
+#        if: github.event_name == 'release'
+        uses: fossas/fossa-action@v1
+        with:
+          api-key: ${{ secrets.FOSSA_API_KEY }}
+#          container: castai/agent:${{ env.RELEASE_TAG }}
+          container: castai/agent:v0.23.0
+
+      - name: FOSSA scan code
+        uses: fossas/fossa-action@v1
+        with:
+          api-key: ${{ secrets.FOSSA_API_KEY }}
