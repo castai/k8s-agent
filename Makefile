@@ -1,9 +1,9 @@
 build:
 	GOOS=linux go build -ldflags="-s -w" -o bin/castai-agent .
-	docker build -t castai/agent:$(VERSION) .
+	docker build -t us-docker.pkg.dev/castai-hub/library/agent:$(VERSION) .
 
 push:
-	docker push castai/agent:$(VERSION)
+	docker push us-docker.pkg.dev/castai-hub/library/agent:$(VERSION)
 
 deploy:
 	cat deployment.yaml | envsubst | kubectl apply -f -
