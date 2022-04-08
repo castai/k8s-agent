@@ -52,11 +52,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
 
-      - name: Login to DockerHub
+      - name: Login to Google Artifact Registry
         uses: docker/login-action@v1
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+          registry: us-docker.pkg.dev
+          username: _json_key
+          password: ${{ secrets.ARTIFACT_BUILDER_JSON_KEY }}
 
       - name: Build and push main
         if: github.event_name != 'release'
@@ -64,7 +65,7 @@ jobs:
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
-          tags: castai/agent:${{ github.sha }}
+          tags: us-docker.pkg.dev/castai-hub/library/agent:${{ github.sha }}
 
       - name: Build and push release
         if: github.event_name == 'release'
@@ -73,12 +74,12 @@ jobs:
           context: .
           push: true
           tags: |
-            castai/agent:${{ env.RELEASE_TAG }}
-            castai/agent:latest
+            us-docker.pkg.dev/castai-hub/library/agent:${{ env.RELEASE_TAG }}
+            us-docker.pkg.dev/castai-hub/library/agent:latest
 
       - name: FOSSA scan docker image
         if: github.event_name == 'release'
         uses: fossas/fossa-action@v1
         with:
           api-key: ${{ secrets.FOSSA_API_KEY }}
-          container: castai/agent:${{ env.RELEASE_TAG }}
+          container: us-docker.pkg.dev/castai-hub/library/agent:${{ env.RELEASE_TAG }}
