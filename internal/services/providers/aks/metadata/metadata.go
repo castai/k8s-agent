@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -66,7 +67,7 @@ func (c *Client) GetSubscriptionID() (string, error) {
 }
 
 func (c *Client) loadMetadata() {
-	metadata, err := getInstanceMetadata(context.Background())
+	metadata, err := getInstanceMetadata(context.Background(), c.log)
 	if err != nil {
 		c.log.Errorf("failed to retrieve instance metadata: %v", err)
 		return
@@ -74,7 +75,7 @@ func (c *Client) loadMetadata() {
 	c.metadata = *metadata
 }
 
-func getInstanceMetadata(ctx context.Context) (*ComputeMetadata, error) {
+func getInstanceMetadata(ctx context.Context, log logrus.FieldLogger) (*ComputeMetadata, error) {
 	req, err := http.NewRequest("GET", metadataURL, nil)
 	if err != nil {
 		return nil, err
@@ -98,7 +99,11 @@ func getInstanceMetadata(ctx context.Context) (*ComputeMetadata, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("getting instance metadata with response %q", resp.Status)
+		var buf bytes.Buffer
+		if _, err := buf.ReadFrom(resp.Body); err != nil {
+			log.Errorf("failed reading error response body: %v", err)
+		}
+		return nil, fmt.Errorf("getting instance metadata status: %q, body: %q", resp.Status, buf.String())
 	}
 
 	out := &instanceMetadata{}
