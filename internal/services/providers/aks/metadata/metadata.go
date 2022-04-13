@@ -81,7 +81,7 @@ func getInstanceMetadata(ctx context.Context, log logrus.FieldLogger) (*ComputeM
 		return nil, err
 	}
 
-	req.Header.Add("Metadata", "True")
+	req.Header.Add("Metadata", "true")
 	q := req.URL.Query()
 	q.Add("format", "json")
 	q.Add("api-version", "2021-05-01")
