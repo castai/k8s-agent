@@ -95,7 +95,11 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger,
 	fields["provider"] = provider.Name()
 	log.Infof("using provider %q", provider.Name())
 
-	clusterID := cfg.Static.ClusterID
+	clusterID := ""
+	if cfg.Static != nil {
+		clusterID = cfg.Static.ClusterID
+	}
+
 	if clusterID == "" {
 		reg, err := provider.RegisterCluster(ctx, castaiclient)
 		if err != nil {
