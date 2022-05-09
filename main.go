@@ -95,19 +95,24 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger,
 	fields["provider"] = provider.Name()
 	log.Infof("using provider %q", provider.Name())
 
-	reg, err := provider.RegisterCluster(ctx, castaiclient)
-	if err != nil {
-		return fmt.Errorf("registering cluster: %w", err)
+	clusterID := cfg.Static.ClusterID
+	if clusterID == "" {
+		reg, err := provider.RegisterCluster(ctx, castaiclient)
+		if err != nil {
+			return fmt.Errorf("registering cluster: %w", err)
+		}
+		clusterID = reg.ClusterID
+		log.Infof("cluster registered: %v, clusterID: %s", reg, clusterID)
+	} else {
+		log.Infof("clusterID: %s provided by env variable", clusterID)
 	}
-
 	castailog.SetupLogExporter(logger, castaiclient, castailog.Config{
-		ClusterID:   reg.ClusterID,
+		ClusterID:   clusterID,
 		SendTimeout: LogExporterSendTimeout,
 	})
 
-	fields["cluster_id"] = reg.ClusterID
+	fields["cluster_id"] = clusterID
 	log = log.WithFields(fields)
-	log.Infof("cluster registered: %v", reg)
 
 	if cfg.PprofPort != 0 {
 		go func() {
@@ -137,7 +142,7 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger,
 			f,
 			castaiclient,
 			provider,
-			reg.ClusterID,
+			clusterID,
 			cfg.Controller,
 			v,
 			agentVersion,
