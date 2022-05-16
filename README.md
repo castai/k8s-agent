@@ -42,11 +42,20 @@ GKE_CLUSTER_NAME=your-cluster-name
 GKE_REGION=your-cluster-region
 GKE_LOCATION=your-cluster-location
 ```
+note, when using zonal `GKE_REGION` and `GKE_LOCATION` is often the same, i.e. `europe-west3-a`
 
 #### kOps
 
 ```text
 PROVIDER=kops
+```
+
+#### Issues
+If you encounter "Error: no Auth Provider found for name "gcp"", add a discard import to the main fn: 
+```go
+import (
+    _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+)
 ```
 
 ## Licence

@@ -60,8 +60,8 @@ func TestController_HappyPath(t *testing.T) {
 
 	clientset := fake.NewSimpleClientset(node, pod)
 
-	version.EXPECT().MinorInt().Return(19)
-	version.EXPECT().Full().Return("1.19+")
+	version.EXPECT().MinorInt().Return(19).MaxTimes(2)
+	version.EXPECT().Full().Return("1.19+").MaxTimes(2)
 
 	clusterID := uuid.New()
 
