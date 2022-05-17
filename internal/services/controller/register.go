@@ -2,6 +2,7 @@ package controller
 
 import (
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -15,6 +16,7 @@ var builder = runtime.SchemeBuilder{
 	appsv1.AddToScheme,
 	storagev1.AddToScheme,
 	batchv1.AddToScheme,
+	autoscalingv1.AddToScheme,
 }
 
 func init() {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -65,6 +66,7 @@ func New(
 		reflect.TypeOf(&corev1.PersistentVolume{}):      f.Core().V1().PersistentVolumes().Informer(),
 		reflect.TypeOf(&corev1.PersistentVolumeClaim{}): f.Core().V1().PersistentVolumeClaims().Informer(),
 		reflect.TypeOf(&corev1.ReplicationController{}): f.Core().V1().ReplicationControllers().Informer(),
+		reflect.TypeOf(&corev1.Namespace{}):             f.Core().V1().Namespaces().Informer(),
 		reflect.TypeOf(&corev1.Service{}):               f.Core().V1().Services().Informer(),
 		reflect.TypeOf(&appsv1.Deployment{}):            f.Apps().V1().Deployments().Informer(),
 		reflect.TypeOf(&appsv1.ReplicaSet{}):            f.Apps().V1().ReplicaSets().Informer(),
@@ -76,6 +78,11 @@ func New(
 
 	if v.MinorInt() >= 17 {
 		typeInformerMap[reflect.TypeOf(&storagev1.CSINode{})] = f.Storage().V1().CSINodes().Informer()
+	}
+
+	if v.MinorInt() >= 18 {
+		typeInformerMap[reflect.TypeOf(&autoscalingv1.HorizontalPodAutoscaler{})] =
+			f.Autoscaling().V1().HorizontalPodAutoscalers().Informer()
 	}
 
 	c := &Controller{
