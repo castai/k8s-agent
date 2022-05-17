@@ -15,6 +15,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -273,6 +274,23 @@ func TestCleanObj(t *testing.T) {
 }
 
 func TestEventHandlers(t *testing.T) {
+
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "pod",
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+
+	hpa := &autoscalingv1.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "horizontalpodautoscaler",
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+
+	items := []object{pod, hpa}
+
 	t.Run("should handle add events", func(t *testing.T) {
 		queue := mock_workqueue.NewMockInterface(gomock.NewController(t))
 
@@ -281,21 +299,14 @@ func TestEventHandlers(t *testing.T) {
 			queue: queue,
 		}
 
-		handlers := c.createEventHandlers(c.log, reflect.TypeOf(&v1.Pod{}))
-
-		pod := &v1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "pod",
-				Namespace: v1.NamespaceDefault,
-			},
+		for i := range items {
+			handlers := c.createEventHandlers(c.log, reflect.TypeOf(items[i]))
+			queue.EXPECT().Add(&item{
+				obj:   items[i],
+				event: eventAdd,
+			})
+			handlers.OnAdd(items[i])
 		}
-
-		queue.EXPECT().Add(&item{
-			obj:   pod,
-			event: eventAdd,
-		})
-
-		handlers.OnAdd(pod)
 	})
 
 	t.Run("should handle update events", func(t *testing.T) {
@@ -306,29 +317,20 @@ func TestEventHandlers(t *testing.T) {
 			queue: queue,
 		}
 
-		handlers := c.createEventHandlers(c.log, reflect.TypeOf(&v1.Pod{}))
-
-		oldPod := &v1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "pod",
-				Namespace: v1.NamespaceDefault,
-			},
+		updates := make([]object, len(items))
+		copy(updates, items)
+		for i := range updates {
+			updates[i].SetLabels(map[string]string{"a": "b"})
 		}
 
-		newPod := &v1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "pod",
-				Namespace: v1.NamespaceDefault,
-				Labels:    map[string]string{"a": "b"},
-			},
+		for i := range items {
+			handlers := c.createEventHandlers(c.log, reflect.TypeOf(items[i]))
+			queue.EXPECT().Add(&item{
+				obj:   items[i],
+				event: eventUpdate,
+			})
+			handlers.OnUpdate(items[i], updates[i])
 		}
-
-		queue.EXPECT().Add(&item{
-			obj:   newPod,
-			event: eventUpdate,
-		})
-
-		handlers.OnUpdate(oldPod, newPod)
 	})
 
 	t.Run("should handle delete events", func(t *testing.T) {
@@ -339,21 +341,15 @@ func TestEventHandlers(t *testing.T) {
 			queue: queue,
 		}
 
-		handlers := c.createEventHandlers(c.log, reflect.TypeOf(&v1.Pod{}))
+		for i := range items {
+			handlers := c.createEventHandlers(c.log, reflect.TypeOf(items[i]))
+			queue.EXPECT().Add(&item{
+				obj:   items[i],
+				event: eventDelete,
+			})
 
-		pod := &v1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "pod",
-				Namespace: v1.NamespaceDefault,
-			},
+			handlers.OnDelete(items[i])
 		}
-
-		queue.EXPECT().Add(&item{
-			obj:   pod,
-			event: eventDelete,
-		})
-
-		handlers.OnDelete(pod)
 	})
 
 	t.Run("should handle cache.DeletedFinalStateUnknown events", func(t *testing.T) {
