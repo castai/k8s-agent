@@ -141,14 +141,12 @@ func (p *Provider) isSpot(ctx context.Context, node *v1.Node) (bool, error) {
 	}
 
 	if p.csp == "aws" && p.awsClient != nil {
-		hostname, ok := node.Labels[v1.LabelHostname]
-		if !ok {
-			return false, fmt.Errorf("label %s not found on node %s", v1.LabelHostname, node.Name)
-		}
+		splitProviderID := strings.Split(node.Spec.ProviderID, "/")
+		instanceID := splitProviderID[len(splitProviderID)-1]
 
-		instances, err := p.awsClient.GetInstancesByPrivateDNS(ctx, []string{hostname})
+		instances, err := p.awsClient.GetInstancesByInstanceIDs(ctx, []string{instanceID})
 		if err != nil {
-			return false, fmt.Errorf("getting instances by hostname: %w", err)
+			return false, fmt.Errorf("getting instances by instance IDs: %w", err)
 		}
 
 		for _, instance := range instances {

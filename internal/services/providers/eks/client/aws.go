@@ -27,11 +27,11 @@ type Client interface {
 	GetAccountID(ctx context.Context) (*string, error)
 	// GetClusterName returns the AWS EKS cluster name. It can be discovered dynamically by using WithMetadataDiscovery
 	// opt, which will dynamically get the cluster name by doing a combination of metadata and EC2 SDK calls. Or, it can
-	// be overriden by setting the environment variable EKS_CLUSTER_NAME.
+	// be overridden by setting the environment variable EKS_CLUSTER_NAME.
 	GetClusterName(ctx context.Context) (*string, error)
-	// GetInstancesByPrivateDNS returns a list of EC2 instances from the EC2 SDK by filtering on the private DNS which
-	// can be retrieved from K8s node labels.
-	GetInstancesByPrivateDNS(ctx context.Context, dns []string) ([]*ec2.Instance, error)
+	// GetInstancesByInstanceIDs returns a list of EC2 instances from the EC2 SDK by filtering on the instance IDs which
+	// can be retrieved from node.spec.providerID.
+	GetInstancesByInstanceIDs(ctx context.Context, instanceIDs []string) ([]*ec2.Instance, error)
 }
 
 // New creates and configures a new AWS Client instance.
@@ -217,22 +217,22 @@ func getClusterName(tags []*ec2.Tag) string {
 	return ""
 }
 
-func (c *client) GetInstancesByPrivateDNS(ctx context.Context, dns []string) ([]*ec2.Instance, error) {
-	dnsPtr := make([]*string, len(dns))
-	for i := range dns {
-		dnsPtr[i] = &dns[i]
+func (c *client) GetInstancesByInstanceIDs(ctx context.Context, instanceIDs []string) ([]*ec2.Instance, error) {
+	idsPtr := make([]*string, len(instanceIDs))
+	for i := range instanceIDs {
+		idsPtr[i] = &instanceIDs[i]
 	}
 
 	var instances []*ec2.Instance
 
 	batchSize := 20
-	for i := 0; i < len(dnsPtr); i += batchSize {
-		batch := dnsPtr[i:int(math.Min(float64(i+batchSize), float64(len(dnsPtr))))]
+	for i := 0; i < len(idsPtr); i += batchSize {
+		batch := idsPtr[i:int(math.Min(float64(i+batchSize), float64(len(idsPtr))))]
 
 		req := &ec2.DescribeInstancesInput{
 			Filters: []*ec2.Filter{
 				{
-					Name:   pointer.StringPtr("private-dns-name"),
+					Name:   pointer.StringPtr("instance-id"),
 					Values: batch,
 				},
 			},
