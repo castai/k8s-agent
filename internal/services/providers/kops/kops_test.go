@@ -202,10 +202,8 @@ func TestProvider_IsSpot(t *testing.T) {
 
 	t.Run("aws spot nodes", func(t *testing.T) {
 		node := &v1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Labels: map[string]string{
-					v1.LabelHostname: "hostname",
-				},
+			Spec: v1.NodeSpec{
+				ProviderID: "aws:///eu-west-1a/instanceID",
 			},
 		}
 
@@ -216,7 +214,7 @@ func TestProvider_IsSpot(t *testing.T) {
 			awsClient: awsclient,
 		}
 
-		awsclient.EXPECT().GetInstancesByPrivateDNS(gomock.Any(), []string{"hostname"}).Return([]*ec2.Instance{
+		awsclient.EXPECT().GetInstancesByInstanceIDs(gomock.Any(), []string{"instanceID"}).Return([]*ec2.Instance{
 			{
 				InstanceLifecycle: pointer.StringPtr("spot"),
 			},
@@ -249,10 +247,8 @@ func TestProvider_IsSpot(t *testing.T) {
 
 	t.Run("non spot node", func(t *testing.T) {
 		node := &v1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Labels: map[string]string{
-					v1.LabelHostname: "hostname",
-				},
+			Spec: v1.NodeSpec{
+				ProviderID: "aws:///eu-west-1a/instanceID",
 			},
 		}
 
@@ -263,7 +259,7 @@ func TestProvider_IsSpot(t *testing.T) {
 			awsClient: awsclient,
 		}
 
-		awsclient.EXPECT().GetInstancesByPrivateDNS(gomock.Any(), []string{"hostname"}).Return([]*ec2.Instance{
+		awsclient.EXPECT().GetInstancesByInstanceIDs(gomock.Any(), []string{"instanceID"}).Return([]*ec2.Instance{
 			{
 				InstanceLifecycle: pointer.StringPtr("on-demand"),
 			},

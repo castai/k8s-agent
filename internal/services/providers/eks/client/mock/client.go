@@ -65,19 +65,19 @@ func (mr *MockClientMockRecorder) GetClusterName(arg0 interface{}) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetClusterName", reflect.TypeOf((*MockClient)(nil).GetClusterName), arg0)
 }
 
-// GetInstancesByPrivateDNS mocks base method.
-func (m *MockClient) GetInstancesByPrivateDNS(arg0 context.Context, arg1 []string) ([]*ec2.Instance, error) {
+// GetInstancesByInstanceIDs mocks base method.
+func (m *MockClient) GetInstancesByInstanceIDs(arg0 context.Context, arg1 []string) ([]*ec2.Instance, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetInstancesByPrivateDNS", arg0, arg1)
+	ret := m.ctrl.Call(m, "GetInstancesByInstanceIDs", arg0, arg1)
 	ret0, _ := ret[0].([]*ec2.Instance)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetInstancesByPrivateDNS indicates an expected call of GetInstancesByPrivateDNS.
-func (mr *MockClientMockRecorder) GetInstancesByPrivateDNS(arg0, arg1 interface{}) *gomock.Call {
+// GetInstancesByInstanceIDs indicates an expected call of GetInstancesByInstanceIDs.
+func (mr *MockClientMockRecorder) GetInstancesByInstanceIDs(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetInstancesByPrivateDNS", reflect.TypeOf((*MockClient)(nil).GetInstancesByPrivateDNS), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetInstancesByInstanceIDs", reflect.TypeOf((*MockClient)(nil).GetInstancesByInstanceIDs), arg0, arg1)
 }
 
 // GetRegion mocks base method.

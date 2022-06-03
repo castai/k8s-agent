@@ -3,6 +3,7 @@ package eks
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"k8s.io/api/core/v1"
@@ -102,8 +103,8 @@ func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node
 		return false
 	}
 
-	var hostnames []string
-	nodesByHostname := map[string]*v1.Node{}
+	var instanceIDs []string
+	nodesByInstanceID := map[string]*v1.Node{}
 
 	for _, node := range nodes {
 		if isLabeledSpot(node) {
@@ -111,12 +112,10 @@ func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node
 			continue
 		}
 
-		hostname, ok := node.Labels[v1.LabelHostname]
-		if !ok {
-			return nil, fmt.Errorf("label %s not found on node %s", v1.LabelHostname, node.Name)
-		}
+		splitProviderID := strings.Split(node.Spec.ProviderID, "/")
+		instanceID := splitProviderID[len(splitProviderID)-1]
 
-		spot, ok := p.spotCache[hostname]
+		spot, ok := p.spotCache[instanceID]
 		if ok {
 			if spot {
 				ret = append(ret, node)
@@ -124,25 +123,25 @@ func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node
 			continue
 		}
 
-		hostnames = append(hostnames, hostname)
-		nodesByHostname[hostname] = node
+		instanceIDs = append(instanceIDs, instanceID)
+		nodesByInstanceID[instanceID] = node
 	}
 
-	if len(hostnames) > 0 {
-		instances, err := p.awsClient.GetInstancesByPrivateDNS(ctx, hostnames)
+	if len(instanceIDs) > 0 {
+		instances, err := p.awsClient.GetInstancesByInstanceIDs(ctx, instanceIDs)
 		if err != nil {
-			return nil, fmt.Errorf("getting instances by private dns: %w", err)
+			return nil, fmt.Errorf("getting instances by instance IDs: %w", err)
 		}
 
 		for _, instance := range instances {
 			isSpot := instance.InstanceLifecycle != nil && *instance.InstanceLifecycle == "spot"
-			hostname := *instance.PrivateDnsName
+			instanceID := *instance.InstanceId
 
 			if isSpot {
-				ret = append(ret, nodesByHostname[hostname])
+				ret = append(ret, nodesByInstanceID[instanceID])
 			}
 
-			p.spotCache[hostname] = isSpot
+			p.spotCache[instanceID] = isSpot
 		}
 	}
 

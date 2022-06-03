@@ -108,16 +108,18 @@ func TestProvider_IsSpot(t *testing.T) {
 			spotCache: map[string]bool{},
 		}
 
-		awsClient.EXPECT().GetInstancesByPrivateDNS(gomock.Any(), []string{"hostname"}).Return([]*ec2.Instance{
+		awsClient.EXPECT().GetInstancesByInstanceIDs(gomock.Any(), []string{"instanceID"}).Return([]*ec2.Instance{
 			{
-				PrivateDnsName:    pointer.StringPtr("hostname"),
+				InstanceId:        pointer.StringPtr("instanceID"),
 				InstanceLifecycle: pointer.StringPtr("spot"),
 			},
 		}, nil).Times(1)
 
-		node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
-			v1.LabelHostname: "hostname",
-		}}}
+		node := &v1.Node{
+			Spec: v1.NodeSpec{
+				ProviderID: "aws:///eu-west-1a/instanceID",
+			},
+		}
 
 		got, err := p.FilterSpot(context.Background(), []*v1.Node{node})
 
@@ -139,16 +141,18 @@ func TestProvider_IsSpot(t *testing.T) {
 			spotCache: map[string]bool{},
 		}
 
-		awsClient.EXPECT().GetInstancesByPrivateDNS(gomock.Any(), []string{"hostname"}).Return([]*ec2.Instance{
+		awsClient.EXPECT().GetInstancesByInstanceIDs(gomock.Any(), []string{"instanceID"}).Return([]*ec2.Instance{
 			{
-				PrivateDnsName:    pointer.StringPtr("hostname"),
+				InstanceId:        pointer.StringPtr("instanceID"),
 				InstanceLifecycle: pointer.StringPtr("on-demand"),
 			},
 		}, nil)
 
-		node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
-			v1.LabelHostname: "hostname",
-		}}}
+		node := &v1.Node{
+			Spec: v1.NodeSpec{
+				ProviderID: "aws:///eu-west-1a/instanceID",
+			},
+		}
 
 		got, err := p.FilterSpot(context.Background(), []*v1.Node{node})
 
