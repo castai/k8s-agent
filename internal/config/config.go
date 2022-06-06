@@ -72,9 +72,11 @@ type Static struct {
 }
 
 type Controller struct {
-	Interval             time.Duration `mapstructure:"interval"`
-	PrepTimeout          time.Duration `mapstructure:"prep_timeout"`
-	InitialSleepDuration time.Duration `mapstructure:"initial_sleep_duration"`
+	Interval                       time.Duration `mapstructure:"interval"`
+	PrepTimeout                    time.Duration `mapstructure:"prep_timeout"`
+	InitialSleepDuration           time.Duration `mapstructure:"initial_sleep_duration"`
+	HealthySnapshotIntervalLimit   time.Duration `mapstructure:"healthy_snapshot_interval_limit"`
+	InitializationTimeoutExtension time.Duration `mapstructure:"initialization_timeout_extension"`
 }
 
 var cfg *Config
@@ -95,6 +97,8 @@ func Get() Config {
 	viper.SetDefault("controller.interval", 15*time.Second)
 	viper.SetDefault("controller.prep_timeout", 10*time.Minute)
 	viper.SetDefault("controller.initial_sleep_duration", 30*time.Second)
+	viper.SetDefault("controller.healthy_snapshot_interval_limit", 10*time.Minute)
+	viper.SetDefault("controller.initialization_timeout_extension", 5*time.Minute)
 
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))

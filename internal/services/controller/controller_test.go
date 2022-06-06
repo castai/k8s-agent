@@ -32,6 +32,14 @@ import (
 	"castai-agent/pkg/labels"
 )
 
+var defaultHealthzCfg = config.Config{Controller: &config.Controller{
+	Interval:                       15 * time.Second,
+	PrepTimeout:                    10 * time.Minute,
+	InitialSleepDuration:           30 * time.Second,
+	HealthySnapshotIntervalLimit:   10 * time.Minute,
+	InitializationTimeoutExtension: 5 * time.Minute,
+}}
+
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(
 		m,
@@ -101,23 +109,16 @@ func TestController_HappyPath(t *testing.T) {
 	f := informers.NewSharedInformerFactory(clientset, 0)
 	log := logrus.New()
 	log.SetLevel(logrus.DebugLevel)
-	ctrl := New(
-		log,
-		f,
-		castaiclient,
-		provider,
-		clusterID.String(),
-		&config.Controller{
-			Interval:             15 * time.Second,
-			PrepTimeout:          2 * time.Second,
-			InitialSleepDuration: 10 * time.Millisecond,
-		},
-		version,
-		agentVersion,
-	)
+	ctrl := New(log, f, castaiclient, provider, clusterID.String(), &config.Controller{
+		Interval:             15 * time.Second,
+		PrepTimeout:          2 * time.Second,
+		InitialSleepDuration: 10 * time.Millisecond,
+	}, version, agentVersion, NewHealthzProvider(defaultHealthzCfg))
 	f.Start(ctx.Done())
 
-	go ctrl.Run(ctx)
+	go func() {
+		require.NoError(t, ctrl.Run(ctx))
+	}()
 
 	wait.Until(func() {
 		if atomic.LoadInt64(&invocations) >= 1 {
