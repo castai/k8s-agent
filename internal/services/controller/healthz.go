@@ -19,20 +19,20 @@ type HealthzProvider struct {
 	cfg             config.Config
 	initHardTimeout time.Duration
 
-	initializeStarted *time.Time
-	lastHealthyAction *time.Time
+	initializeStartedAt *time.Time
+	lastHealthyActionAt *time.Time
 }
 
 func (h *HealthzProvider) Check(_ *http.Request) error {
-	if h.lastHealthyAction != nil {
-		if time.Since(*h.lastHealthyAction) > h.cfg.Controller.HealthySnapshotIntervalLimit {
+	if h.lastHealthyActionAt != nil {
+		if time.Since(*h.lastHealthyActionAt) > h.cfg.Controller.HealthySnapshotIntervalLimit {
 			return fmt.Errorf("time since initialization or last snapshot sent is over the considered healthy limit of %s", h.cfg.Controller.HealthySnapshotIntervalLimit)
 		}
 		return nil
 	}
 
-	if h.initializeStarted != nil {
-		if time.Since(*h.initializeStarted) > h.initHardTimeout {
+	if h.initializeStartedAt != nil {
+		if time.Since(*h.initializeStartedAt) > h.initHardTimeout {
 			return fmt.Errorf("controller initialization is taking longer than the hard timeout of %s", h.initHardTimeout)
 		}
 		return nil
@@ -42,8 +42,9 @@ func (h *HealthzProvider) Check(_ *http.Request) error {
 }
 
 func (h *HealthzProvider) Initializing() {
-	if h.initializeStarted == nil {
-		h.initializeStarted = nowPtr()
+	if h.initializeStartedAt == nil {
+		h.initializeStartedAt = nowPtr()
+		h.lastHealthyActionAt = nil
 	}
 }
 
@@ -56,8 +57,8 @@ func (h *HealthzProvider) SnapshotSent() {
 }
 
 func (h *HealthzProvider) healthyAction() {
-	h.initializeStarted = nil
-	h.lastHealthyAction = nowPtr()
+	h.initializeStartedAt = nil
+	h.lastHealthyActionAt = nowPtr()
 }
 
 func nowPtr() *time.Time {
