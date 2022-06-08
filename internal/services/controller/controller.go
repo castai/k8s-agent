@@ -47,7 +47,8 @@ type Controller struct {
 	delta   *delta
 	deltaMu sync.Mutex
 
-	agentVersion *config.AgentVersion
+	agentVersion    *config.AgentVersion
+	healthzProvider *HealthzProvider
 }
 
 func New(
@@ -59,7 +60,10 @@ func New(
 	cfg *config.Controller,
 	v version.Interface,
 	agentVersion *config.AgentVersion,
+	healthzProvider *HealthzProvider,
 ) *Controller {
+	healthzProvider.Initializing()
+
 	typeInformerMap := map[reflect.Type]cache.SharedInformer{
 		reflect.TypeOf(&corev1.Node{}):                  f.Core().V1().Nodes().Informer(),
 		reflect.TypeOf(&corev1.Pod{}):                   f.Core().V1().Pods().Informer(),
@@ -86,15 +90,16 @@ func New(
 	}
 
 	c := &Controller{
-		log:          log,
-		clusterID:    clusterID,
-		castaiclient: castaiclient,
-		provider:     provider,
-		cfg:          cfg,
-		delta:        newDelta(log, clusterID, v.Full()),
-		queue:        workqueue.NewNamed("castai-agent"),
-		informers:    typeInformerMap,
-		agentVersion: agentVersion,
+		log:             log,
+		clusterID:       clusterID,
+		castaiclient:    castaiclient,
+		provider:        provider,
+		cfg:             cfg,
+		delta:           newDelta(log, clusterID, v.Full()),
+		queue:           workqueue.NewNamed("castai-agent"),
+		informers:       typeInformerMap,
+		agentVersion:    agentVersion,
+		healthzProvider: healthzProvider,
 	}
 
 	c.registerEventHandlers()
@@ -228,7 +233,7 @@ func removeSensitiveEnvVars(obj interface{}) {
 	}
 }
 
-func (c *Controller) Run(ctx context.Context) {
+func (c *Controller) Run(ctx context.Context) error {
 	defer c.queue.ShutDown()
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -243,7 +248,7 @@ func (c *Controller) Run(ctx context.Context) {
 	c.log.Info("waiting for informers cache to sync")
 	if !cache.WaitForCacheSync(ctx.Done(), syncs...) {
 		c.log.Error("failed to sync")
-		return
+		return fmt.Errorf("failed to wait for cache sync")
 	}
 	c.log.Infof("informers cache synced after %v", time.Since(waitStartedAt))
 
@@ -282,6 +287,8 @@ func (c *Controller) Run(ctx context.Context) {
 		c.log.Infof("sleeping for %s before starting to send cluster deltas", c.cfg.InitialSleepDuration)
 		time.Sleep(c.cfg.InitialSleepDuration)
 
+		c.healthzProvider.Initialized()
+
 		c.log.Infof("sending cluster deltas every %s", c.cfg.Interval)
 		wait.Until(func() {
 			c.send(ctx)
@@ -294,6 +301,8 @@ func (c *Controller) Run(ctx context.Context) {
 	}()
 
 	c.pollQueueUntilShutdown()
+
+	return nil
 }
 
 // collectInitialSnapshot is used to add a time buffer to collect the initial snapshot which is larger than periodic
@@ -388,6 +397,8 @@ func (c *Controller) send(ctx context.Context) {
 		c.log.Errorf("failed sending delta: %v", err)
 		return
 	}
+
+	c.healthzProvider.SnapshotSent()
 
 	c.delta.clear()
 }

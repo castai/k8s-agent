@@ -9,11 +9,11 @@ import (
 	_ "net/http/pprof"
 	"time"
 
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
+
 	castailog "castai-agent/pkg/log"
 
 	"github.com/sirupsen/logrus"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -23,7 +23,6 @@ import (
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller"
 	"castai-agent/internal/services/providers"
-	"castai-agent/internal/services/version"
 )
 
 // These should be set via `go build` during a release
@@ -51,9 +50,14 @@ func main() {
 		}
 		log.Fatalf("agent failed: %v", err)
 	}
+
+	log.Info("agent shutdown")
 }
 
 func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger, cfg config.Config) (reterr error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	fields := logrus.Fields{}
 
 	defer func() {
@@ -118,44 +122,55 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger,
 	fields["cluster_id"] = clusterID
 	log = log.WithFields(fields)
 
+	exitCh := make(chan error)
+
 	if cfg.PprofPort != 0 {
-		go func() {
-			addr := fmt.Sprintf(":%d", cfg.PprofPort)
-			log.Infof("starting pprof server on %s", addr)
-			if err := http.ListenAndServe(addr, http.DefaultServeMux); err != nil {
-				log.Errorf("failed to start pprof http server: %v", err)
+		addr := fmt.Sprintf(":%d", cfg.PprofPort)
+		pprofSrv := &http.Server{Addr: addr, Handler: http.DefaultServeMux}
+		defer func() {
+			if err := pprofSrv.Close(); err != nil {
+				log.Errorf("closing pprof server: %v", err)
 			}
+		}()
+
+		go func() {
+			log.Infof("starting pprof server on %s", addr)
+			exitCh <- fmt.Errorf("pprof server: %w", pprofSrv.ListenAndServe())
 		}()
 	}
 
-	wait.Until(func() {
-		ctrlCtx, cancelCtrlCtx := context.WithCancel(ctx)
-		defer cancelCtrlCtx()
+	ctrlHealthz := controller.NewHealthzProvider(cfg)
 
-		v, err := version.Get(log, clientset)
-		if err != nil {
-			log.Fatalf("failed getting kubernetes version: %v", err)
+	healthzSrv := &http.Server{Addr: ":9876", Handler: &healthz.Handler{Checks: map[string]healthz.Checker{
+		"server":     healthz.Ping,
+		"controller": ctrlHealthz.Check,
+	}}}
+	defer func() {
+		if err := healthzSrv.Close(); err != nil {
+			log.Errorf("closing healthz server: %v", err)
 		}
+	}()
 
-		fields["k8s_version"] = v.Full()
-		log = log.WithFields(fields)
+	go func() {
+		exitCh <- fmt.Errorf("healthz server: %w", healthzSrv.ListenAndServe())
+	}()
 
-		f := informers.NewSharedInformerFactory(clientset, 0)
-		ctrl := controller.New(
-			log,
-			f,
-			castaiclient,
-			provider,
-			clusterID,
-			cfg.Controller,
-			v,
-			agentVersion,
-		)
-		f.Start(ctrlCtx.Done())
-		ctrl.Run(ctrlCtx)
-	}, 0, ctx.Done())
+	w := &controller.Worker{
+		Fn: controller.RunController(log, clientset, castaiclient, provider, clusterID, cfg, agentVersion, ctrlHealthz),
+	}
+	defer w.Stop(log)
 
-	return nil
+	go func() {
+		exitCh <- fmt.Errorf("controller loop: %w", w.Start(ctx))
+	}()
+
+	select {
+	case err := <-exitCh:
+		cancel()
+		return err
+	case <-ctx.Done():
+		return nil
+	}
 }
 
 func kubeConfigFromEnv() (*rest.Config, error) {
