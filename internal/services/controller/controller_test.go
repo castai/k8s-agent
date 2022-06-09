@@ -131,7 +131,7 @@ func TestCleanObj(t *testing.T) {
 	tests := []struct {
 		name    string
 		obj     interface{}
-		matcher func(t *testing.T, obj interface{})
+		matcher func(r *require.Assertions, obj interface{})
 	}{
 		{
 			name: "should clean managed fields",
@@ -145,9 +145,9 @@ func TestCleanObj(t *testing.T) {
 					},
 				},
 			}},
-			matcher: func(t *testing.T, obj interface{}) {
+			matcher: func(r *require.Assertions, obj interface{}) {
 				pod := obj.(*v1.Pod)
-				require.Nil(t, pod.ManagedFields)
+				r.Nil(pod.ManagedFields)
 			},
 		},
 		{
@@ -183,11 +183,23 @@ func TestCleanObj(t *testing.T) {
 						},
 					},
 				},
+				{
+					Env: []v1.EnvVar{
+						{
+							Name:  "API_KEY",
+							Value: "secret",
+						},
+						{
+							Name:  "TIMEOUT",
+							Value: "1s",
+						},
+					},
+				},
 			}}},
-			matcher: func(t *testing.T, obj interface{}) {
+			matcher: func(r *require.Assertions, obj interface{}) {
 				pod := obj.(*v1.Pod)
 
-				require.Equal(t, []v1.EnvVar{
+				r.Equal([]v1.EnvVar{
 					{
 						Name:  "LOG_LEVEL",
 						Value: "5",
@@ -204,7 +216,15 @@ func TestCleanObj(t *testing.T) {
 					},
 				}, pod.Spec.Containers[0].Env)
 
-				require.Empty(t, pod.Spec.Containers[1].Env)
+				r.Empty(pod.Spec.Containers[1].Env)
+
+				r.Equal([]v1.EnvVar{
+					{
+						Name:  "TIMEOUT",
+						Value: "1s",
+					},
+				}, pod.Spec.Containers[2].Env)
+
 			},
 		},
 		{
@@ -241,10 +261,10 @@ func TestCleanObj(t *testing.T) {
 					},
 				},
 			}}}}},
-			matcher: func(t *testing.T, obj interface{}) {
+			matcher: func(r *require.Assertions, obj interface{}) {
 				sts := obj.(*appsv1.StatefulSet)
 
-				require.Equal(t, []v1.EnvVar{
+				r.Equal([]v1.EnvVar{
 					{
 						Name:  "LOG_LEVEL",
 						Value: "5",
@@ -261,15 +281,18 @@ func TestCleanObj(t *testing.T) {
 					},
 				}, sts.Spec.Template.Spec.Containers[0].Env)
 
-				require.Empty(t, sts.Spec.Template.Spec.Containers[1].Env)
+				r.Empty(sts.Spec.Template.Spec.Containers[1].Env)
 			},
 		},
 	}
 	for _, test := range tests {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
+			r := require.New(t)
+
 			cleanObj(test.obj)
-			test.matcher(t, test.obj)
+
+			test.matcher(r, test.obj)
 		})
 	}
 }

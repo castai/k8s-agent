@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
@@ -213,23 +214,11 @@ func removeSensitiveEnvVars(obj interface{}) {
 		return
 	}
 
-	isSensitiveEnvVar := func(envVar corev1.EnvVar) bool {
-		if envVar.Value == "" {
-			return false
-		}
-		return sensitiveValuePattern.MatchString(envVar.Name)
-	}
-
 	for _, c := range containers {
-		validIdx := 0
-		for _, envVar := range c.Env {
-			if isSensitiveEnvVar(envVar) {
-				continue
-			}
-			c.Env[validIdx] = envVar
-			validIdx++
-		}
-		c.Env = c.Env[:validIdx]
+		nonSensitiveEnvVars := lo.Filter(c.Env, func(envVar corev1.EnvVar, _ int) bool {
+			return envVar.Value == "" || !sensitiveValuePattern.MatchString(envVar.Name)
+		})
+		c.Env = nonSensitiveEnvVars
 	}
 }
 
