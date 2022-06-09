@@ -55,7 +55,7 @@ func TestClient_SendDelta(t *testing.T) {
 			{
 				Event:     EventAdd,
 				Kind:      "Pod",
-				Data:      "data",
+				Data:      []byte("data"),
 				CreatedAt: time.Now().UTC(),
 			},
 		},

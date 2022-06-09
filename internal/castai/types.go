@@ -85,7 +85,7 @@ type Delta struct {
 type DeltaItem struct {
 	Event     EventType `json:"event"`
 	Kind      string    `json:"kind"`
-	Data      string    `json:"data"`
+	Data      []byte    `json:"data"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 
