@@ -4,7 +4,7 @@ A component that connects your Kubernetes cluster to the [CAST AI](https://www.c
 
 ## Getting started
 
-Visit the [docs](https://docs.cast.ai/getting-started/external-cluster/overview/) to connect your cluster.
+Visit the [docs](https://docs.cast.ai/getting-started/overview/) to connect your cluster.
 
 ## Helm chart
 
