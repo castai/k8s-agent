@@ -215,10 +215,9 @@ func removeSensitiveEnvVars(obj interface{}) {
 	}
 
 	for _, c := range containers {
-		nonSensitiveEnvVars := lo.Filter(c.Env, func(envVar corev1.EnvVar, _ int) bool {
+		c.Env = lo.Filter(c.Env, func(envVar corev1.EnvVar, _ int) bool {
 			return envVar.Value == "" || !sensitiveValuePattern.MatchString(envVar.Name)
 		})
-		c.Env = nonSensitiveEnvVars
 	}
 }
 
