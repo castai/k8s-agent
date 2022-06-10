@@ -47,6 +47,7 @@ func TestClient_SendDelta(t *testing.T) {
 
 	c := NewClient(logrus.New(), nil, httpClient)
 
+	data := json.RawMessage(`"data"`)
 	delta := &Delta{
 		ClusterID:      uuid.New().String(),
 		ClusterVersion: "1.19+",
@@ -55,7 +56,7 @@ func TestClient_SendDelta(t *testing.T) {
 			{
 				Event:     EventAdd,
 				Kind:      "Pod",
-				Data:      []byte("data"),
+				Data:      &data,
 				CreatedAt: time.Now().UTC(),
 			},
 		},

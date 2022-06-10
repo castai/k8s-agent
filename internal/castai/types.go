@@ -1,6 +1,7 @@
 package castai
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -83,10 +84,10 @@ type Delta struct {
 }
 
 type DeltaItem struct {
-	Event     EventType `json:"event"`
-	Kind      string    `json:"kind"`
-	Data      []byte    `json:"data"`
-	CreatedAt time.Time `json:"createdAt"`
+	Event     EventType        `json:"event"`
+	Kind      string           `json:"kind"`
+	Data      *json.RawMessage `json:"data"`
+	CreatedAt time.Time        `json:"createdAt"`
 }
 
 type EventType string

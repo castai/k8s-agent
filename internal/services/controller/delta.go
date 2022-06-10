@@ -94,12 +94,14 @@ func (d *delta) toCASTAIRequest() *castai.Delta {
 	}
 }
 
-func encode(obj interface{}) ([]byte, error) {
+func encode(obj interface{}) (*json.RawMessage, error) {
 	b, err := json.Marshal(obj)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling %T to json: %v", obj, err)
 	}
-	return b, nil
+	// it should allow sending raw json over network without being encoded to base64
+	o := json.RawMessage(fmt.Sprintf(`%v`, string(b)))
+	return &o, nil
 }
 
 type object interface {
