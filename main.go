@@ -147,7 +147,6 @@ func run(ctx context.Context, castaiclient castai.Client, baseLogger *logrus.Log
 
 	select {
 	case err := <-exitCh:
-		cancel()
 		return err
 	case <-ctx.Done():
 		return nil
