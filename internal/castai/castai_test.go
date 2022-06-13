@@ -22,7 +22,7 @@ func TestClient_RegisterCluster(t *testing.T) {
 	httpmock.ActivateNonDefault(rest.GetClient())
 	defer httpmock.Reset()
 
-	c := NewClient(logrus.New(), rest, nil)
+	c := NewClient(logrus.New(), nil, rest, nil)
 
 	registerClusterReq := &RegisterClusterRequest{Name: "name"}
 	registerClusterResp := &RegisterClusterResponse{Cluster{ID: uuid.New().String()}}
@@ -45,7 +45,7 @@ func TestClient_SendDelta(t *testing.T) {
 	httpmock.ActivateNonDefault(httpClient)
 	defer httpmock.Reset()
 
-	c := NewClient(logrus.New(), nil, httpClient)
+	c := NewClient(logrus.New(), nil, nil, httpClient)
 
 	delta := &Delta{
 		ClusterID:      uuid.New().String(),

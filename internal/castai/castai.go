@@ -35,14 +35,6 @@ var (
 	hdrAPIKey          = http.CanonicalHeaderKey(headerAPIKey)
 )
 
-var DoNotSendLogs = struct{}{}
-
-func DoNotSendLogsCtx() context.Context {
-	ctx := context.Background()
-	ctx = context.WithValue(ctx, DoNotSendLogs, "true")
-	return ctx
-}
-
 // Client responsible for communication between the agent and CAST AI API.
 type Client interface {
 	// RegisterCluster sends a request to CAST AI containing discovered cluster properties used to authenticate the
@@ -58,9 +50,10 @@ type Client interface {
 }
 
 // NewClient creates and configures the CAST AI client.
-func NewClient(log *logrus.Logger, rest *resty.Client, deltaHTTPClient *http.Client) Client {
+func NewClient(log logrus.FieldLogger, localLog logrus.FieldLogger, rest *resty.Client, deltaHTTPClient *http.Client) Client {
 	return &client{
 		log:             log,
+		localLog:        localLog,
 		rest:            rest,
 		deltaHTTPClient: deltaHTTPClient,
 	}
@@ -106,9 +99,10 @@ func createHTTPTransport() *http.Transport {
 }
 
 type client struct {
-	log             *logrus.Logger
+	log             logrus.FieldLogger
 	rest            *resty.Client
 	deltaHTTPClient *http.Client
+	localLog        logrus.FieldLogger
 }
 
 func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) error {
@@ -215,13 +209,12 @@ func (c *client) SendLogEvent(ctx context.Context, clusterID string, req *Ingest
 		SetBody(req).
 		SetContext(ctx).
 		Post(fmt.Sprintf("/v1/kubernetes/clusters/%s/agent-logs", clusterID))
-	log := c.log.WithContext(DoNotSendLogsCtx())
 	if err != nil {
-		log.Errorf("failed to send logs: %v", err)
+		c.localLog.Errorf("failed to send logs: %v", err)
 		return nil
 	}
 	if resp.IsError() {
-		log.Errorf("send log event: request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
+		c.localLog.Errorf("send log event: request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
 		return nil
 	}
 

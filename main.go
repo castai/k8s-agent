@@ -36,13 +36,15 @@ const LogExporterSendTimeout = 15 * time.Second
 func main() {
 	cfg := config.Get()
 
-	baseLogger := logrus.New()
-	baseLogger.SetLevel(logrus.Level(cfg.Log.Level))
+	localLog := logrus.New()
+	localLog.SetLevel(logrus.DebugLevel)
 
-	castaiclient := castai.NewClient(baseLogger, castai.NewDefaultRestyClient(), castai.NewDefaultDeltaHTTPClient())
-
+	remoteLogger := logrus.New()
+	remoteLogger.SetLevel(logrus.Level(cfg.Log.Level))
 	log := logrus.WithField("version", Version)
-	if err := run(signals.SetupSignalHandler(), castaiclient, baseLogger, log, cfg); err != nil {
+
+	castaiClient := castai.NewClient(log, localLog, castai.NewDefaultRestyClient(), castai.NewDefaultDeltaHTTPClient())
+	if err := run(signals.SetupSignalHandler(), castaiClient, remoteLogger, log, cfg); err != nil {
 		log.Fatalf("agent failed: %v", err)
 	}
 
