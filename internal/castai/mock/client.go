@@ -80,11 +80,12 @@ func (mr *MockClientMockRecorder) SendDelta(arg0, arg1, arg2 interface{}) *gomoc
 }
 
 // SendLogEvent mocks base method.
-func (m *MockClient) SendLogEvent(arg0 context.Context, arg1 string, arg2 *castai.IngestAgentLogsRequest) *castai.IngestAgentLogsResponse {
+func (m *MockClient) SendLogEvent(arg0 context.Context, arg1 string, arg2 *castai.IngestAgentLogsRequest) (*castai.IngestAgentLogsResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SendLogEvent", arg0, arg1, arg2)
 	ret0, _ := ret[0].(*castai.IngestAgentLogsResponse)
-	return ret0
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // SendLogEvent indicates an expected call of SendLogEvent.

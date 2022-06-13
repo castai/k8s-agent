@@ -15,24 +15,26 @@ type Exporter interface {
 	Wait()
 }
 
-func SetupLogExporter(logger *logrus.Logger, castaiclient castai.Client, cfg Config) {
-	logExporter := newExporter(cfg, castaiclient)
+func SetupLogExporter(logger *logrus.Logger, localLog logrus.FieldLogger, castaiclient castai.Client, cfg Config) {
+	logExporter := newExporter(cfg, localLog, castaiclient)
 	logger.AddHook(logExporter)
 	logrus.RegisterExitHandler(logExporter.Wait)
 }
 
-func newExporter(cfg Config, client castai.Client) Exporter {
+func newExporter(cfg Config, localLog logrus.FieldLogger, client castai.Client) Exporter {
 	return &exporter{
-		cfg:    cfg,
-		client: client,
-		wg:     sync.WaitGroup{},
+		cfg:      cfg,
+		client:   client,
+		localLog: localLog,
+		wg:       sync.WaitGroup{},
 	}
 }
 
 type exporter struct {
-	cfg    Config
-	client castai.Client
-	wg     sync.WaitGroup
+	localLog logrus.FieldLogger
+	cfg      Config
+	client   castai.Client
+	wg       sync.WaitGroup
 }
 
 type Config struct {
@@ -51,13 +53,6 @@ func (ex *exporter) Levels() []logrus.Level {
 }
 
 func (ex *exporter) Fire(entry *logrus.Entry) error {
-	if entry.Context != nil {
-		if v, _ := entry.Context.Value(castai.DoNotSendLogs).(string); v == "true" {
-			// Don't fire the hook
-			return nil
-		}
-	}
-
 	ex.wg.Add(1)
 
 	go func(entry *logrus.Entry) {
@@ -76,7 +71,7 @@ func (ex *exporter) sendLogEvent(clusterID string, e *logrus.Entry) {
 	ctx, cancel := context.WithTimeout(context.Background(), ex.cfg.SendTimeout)
 	defer cancel()
 
-	ex.client.SendLogEvent(
+	_, err := ex.client.SendLogEvent(
 		ctx,
 		clusterID,
 		&castai.IngestAgentLogsRequest{
@@ -87,4 +82,7 @@ func (ex *exporter) sendLogEvent(clusterID string, e *logrus.Entry) {
 				Fields:  e.Data,
 			},
 		})
+	if err != nil {
+		ex.localLog.Errorf("failed to send logs: %v", err)
+	}
 }
