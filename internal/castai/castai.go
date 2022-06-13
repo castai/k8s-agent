@@ -46,14 +46,13 @@ type Client interface {
 	// SendDelta sends the kubernetes state change to CAST AI. Function is noop when items are empty.
 	SendDelta(ctx context.Context, clusterID string, delta *Delta) error
 	// SendLogEvent sends agent's log event to CAST AI.
-	SendLogEvent(ctx context.Context, clusterID string, req *IngestAgentLogsRequest) *IngestAgentLogsResponse
+	SendLogEvent(ctx context.Context, clusterID string, req *IngestAgentLogsRequest) (*IngestAgentLogsResponse, error)
 }
 
 // NewClient creates and configures the CAST AI client.
-func NewClient(log logrus.FieldLogger, localLog logrus.FieldLogger, rest *resty.Client, deltaHTTPClient *http.Client) Client {
+func NewClient(log logrus.FieldLogger, rest *resty.Client, deltaHTTPClient *http.Client) Client {
 	return &client{
 		log:             log,
-		localLog:        localLog,
 		rest:            rest,
 		deltaHTTPClient: deltaHTTPClient,
 	}
@@ -100,7 +99,6 @@ func createHTTPTransport() *http.Transport {
 
 type client struct {
 	log             logrus.FieldLogger
-	localLog        logrus.FieldLogger
 	rest            *resty.Client
 	deltaHTTPClient *http.Client
 }
@@ -203,22 +201,20 @@ func (c *client) RegisterCluster(ctx context.Context, req *RegisterClusterReques
 	return body, nil
 }
 
-func (c *client) SendLogEvent(ctx context.Context, clusterID string, req *IngestAgentLogsRequest) *IngestAgentLogsResponse {
+func (c *client) SendLogEvent(ctx context.Context, clusterID string, req *IngestAgentLogsRequest) (*IngestAgentLogsResponse, error) {
 	body := &IngestAgentLogsResponse{}
 	resp, err := c.rest.R().
 		SetBody(req).
 		SetContext(ctx).
 		Post(fmt.Sprintf("/v1/kubernetes/clusters/%s/agent-logs", clusterID))
 	if err != nil {
-		c.localLog.Errorf("failed to send logs: %v", err)
-		return nil
+		return nil, err
 	}
 	if resp.IsError() {
-		c.localLog.Errorf("send log event: request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
-		return nil
+		return nil, fmt.Errorf("request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
 	}
 
-	return body
+	return body, nil
 }
 
 func (c *client) ExchangeAgentTelemetry(ctx context.Context, clusterID string, req *AgentTelemetryRequest) (*AgentTelemetryResponse, error) {

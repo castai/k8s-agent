@@ -36,14 +36,11 @@ const LogExporterSendTimeout = 15 * time.Second
 func main() {
 	cfg := config.Get()
 
-	localLog := logrus.New()
-	localLog.SetLevel(logrus.DebugLevel)
-
 	remoteLogger := logrus.New()
 	remoteLogger.SetLevel(logrus.Level(cfg.Log.Level))
 	log := logrus.WithField("version", Version)
 
-	castaiClient := castai.NewClient(log, localLog, castai.NewDefaultRestyClient(), castai.NewDefaultDeltaHTTPClient())
+	castaiClient := castai.NewClient(log, castai.NewDefaultRestyClient(), castai.NewDefaultDeltaHTTPClient())
 	if err := run(signals.SetupSignalHandler(), castaiClient, remoteLogger, log, cfg); err != nil {
 		log.Fatalf("agent failed: %v", err)
 	}
@@ -52,6 +49,9 @@ func main() {
 }
 
 func run(ctx context.Context, castaiclient castai.Client, baseLogger *logrus.Logger, log *logrus.Entry, cfg config.Config) (reterr error) {
+	localLog := logrus.New()
+	localLog.SetLevel(logrus.DebugLevel)
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -96,7 +96,7 @@ func run(ctx context.Context, castaiclient castai.Client, baseLogger *logrus.Log
 	} else {
 		log.Infof("clusterID: %s provided by env variable", clusterID)
 	}
-	castailog.SetupLogExporter(baseLogger, castaiclient, castailog.Config{
+	castailog.SetupLogExporter(baseLogger, localLog, castaiclient, castailog.Config{
 		ClusterID:   clusterID,
 		SendTimeout: LogExporterSendTimeout,
 	})

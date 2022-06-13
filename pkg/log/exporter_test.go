@@ -21,12 +21,12 @@ func TestSetupLogExporter(t *testing.T) {
 	mockClusterID := uuid.New().String()
 	ctrl := gomock.NewController(t)
 	mockapi := mock_castai.NewMockClient(ctrl)
-	SetupLogExporter(logger, mockapi, Config{ClusterID: mockClusterID, SendTimeout: time.Second})
+	SetupLogExporter(logger, nil, mockapi, Config{ClusterID: mockClusterID, SendTimeout: time.Second})
 
 	t.Run("sends the log msg", func(t *testing.T) {
 		r := require.New(t)
 		mockapi.EXPECT().SendLogEvent(gomock.Any(), gomock.Any(), gomock.Any()).
-			Do(assertClusterFields(r, mockClusterID, "eks")).Return(&castai.IngestAgentLogsResponse{}).Times(1)
+			Do(assertClusterFields(r, mockClusterID, "eks")).Return(&castai.IngestAgentLogsResponse{}, nil).Times(1)
 		log := logger.WithFields(logrus.Fields{
 			"cluster_id": mockClusterID,
 			"provider":   "eks",
