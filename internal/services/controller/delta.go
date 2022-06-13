@@ -100,7 +100,7 @@ func encode(obj interface{}) (*json.RawMessage, error) {
 		return nil, fmt.Errorf("marshaling %T to json: %v", obj, err)
 	}
 	// it should allow sending raw json over network without being encoded to base64
-	o := json.RawMessage(fmt.Sprintf(`%v`, string(b)))
+	o := json.RawMessage(b)
 	return &o, nil
 }
 
