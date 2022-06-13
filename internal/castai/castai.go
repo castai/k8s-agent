@@ -100,9 +100,9 @@ func createHTTPTransport() *http.Transport {
 
 type client struct {
 	log             logrus.FieldLogger
+	localLog        logrus.FieldLogger
 	rest            *resty.Client
 	deltaHTTPClient *http.Client
-	localLog        logrus.FieldLogger
 }
 
 func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) error {
