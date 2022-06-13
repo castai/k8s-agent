@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -37,39 +36,22 @@ const LogExporterSendTimeout = 15 * time.Second
 func main() {
 	cfg := config.Get()
 
-	logger := logrus.New()
-	logger.SetLevel(logrus.Level(cfg.Log.Level))
+	baseLogger := logrus.New()
+	baseLogger.SetLevel(logrus.Level(cfg.Log.Level))
 
-	castaiclient := castai.NewClient(logger, castai.NewDefaultRestyClient(), castai.NewDefaultDeltaHTTPClient())
+	castaiclient := castai.NewClient(baseLogger, castai.NewDefaultRestyClient(), castai.NewDefaultDeltaHTTPClient())
 
-	log := logrus.WithFields(logrus.Fields{})
-	if err := run(signals.SetupSignalHandler(), castaiclient, logger, cfg); err != nil {
-		logErr := &logContextErr{}
-		if errors.As(err, &logErr) {
-			log = logger.WithFields(logErr.fields)
-		}
+	log := logrus.WithField("version", Version)
+	if err := run(signals.SetupSignalHandler(), castaiclient, baseLogger, log, cfg); err != nil {
 		log.Fatalf("agent failed: %v", err)
 	}
 
 	log.Info("agent shutdown")
 }
 
-func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger, cfg config.Config) (reterr error) {
+func run(ctx context.Context, castaiclient castai.Client, baseLogger *logrus.Logger, log *logrus.Entry, cfg config.Config) (reterr error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-
-	fields := logrus.Fields{}
-
-	defer func() {
-		if reterr == nil {
-			return
-		}
-
-		reterr = &logContextErr{
-			err:    reterr,
-			fields: fields,
-		}
-	}()
 
 	agentVersion := &config.AgentVersion{
 		GitCommit: GitCommit,
@@ -77,8 +59,6 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger,
 		Version:   Version,
 	}
 
-	fields["version"] = agentVersion.Version
-	log := logger.WithFields(fields)
 	log.Infof("running agent version: %v", agentVersion)
 
 	restconfig, err := retrieveKubeConfig(log)
@@ -96,7 +76,7 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger,
 		return fmt.Errorf("getting provider: %w", err)
 	}
 
-	fields["provider"] = provider.Name()
+	log.Data["provider"] = provider.Name()
 	log.Infof("using provider %q", provider.Name())
 
 	clusterID := ""
@@ -114,13 +94,12 @@ func run(ctx context.Context, castaiclient castai.Client, logger *logrus.Logger,
 	} else {
 		log.Infof("clusterID: %s provided by env variable", clusterID)
 	}
-	castailog.SetupLogExporter(logger, castaiclient, castailog.Config{
+	castailog.SetupLogExporter(baseLogger, castaiclient, castailog.Config{
 		ClusterID:   clusterID,
 		SendTimeout: LogExporterSendTimeout,
 	})
 
-	fields["cluster_id"] = clusterID
-	log = log.WithFields(fields)
+	log.Data["cluster_id"] = clusterID
 
 	exitCh := make(chan error)
 
@@ -209,17 +188,4 @@ func retrieveKubeConfig(log logrus.FieldLogger) (*rest.Config, error) {
 	}
 	log.Debug("using in cluster kubeconfig")
 	return inClusterConfig, nil
-}
-
-type logContextErr struct {
-	err    error
-	fields logrus.Fields
-}
-
-func (e *logContextErr) Error() string {
-	return e.err.Error()
-}
-
-func (e *logContextErr) Unwrap() error {
-	return e.err
 }
