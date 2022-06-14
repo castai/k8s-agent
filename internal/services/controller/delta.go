@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -95,12 +94,14 @@ func (d *delta) toCASTAIRequest() *castai.Delta {
 	}
 }
 
-func encode(obj interface{}) (string, error) {
+func encode(obj interface{}) (*json.RawMessage, error) {
 	b, err := json.Marshal(obj)
 	if err != nil {
-		return "", fmt.Errorf("marshaling %T to json: %v", obj, err)
+		return nil, fmt.Errorf("marshaling %T to json: %v", obj, err)
 	}
-	return base64.StdEncoding.EncodeToString(b), nil
+	// it should allow sending raw json over network without being encoded to base64
+	o := json.RawMessage(b)
+	return &o, nil
 }
 
 type object interface {

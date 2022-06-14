@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/google/uuid"
@@ -213,7 +214,7 @@ func TestDelta(t *testing.T) {
 	}
 }
 
-func mustEncode(t *testing.T, obj interface{}) string {
+func mustEncode(t *testing.T, obj interface{}) *json.RawMessage {
 	data, err := encode(obj)
 	require.NoError(t, err)
 	return data
@@ -221,7 +222,7 @@ func mustEncode(t *testing.T, obj interface{}) string {
 
 func requireContains(t *testing.T, actual []*castai.DeltaItem, expected *castai.DeltaItem) {
 	for _, di := range actual {
-		if di.Kind == expected.Kind && di.Event == expected.Event && di.Data == expected.Data {
+		if di.Kind == expected.Kind && di.Event == expected.Event && string(*di.Data) == string(*expected.Data) {
 			return
 		}
 	}
