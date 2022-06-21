@@ -51,12 +51,19 @@ PROVIDER=kops
 ```
 
 #### Issues
+
 If you encounter "Error: no Auth Provider found for name "gcp"", add a discard import to the main fn: 
 ```go
 import (
     _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 )
 ```
+
+### Release procedure (with automatic release notes)
+
+Head to the [GitHub new release page](https://github.com/castai/k8s-agent/releases/new), create a new tag at the top, and click `Generate Release Notes` at the middle-right.
+![image](https://user-images.githubusercontent.com/571022/174777789-2d7d646d-714d-42da-8c66-a6ed407b4440.png)
+
 
 ## Licence
 
