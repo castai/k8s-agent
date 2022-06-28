@@ -11,18 +11,22 @@ import (
 )
 
 type Config struct {
-	Log        Log         `mapstructure:"log"`
-	API        API         `mapstructure:"api"`
-	Kubeconfig string      `mapstructure:"kubeconfig"`
-	Provider   string      `mapstructure:"provider"`
-	CASTAI     *CASTAI     `mapstructure:"castai"`
-	EKS        *EKS        `mapstructure:"eks"`
-	GKE        *GKE        `mapstructure:"gke"`
-	KOPS       *KOPS       `mapstructure:"kops"`
-	AKS        *AKS        `mapstructure:"aks"`
+	Log        Log    `mapstructure:"log"`
+	API        API    `mapstructure:"api"`
+	Kubeconfig string `mapstructure:"kubeconfig"`
+
+	Provider string  `mapstructure:"provider"`
+	CASTAI   *CASTAI `mapstructure:"castai"`
+	EKS      *EKS    `mapstructure:"eks"`
+	GKE      *GKE    `mapstructure:"gke"`
+	KOPS     *KOPS   `mapstructure:"kops"`
+	AKS      *AKS    `mapstructure:"aks"`
+
 	Static     *Static     `mapstructure:"static"`
 	Controller *Controller `mapstructure:"controller"`
 	PprofPort  int         `mapstructure:"pprof.port"`
+
+	LeaderElection LeaderElectionConfig `mapstructure:"leader_election"`
 }
 
 type Log struct {
@@ -77,6 +81,11 @@ type Controller struct {
 	InitialSleepDuration           time.Duration `mapstructure:"initial_sleep_duration"`
 	HealthySnapshotIntervalLimit   time.Duration `mapstructure:"healthy_snapshot_interval_limit"`
 	InitializationTimeoutExtension time.Duration `mapstructure:"initialization_timeout_extension"`
+}
+
+type LeaderElectionConfig struct {
+	LockName  string `mapstructure:"lock_name"`
+	Namespace string `mapstructure:"namespace"`
 }
 
 var cfg *Config
