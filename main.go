@@ -78,6 +78,7 @@ func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg
 
 	// buffer will allow for all senders to push, even though we will only read first error and cancel context after it
 	exitCh := make(chan error, 10)
+	go watchExitErrors(ctx, log, exitCh, ctxCancel)
 
 	log.Infof("running agent version: %v", agentVersion)
 	log.Infof("platform URL: %s", cfg.API.URL)
@@ -144,12 +145,7 @@ func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg
 		return nil
 	}
 
-	go watchExitErrors(ctx, log, exitCh, ctxCancel)
-
-	replicas.Run(ctx, log, config.LeaderElectionConfig{
-		LockName:  "agent-leader-election-lock",
-		Namespace: "castai-agent",
-	}, clientset, leaderWatchDog, func(ctx context.Context) {
+	replicas.Run(ctx, log, cfg.LeaderElection, clientset, leaderWatchDog, func(ctx context.Context) {
 		exitCh <- leaderFunc(ctx)
 	})
 	return nil
