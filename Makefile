@@ -11,4 +11,8 @@ push:
 deploy:
 	cat deployment.yaml | envsubst | kubectl apply -f -
 
+SHELL := /bin/bash
+run:
+	source ./.env && go run .
+
 release: build push

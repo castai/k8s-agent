@@ -22,9 +22,10 @@ type Config struct {
 	KOPS     *KOPS   `mapstructure:"kops"`
 	AKS      *AKS    `mapstructure:"aks"`
 
-	Static     *Static     `mapstructure:"static"`
-	Controller *Controller `mapstructure:"controller"`
-	PprofPort  int         `mapstructure:"pprof.port"`
+	Static      *Static     `mapstructure:"static"`
+	Controller  *Controller `mapstructure:"controller"`
+	PprofPort   int         `mapstructure:"pprof.port"`
+	HealthzPort int         `mapstructure:"healthz_port"`
 
 	LeaderElection LeaderElectionConfig `mapstructure:"leader_election"`
 }
@@ -108,6 +109,8 @@ func Get() Config {
 	viper.SetDefault("controller.initial_sleep_duration", 30*time.Second)
 	viper.SetDefault("controller.healthy_snapshot_interval_limit", 10*time.Minute)
 	viper.SetDefault("controller.initialization_timeout_extension", 5*time.Minute)
+
+	viper.SetDefault("healthz_port", 9876)
 
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
