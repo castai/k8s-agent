@@ -12,19 +12,18 @@ import (
 	"time"
 )
 
-type Replica interface {
-	RunAsLeader(ctx context.Context)
-	Stop()
-}
+type Replica func(ctx context.Context)
 
-func startWithLeaderElection(
+// Run will block waiting until this replica becomes the leader,
+// then runs replica until it stops or is no longer a leader
+func Run(
 	ctx context.Context,
 	log logrus.FieldLogger,
-	replica Replica,
 	cfg config.LeaderElectionConfig,
 	client kubernetes.Interface,
-	check *leaderelection.HealthzAdaptor,
-) error {
+	watchDog *leaderelection.HealthzAdaptor,
+	replica Replica,
+) {
 	replicaIdentity := uuid.New().String()
 	log = log.WithField("own_identity", replicaIdentity)
 	log.Info("starting with leader election")
@@ -40,33 +39,23 @@ func startWithLeaderElection(
 		},
 	}
 
-	for {
-		// attempt to run as leader once
-		leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
-			Lock:            lock,
-			ReleaseOnCancel: true,
-			LeaseDuration:   15 * time.Second,
-			RenewDeadline:   10 * time.Second,
-			RetryPeriod:     2 * time.Second,
-			WatchDog:        check,
-			Callbacks: leaderelection.LeaderCallbacks{
-				OnStartedLeading: func(ctx context.Context) {
-					log.Info("started leading")
-					replica.RunAsLeader(ctx)
-				},
-				OnStoppedLeading: func() {
-					log.Info("stopped leading")
-					replica.Stop()
-				},
+	leConfig := leaderelection.LeaderElectionConfig{
+		Lock:            lock,
+		ReleaseOnCancel: true,
+		LeaseDuration:   15 * time.Second,
+		RenewDeadline:   10 * time.Second,
+		RetryPeriod:     2 * time.Second,
+		WatchDog:        watchDog,
+		Callbacks: leaderelection.LeaderCallbacks{
+			OnStartedLeading: func(ctx context.Context) {
+				log.Info("started leading")
+				replica(ctx)
 			},
-		})
-
-		// retry leader lock until ctx canceled
-		select {
-		case <-time.After(time.Second):
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-
+			OnStoppedLeading: func() {
+				log.Info("stopped leading")
+			},
+		},
 	}
+
+	leaderelection.RunOrDie(ctx, leConfig)
 }
