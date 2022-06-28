@@ -38,7 +38,7 @@ func (h *HealthzProvider) Check(_ *http.Request) error {
 		return nil
 	}
 
-	return fmt.Errorf("healthz not initialized")
+	return nil
 }
 
 func (h *HealthzProvider) Initializing() {

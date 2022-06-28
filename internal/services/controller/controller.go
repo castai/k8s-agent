@@ -267,6 +267,8 @@ func (c *Controller) Run(ctx context.Context) error {
 			queueContent := c.debugQueueContent(maxItems)
 			log := c.log.WithField("queue_content", queueContent)
 			// Crash agent in case it's not able to collect full snapshot from informers cache.
+			// TODO (CO-1632): refactor crashing to "normal" exit or healthz metric; abruptly
+			//  stopping the agent does not give it a chance to release leader lock.
 			log.Fatalf("error while collecting initial snapshot: %v", err)
 		}
 

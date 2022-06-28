@@ -21,10 +21,6 @@ func TestNewHealthzProvider(t *testing.T) {
 
 		h := NewHealthzProvider(cfg)
 
-		t.Run("should return not initialized error", func(t *testing.T) {
-			require.Error(t, h.Check(nil))
-		})
-
 		t.Run("should return initialize timeout error", func(t *testing.T) {
 			h.Initializing()
 
@@ -52,6 +48,10 @@ func TestNewHealthzProvider(t *testing.T) {
 		}}
 
 		h := NewHealthzProvider(cfg)
+
+		t.Run("agent is considered healthy before controller initialization", func(t *testing.T) {
+			require.NoError(t, h.Check(nil))
+		})
 
 		t.Run("should return no error when still initializing", func(t *testing.T) {
 			h.Initializing()

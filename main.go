@@ -76,9 +76,11 @@ func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg
 		Version:   Version,
 	}
 
-	exitCh := make(chan error)
+	// buffer will allow for all senders to push, even though we will only read first error and cancel context after it
+	exitCh := make(chan error, 10)
 
 	log.Infof("running agent version: %v", agentVersion)
+	log.Infof("platform URL: %s", cfg.API.URL)
 
 	if cfg.PprofPort != 0 {
 		closePprof := runPProf(cfg, log, exitCh)
@@ -142,17 +144,7 @@ func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg
 		return nil
 	}
 
-	go func() {
-		select {
-		case err := <-exitCh:
-			if err != nil && !errors.Is(err, context.Canceled) {
-				log.Fatalf("agent stopped with an error: %v", err)
-			}
-			ctxCancel()
-		case <-ctx.Done():
-			return
-		}
-	}()
+	go watchExitErrors(ctx, log, exitCh, ctxCancel)
 
 	replicas.Run(ctx, log, config.LeaderElectionConfig{
 		LockName:  "agent-leader-election-lock",
@@ -161,6 +153,24 @@ func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg
 		exitCh <- leaderFunc(ctx)
 	})
 	return nil
+}
+
+// if any errors are observed on exitCh, context cancel is called, and all errors in the channel are logged
+func watchExitErrors(ctx context.Context, log *logrus.Entry, exitCh chan error, ctxCancel func()) {
+	select {
+	case err := <-exitCh:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			log.Errorf("agent stopped with an error: %v", err)
+		}
+		ctxCancel()
+		for err := range exitCh {
+			if err != nil && !errors.Is(err, context.Canceled) {
+				log.Errorf("additional shutdown errors: %v", err)
+			}
+		}
+	case <-ctx.Done():
+		return
+	}
 }
 
 func runPProf(cfg config.Config, log *logrus.Entry, exitCh chan error) (closeFunc func()) {
