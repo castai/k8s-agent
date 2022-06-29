@@ -6,11 +6,13 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -30,6 +32,10 @@ const (
 	headerContinuityToken = "Continuity-Token"
 	headerContentType     = "Content-Type"
 	headerContentEncoding = "Content-Encoding"
+)
+
+var (
+	ErrInvalidContinuityToken = errors.New("invalid continuity token")
 )
 
 // Client responsible for communication between the agent and CAST AI API.
@@ -175,11 +181,14 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 		if _, err := buf.ReadFrom(resp.Body); err != nil {
 			c.log.Errorf("failed reading error response body: %v", err)
 		}
+
+		if strings.Contains(buf.String(), ErrInvalidContinuityToken.Error()) {
+			return ErrInvalidContinuityToken
+		}
 		return fmt.Errorf("delta request error status_code=%d body=%s", resp.StatusCode, buf.String())
 	}
 	c.continuityToken = resp.Header.Get(headerContinuityToken)
-
-	c.log.Infof("delta with items[%d] sent, response_code=%d", len(delta.Items), resp.StatusCode)
+	c.log.WithField("full_snapshot", delta.FullSnapshot).Infof("delta with items[%d] sent, response_code=%d", len(delta.Items), resp.StatusCode)
 
 	return nil
 }
