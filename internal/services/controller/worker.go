@@ -3,8 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"time"
-
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/informers"
@@ -16,53 +14,8 @@ import (
 	"castai-agent/internal/services/version"
 )
 
-type Worker struct {
-	Fn func(ctx context.Context) error
-
-	stop   context.CancelFunc
-	exitCh chan struct{}
-}
-
-func (w *Worker) Start(ctx context.Context) error {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	w.exitCh = make(chan struct{})
-	defer close(w.exitCh)
-
-	w.stop = cancel
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		if err := w.Fn(ctx); err != nil {
-			return fmt.Errorf("running controller function: %w", err)
-		}
-	}
-}
-
-func (w *Worker) Stop(log logrus.FieldLogger) {
-	if w.stop == nil {
-		return
-	}
-
-	w.stop()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	select {
-	case <-w.exitCh:
-	case <-ctx.Done():
-		log.Errorf("waiting for controller to exit: %v", ctx.Err())
-	}
-}
-
-func RunController(
+func Loop(
+	ctx context.Context,
 	log logrus.FieldLogger,
 	clientset kubernetes.Interface,
 	castaiclient castai.Client,
@@ -71,8 +24,8 @@ func RunController(
 	cfg config.Config,
 	agentVersion *config.AgentVersion,
 	healthzProvider *HealthzProvider,
-) func(ctx context.Context) error {
-	return func(ctx context.Context) error {
+) error {
+	return repeatInContext(ctx, func(ctx context.Context) error {
 		log = log.WithField("controller_id", uuid.New().String())
 
 		defer func() {
@@ -105,7 +58,21 @@ func RunController(
 		)
 		f.Start(ctrlCtx.Done())
 
-		// Run the controller. This is a blocking call.
+		// Loop the controller. This is a blocking call.
 		return ctrl.Run(ctrlCtx)
+	})
+}
+
+func repeatInContext(ctx context.Context, fn func(context.Context) error) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		if err := fn(ctx); err != nil {
+			return fmt.Errorf("running controller function: %w", err)
+		}
 	}
 }
