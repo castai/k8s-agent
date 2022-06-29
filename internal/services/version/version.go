@@ -34,7 +34,10 @@ func Get(log logrus.FieldLogger, clientset kubernetes.Interface) (Interface, err
 		return nil, fmt.Errorf("parsing minor version: %w", err)
 	}
 
-	return &Version{v: sv, m: m}, nil
+	return &Version{
+		v: sv,
+		m: m,
+	}, nil
 }
 
 type Version struct {
