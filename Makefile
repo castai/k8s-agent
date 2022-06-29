@@ -15,4 +15,7 @@ SHELL := /bin/bash
 run:
 	source ./.env && go run .
 
+test:
+	go test ./... -race
+
 release: build push
