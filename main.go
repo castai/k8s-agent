@@ -133,12 +133,8 @@ func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg
 			log.Infof("clusterID: %s provided by env variable", clusterID)
 		}
 
-		w := &controller.Worker{
-			Fn: controller.RunController(log, clientset, castaiclient, provider, clusterID, cfg, agentVersion, ctrlHealthz),
-		}
-		defer w.Stop(log)
-
-		if err := w.Start(ctx); err != nil {
+		err = controller.Loop(ctx, log, clientset, castaiclient, provider, clusterID, cfg, agentVersion, ctrlHealthz)
+		if err != nil {
 			return fmt.Errorf("controller loop error: %w", err)
 		}
 
