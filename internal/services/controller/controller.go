@@ -4,6 +4,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -47,6 +48,8 @@ type Controller struct {
 
 	delta   *delta
 	deltaMu sync.Mutex
+
+	triggerRestart func()
 
 	agentVersion    *config.AgentVersion
 	healthzProvider *HealthzProvider
@@ -227,6 +230,8 @@ func (c *Controller) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	c.triggerRestart = cancel
+
 	syncs := make([]cache.InformerSynced, 0, len(c.informers))
 	for _, informer := range c.informers {
 		syncs = append(syncs, informer.HasSynced)
@@ -256,7 +261,7 @@ func (c *Controller) Run(ctx context.Context) error {
 			// Resync only when at least one full snapshot has already been sent.
 			if cfg.Resync && !c.delta.fullSnapshot {
 				c.log.Info("restarting controller to resync data")
-				cancel()
+				c.triggerRestart()
 			}
 		}, dur, ctx.Done())
 	}()
@@ -267,6 +272,8 @@ func (c *Controller) Run(ctx context.Context) error {
 			queueContent := c.debugQueueContent(maxItems)
 			log := c.log.WithField("queue_content", queueContent)
 			// Crash agent in case it's not able to collect full snapshot from informers cache.
+			// TODO (CO-1632): refactor crashing to "normal" exit or healthz metric; abruptly
+			//  stopping the agent does not give it a chance to release leader lock.
 			log.Fatalf("error while collecting initial snapshot: %v", err)
 		}
 
@@ -382,7 +389,15 @@ func (c *Controller) send(ctx context.Context) {
 	}
 
 	if err := c.castaiclient.SendDelta(ctx, c.clusterID, c.delta.toCASTAIRequest()); err != nil {
-		c.log.Errorf("failed sending delta: %v", err)
+		if !errors.Is(err, context.Canceled) {
+			c.log.Errorf("failed sending delta: %v", err)
+		}
+
+		if errors.Is(err, castai.ErrInvalidContinuityToken) {
+			c.log.Info("restarting controller due to continuity token mismatch")
+			c.triggerRestart()
+		}
+
 		return
 	}
 

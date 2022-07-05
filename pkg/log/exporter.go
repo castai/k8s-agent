@@ -15,13 +15,13 @@ type Exporter interface {
 	Wait()
 }
 
-func SetupLogExporter(logger *logrus.Logger, localLog logrus.FieldLogger, castaiclient castai.Client, cfg Config) {
+func SetupLogExporter(logger *logrus.Logger, localLog logrus.FieldLogger, castaiclient castai.Client, cfg *Config) {
 	logExporter := newExporter(cfg, localLog, castaiclient)
 	logger.AddHook(logExporter)
 	logrus.RegisterExitHandler(logExporter.Wait)
 }
 
-func newExporter(cfg Config, localLog logrus.FieldLogger, client castai.Client) Exporter {
+func newExporter(cfg *Config, localLog logrus.FieldLogger, client castai.Client) Exporter {
 	return &exporter{
 		cfg:      cfg,
 		client:   client,
@@ -32,7 +32,7 @@ func newExporter(cfg Config, localLog logrus.FieldLogger, client castai.Client) 
 
 type exporter struct {
 	localLog logrus.FieldLogger
-	cfg      Config
+	cfg      *Config
 	client   castai.Client
 	wg       sync.WaitGroup
 }

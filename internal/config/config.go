@@ -11,18 +11,23 @@ import (
 )
 
 type Config struct {
-	Log        Log         `mapstructure:"log"`
-	API        API         `mapstructure:"api"`
-	Kubeconfig string      `mapstructure:"kubeconfig"`
-	Provider   string      `mapstructure:"provider"`
-	CASTAI     *CASTAI     `mapstructure:"castai"`
-	EKS        *EKS        `mapstructure:"eks"`
-	GKE        *GKE        `mapstructure:"gke"`
-	KOPS       *KOPS       `mapstructure:"kops"`
-	AKS        *AKS        `mapstructure:"aks"`
-	Static     *Static     `mapstructure:"static"`
-	Controller *Controller `mapstructure:"controller"`
-	PprofPort  int         `mapstructure:"pprof.port"`
+	Log        Log    `mapstructure:"log"`
+	API        API    `mapstructure:"api"`
+	Kubeconfig string `mapstructure:"kubeconfig"`
+
+	Provider string  `mapstructure:"provider"`
+	CASTAI   *CASTAI `mapstructure:"castai"`
+	EKS      *EKS    `mapstructure:"eks"`
+	GKE      *GKE    `mapstructure:"gke"`
+	KOPS     *KOPS   `mapstructure:"kops"`
+	AKS      *AKS    `mapstructure:"aks"`
+
+	Static      *Static     `mapstructure:"static"`
+	Controller  *Controller `mapstructure:"controller"`
+	PprofPort   int         `mapstructure:"pprof.port"`
+	HealthzPort int         `mapstructure:"healthz_port"`
+
+	LeaderElection LeaderElectionConfig `mapstructure:"leader_election"`
 }
 
 type Log struct {
@@ -79,6 +84,11 @@ type Controller struct {
 	InitializationTimeoutExtension time.Duration `mapstructure:"initialization_timeout_extension"`
 }
 
+type LeaderElectionConfig struct {
+	LockName  string `mapstructure:"lock_name"`
+	Namespace string `mapstructure:"namespace"`
+}
+
 var cfg *Config
 var mu sync.Mutex
 
@@ -99,6 +109,10 @@ func Get() Config {
 	viper.SetDefault("controller.initial_sleep_duration", 30*time.Second)
 	viper.SetDefault("controller.healthy_snapshot_interval_limit", 10*time.Minute)
 	viper.SetDefault("controller.initialization_timeout_extension", 5*time.Minute)
+
+	viper.SetDefault("healthz_port", 9876)
+	viper.SetDefault("leader_election.lock_name", "agent-leader-election-lock")
+	viper.SetDefault("leader_election.namespace", "castai-agent")
 
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))

@@ -6,11 +6,13 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -26,13 +28,14 @@ const (
 	defaultTimeout        = 10 * time.Second
 	sendDeltaReadTimeout  = 1 * time.Minute
 	totalSendDeltaTimeout = 3 * time.Minute
-	headerAPIKey          = "X-API-Key"
+	headerAPIKey          = "X-Api-Key"
+	headerContinuityToken = "Continuity-Token"
+	headerContentType     = "Content-Type"
+	headerContentEncoding = "Content-Encoding"
 )
 
 var (
-	hdrContentType     = http.CanonicalHeaderKey("Content-Type")
-	hdrContentEncoding = http.CanonicalHeaderKey("Content-Encoding")
-	hdrAPIKey          = http.CanonicalHeaderKey(headerAPIKey)
+	ErrInvalidContinuityToken = errors.New("invalid continuity token")
 )
 
 // Client responsible for communication between the agent and CAST AI API.
@@ -69,7 +72,7 @@ func NewDefaultRestyClient() *resty.Client {
 
 	restyClient.SetHostURL(cfg.URL)
 	restyClient.SetRetryCount(defaultRetryCount)
-	restyClient.Header.Set(hdrAPIKey, cfg.Key)
+	restyClient.Header.Set(headerAPIKey, cfg.Key)
 
 	return restyClient
 }
@@ -101,6 +104,7 @@ type client struct {
 	log             logrus.FieldLogger
 	rest            *resty.Client
 	deltaHTTPClient *http.Client
+	continuityToken string
 }
 
 func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) error {
@@ -142,9 +146,10 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 		return fmt.Errorf("creating delta request: %w", err)
 	}
 
-	req.Header.Set(hdrContentType, "application/json")
-	req.Header.Set(hdrContentEncoding, "gzip")
-	req.Header.Set(hdrAPIKey, cfg.Key)
+	req.Header.Set(headerContentType, "application/json")
+	req.Header.Set(headerContentEncoding, "gzip")
+	req.Header.Set(headerAPIKey, cfg.Key)
+	req.Header.Set(headerContinuityToken, c.continuityToken)
 
 	var resp *http.Response
 
@@ -176,10 +181,14 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 		if _, err := buf.ReadFrom(resp.Body); err != nil {
 			c.log.Errorf("failed reading error response body: %v", err)
 		}
+
+		if strings.Contains(buf.String(), ErrInvalidContinuityToken.Error()) {
+			return ErrInvalidContinuityToken
+		}
 		return fmt.Errorf("delta request error status_code=%d body=%s", resp.StatusCode, buf.String())
 	}
-
-	c.log.Infof("delta with items[%d] sent, response_code=%d", len(delta.Items), resp.StatusCode)
+	c.continuityToken = resp.Header.Get(headerContinuityToken)
+	c.log.WithField("full_snapshot", delta.FullSnapshot).Infof("delta with items[%d] sent, response_code=%d", len(delta.Items), resp.StatusCode)
 
 	return nil
 }
