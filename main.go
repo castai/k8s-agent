@@ -159,11 +159,6 @@ func watchExitErrors(ctx context.Context, log *logrus.Entry, exitCh chan error, 
 			log.Errorf("agent stopped with an error: %v", err)
 		}
 		ctxCancel()
-		for err := range exitCh {
-			if err != nil && !errors.Is(err, context.Canceled) {
-				log.Errorf("additional shutdown errors: %v", err)
-			}
-		}
 	case <-ctx.Done():
 		return
 	}

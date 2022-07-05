@@ -389,7 +389,9 @@ func (c *Controller) send(ctx context.Context) {
 	}
 
 	if err := c.castaiclient.SendDelta(ctx, c.clusterID, c.delta.toCASTAIRequest()); err != nil {
-		c.log.Errorf("failed sending delta: %v", err)
+		if !errors.Is(err, context.Canceled) {
+			c.log.Errorf("failed sending delta: %v", err)
+		}
 
 		if errors.Is(err, castai.ErrInvalidContinuityToken) {
 			c.log.Info("restarting controller due to continuity token mismatch")
