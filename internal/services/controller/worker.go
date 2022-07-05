@@ -25,7 +25,7 @@ func Loop(
 	agentVersion *config.AgentVersion,
 	healthzProvider *HealthzProvider,
 ) error {
-	return repeatInContext(ctx, func(ctx context.Context) error {
+	return repeatUntilContextClosed(ctx, func(ctx context.Context) error {
 		log = log.WithField("controller_id", uuid.New().String())
 
 		defer func() {
@@ -63,7 +63,7 @@ func Loop(
 	})
 }
 
-func repeatInContext(ctx context.Context, fn func(context.Context) error) error {
+func repeatUntilContextClosed(ctx context.Context, fn func(context.Context) error) error {
 	for {
 		select {
 		case <-ctx.Done():
