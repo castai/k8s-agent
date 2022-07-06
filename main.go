@@ -1,29 +1,31 @@
 package main
 
 import (
-	"castai-agent/internal/services/replicas"
-	castailog "castai-agent/pkg/log"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"k8s.io/client-go/tools/leaderelection"
+	"net"
 	"net/http"
+	"net/http/httptrace"
 	_ "net/http/pprof"
 	"time"
-
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/leaderelection"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller"
 	"castai-agent/internal/services/providers"
+	"castai-agent/internal/services/replicas"
+	castailog "castai-agent/pkg/log"
 )
 
 // These should be set via `go build` during a release
@@ -58,8 +60,15 @@ func main() {
 		log.Data["cluster_id"] = clusterID
 	}
 
-	ctx := signals.SetupSignalHandler()
+	// Create trace struct.
+	trace, debug := trace()
+	ctx := httptrace.WithClientTrace(signals.SetupSignalHandler(), trace)
+
 	if err := run(ctx, castaiClient, log, cfg, clusterIDHandler); err != nil {
+		// Print debug report.
+		debugData, err := json.MarshalIndent(debug, "", "    ")
+		log.Print(string(debugData))
+
 		log.Fatalf("agent failed: %v", err)
 	}
 
@@ -234,4 +243,66 @@ func retrieveKubeConfig(log logrus.FieldLogger, cfg config.Config) (*rest.Config
 	}
 	log.Debug("using in cluster kubeconfig")
 	return inClusterConfig, nil
+}
+
+type Debug struct {
+	DNS struct {
+		Start   string       `json:"start"`
+		End     string       `json:"end"`
+		Host    string       `json:"host"`
+		Address []net.IPAddr `json:"address"`
+		Error   error        `json:"error"`
+	} `json:"dns"`
+	Dial struct {
+		Start string `json:"start"`
+		End   string `json:"end"`
+	} `json:"dial"`
+	Connection struct {
+		Time string `json:"time"`
+	} `json:"connection"`
+	WroteAllRequestHeaders struct {
+		Time string `json:"time"`
+	} `json:"wrote_all_request_header"`
+	WroteAllRequest struct {
+		Time string `json:"time"`
+	} `json:"wrote_all_request"`
+	FirstReceivedResponseByte struct {
+		Time string `json:"time"`
+	} `json:"first_received_response_byte"`
+}
+
+func trace() (*httptrace.ClientTrace, *Debug) {
+	d := &Debug{}
+
+	t := &httptrace.ClientTrace{
+		DNSStart: func(info httptrace.DNSStartInfo) {
+			d.DNS.Start = time.Now().UTC().String()
+			d.DNS.Host = info.Host
+		},
+		DNSDone: func(info httptrace.DNSDoneInfo) {
+			d.DNS.End = time.Now().UTC().String()
+			d.DNS.Address = info.Addrs
+			d.DNS.Error = info.Err
+		},
+		ConnectStart: func(network, addr string) {
+			d.Dial.Start = time.Now().UTC().String()
+		},
+		ConnectDone: func(network, addr string, err error) {
+			d.Dial.End = time.Now().UTC().String()
+		},
+		GotConn: func(connInfo httptrace.GotConnInfo) {
+			d.Connection.Time = time.Now().UTC().String()
+		},
+		WroteHeaders: func() {
+			d.WroteAllRequestHeaders.Time = time.Now().UTC().String()
+		},
+		WroteRequest: func(wr httptrace.WroteRequestInfo) {
+			d.WroteAllRequest.Time = time.Now().UTC().String()
+		},
+		GotFirstResponseByte: func() {
+			d.FirstReceivedResponseByte.Time = time.Now().UTC().String()
+		},
+	}
+
+	return t, d
 }

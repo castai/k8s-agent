@@ -9,16 +9,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/util/wait"
-
 	"github.com/go-resty/resty/v2"
 	"github.com/sirupsen/logrus"
+	"k8s.io/apimachinery/pkg/util/wait"
 
 	"castai-agent/internal/config"
 )
@@ -37,6 +38,35 @@ const (
 var (
 	ErrInvalidContinuityToken = errors.New("invalid continuity token")
 )
+
+type HTTPError struct {
+	Message  string
+	Request  string
+	Response string
+}
+
+func (e HTTPError) Error() string {
+	return fmt.Sprintf("message=%s request=%s, response=%s", e.Message, e.Request, e.Response)
+}
+
+func newRestyHTTPError(req *resty.Request, res *resty.Response, msg string) *HTTPError {
+	reqDump, err := httputil.DumpRequestOut(req.RawRequest, true)
+	if err != nil {
+		log.Fatal(err)
+	}
+	request := fmt.Sprintf("request=%v, trace_info=%v", string(reqDump), res.Request.TraceInfo())
+
+	respDump, err := httputil.DumpResponse(res.RawResponse, true)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return &HTTPError{
+		Request:  request,
+		Response: string(respDump),
+		Message:  msg,
+	}
+}
 
 // Client responsible for communication between the agent and CAST AI API.
 type Client interface {
@@ -75,6 +105,17 @@ func NewDefaultRestyClient() *resty.Client {
 	restyClient.Header.Set(headerAPIKey, cfg.Key)
 
 	return restyClient
+}
+
+func NewRestyRequest(client *resty.Client, ctx context.Context, body, result interface{}) *resty.Request {
+	request := client.R().SetContext(ctx).EnableTrace()
+	if body != nil {
+		request.SetBody(body)
+	}
+	if result != nil {
+		request.SetResult(result)
+	}
+	return request
 }
 
 // NewDefaultDeltaHTTPClient configures a default http client used for sending delta requests. Delta requests use a
@@ -195,51 +236,43 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 
 func (c *client) RegisterCluster(ctx context.Context, req *RegisterClusterRequest) (*RegisterClusterResponse, error) {
 	body := &RegisterClusterResponse{}
-	resp, err := c.rest.R().
-		SetBody(req).
-		SetResult(body).
-		SetContext(ctx).
-		Post("/v1/kubernetes/external-clusters")
+	restyRequest := NewRestyRequest(c.rest, ctx, req, body)
+	resp, err := restyRequest.Post("/v1/kubernetes/external-clusters")
 	if err != nil {
-		return nil, err
+		return nil, newRestyHTTPError(restyRequest, resp, "")
 	}
 	if resp.IsError() {
-		return nil, fmt.Errorf("request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
+		errMsg := fmt.Sprintf("request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
+		return nil, newRestyHTTPError(restyRequest, resp, errMsg)
 	}
 
 	return body, nil
 }
 
 func (c *client) SendLogEvent(ctx context.Context, clusterID string, req *IngestAgentLogsRequest) (*IngestAgentLogsResponse, error) {
-	body := &IngestAgentLogsResponse{}
-	resp, err := c.rest.R().
-		SetBody(req).
-		SetContext(ctx).
-		Post(fmt.Sprintf("/v1/kubernetes/clusters/%s/agent-logs", clusterID))
+	restyRequest := NewRestyRequest(c.rest, ctx, req, nil)
+	resp, err := restyRequest.Post(fmt.Sprintf("/v1/kubernetes/clusters/%s/agent-logs", clusterID))
 	if err != nil {
-		return nil, err
+		return nil, newRestyHTTPError(restyRequest, resp, "")
 	}
 	if resp.IsError() {
-		return nil, fmt.Errorf("request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
+		errMsg := fmt.Sprintf("request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
+		return nil, newRestyHTTPError(restyRequest, resp, errMsg)
 	}
 
-	return body, nil
+	return &IngestAgentLogsResponse{}, nil
 }
 
 func (c *client) ExchangeAgentTelemetry(ctx context.Context, clusterID string, req *AgentTelemetryRequest) (*AgentTelemetryResponse, error) {
 	body := &AgentTelemetryResponse{}
-	r := c.rest.R().
-		SetResult(body).
-		SetContext(ctx)
-	if req != nil {
-		r.SetBody(req)
-	}
-	resp, err := r.Post(fmt.Sprintf("/v1/kubernetes/clusters/%s/agent-config", clusterID))
+	restyRequest := NewRestyRequest(c.rest, ctx, req, body)
+	resp, err := restyRequest.Post(fmt.Sprintf("/v1/kubernetes/clusters/%s/agent-config", clusterID))
 	if err != nil {
-		return nil, err
+		return nil, newRestyHTTPError(restyRequest, resp, "")
 	}
 	if resp.IsError() {
-		return nil, fmt.Errorf("request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
+		errMsg := fmt.Sprintf("request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
+		return nil, newRestyHTTPError(restyRequest, resp, errMsg)
 	}
 
 	return body, nil
