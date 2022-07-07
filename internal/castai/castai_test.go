@@ -89,3 +89,36 @@ func TestClient_SendDelta(t *testing.T) {
 
 	require.NoError(t, err)
 }
+
+func TestClient_RegisterClusterHTTPError(t *testing.T) {
+	rest := resty.New()
+	c := NewClient(logrus.New(), rest, nil)
+
+	httpmock.ActivateNonDefault(rest.GetClient())
+	defer httpmock.Reset()
+
+	registerClusterReq := &RegisterClusterRequest{Name: "name"}
+	registerClusterResp := &RegisterClusterResponse{Cluster{ID: uuid.New().String()}}
+
+	httpmock.RegisterResponder(http.MethodPost, "/v1/kubernetes/external-clusters", func(req *http.Request) (*http.Response, error) {
+		resp, err := httpmock.NewJsonResponse(http.StatusRequestTimeout, registerClusterResp)
+		require.NoError(t, err)
+
+		// build a test request
+		resp.Request = req
+		resp.Request.URL.Scheme = "http"
+		resp.Request.URL.Host = "/v1/kubernetes/external-clusters"
+
+		return resp, nil
+	})
+
+	_, err := c.RegisterCluster(context.Background(), registerClusterReq)
+
+	require.Error(t, err)
+	if e, ok := err.(*HTTPError); ok {
+		require.Equal(t, "request error status_code=408", e.Message)
+		require.Contains(t, e.Request, "request=POST /v1/kubernetes/external-clusters")
+		require.Contains(t, e.Request, "TLSHandshake")
+		require.Contains(t, e.Response, fmt.Sprintf("{\"id\":\"%s\",\"organizationId\":\"\"}", registerClusterResp.Cluster.ID))
+	}
+}

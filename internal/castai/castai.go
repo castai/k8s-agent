@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -50,20 +49,30 @@ func (e HTTPError) Error() string {
 }
 
 func newRestyHTTPError(req *resty.Request, res *resty.Response, msg string) *HTTPError {
-	reqDump, err := httputil.DumpRequestOut(req.RawRequest, true)
-	if err != nil {
-		log.Fatal(err)
+	var reqDump string
+	if req.RawRequest != nil {
+		dumpReqOut, err := httputil.DumpRequestOut(req.RawRequest, true)
+		if err != nil {
+			logrus.Printf("request couldn't be dumped err=%v", err)
+		}
+		reqDump = string(dumpReqOut)
 	}
-	request := fmt.Sprintf("request=%v, trace_info=%v", string(reqDump), res.Request.TraceInfo())
 
-	respDump, err := httputil.DumpResponse(res.RawResponse, true)
-	if err != nil {
-		log.Fatal(err)
+	var resDump string
+	if res.RawResponse != nil {
+		dumpReqOut, err := httputil.DumpResponse(res.RawResponse, true)
+		if err != nil {
+			logrus.Printf("request couldn't be dumped err=%v", err)
+		}
+		resDump = string(dumpReqOut)
 	}
+
+	request := fmt.Sprintf("request=%s, trace_info=%#v", reqDump, res.Request.TraceInfo())
+	response := fmt.Sprintf("response=%s", resDump)
 
 	return &HTTPError{
 		Request:  request,
-		Response: string(respDump),
+		Response: response,
 		Message:  msg,
 	}
 }
@@ -239,10 +248,10 @@ func (c *client) RegisterCluster(ctx context.Context, req *RegisterClusterReques
 	restyRequest := NewRestyRequest(c.rest, ctx, req, body)
 	resp, err := restyRequest.Post("/v1/kubernetes/external-clusters")
 	if err != nil {
-		return nil, newRestyHTTPError(restyRequest, resp, "")
+		return nil, newRestyHTTPError(restyRequest, resp, "request error")
 	}
 	if resp.IsError() {
-		errMsg := fmt.Sprintf("request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
+		errMsg := fmt.Sprintf("request error status_code=%d", resp.StatusCode())
 		return nil, newRestyHTTPError(restyRequest, resp, errMsg)
 	}
 
@@ -253,10 +262,10 @@ func (c *client) SendLogEvent(ctx context.Context, clusterID string, req *Ingest
 	restyRequest := NewRestyRequest(c.rest, ctx, req, nil)
 	resp, err := restyRequest.Post(fmt.Sprintf("/v1/kubernetes/clusters/%s/agent-logs", clusterID))
 	if err != nil {
-		return nil, newRestyHTTPError(restyRequest, resp, "")
+		return nil, newRestyHTTPError(restyRequest, resp, "request error")
 	}
 	if resp.IsError() {
-		errMsg := fmt.Sprintf("request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
+		errMsg := fmt.Sprintf("request error status_code=%d", resp.StatusCode())
 		return nil, newRestyHTTPError(restyRequest, resp, errMsg)
 	}
 
@@ -268,10 +277,10 @@ func (c *client) ExchangeAgentTelemetry(ctx context.Context, clusterID string, r
 	restyRequest := NewRestyRequest(c.rest, ctx, req, body)
 	resp, err := restyRequest.Post(fmt.Sprintf("/v1/kubernetes/clusters/%s/agent-config", clusterID))
 	if err != nil {
-		return nil, newRestyHTTPError(restyRequest, resp, "")
+		return nil, newRestyHTTPError(restyRequest, resp, "request error")
 	}
 	if resp.IsError() {
-		errMsg := fmt.Sprintf("request error status_code=%d body=%s", resp.StatusCode(), resp.Body())
+		errMsg := fmt.Sprintf("request error status_code=%d", resp.StatusCode())
 		return nil, newRestyHTTPError(restyRequest, resp, errMsg)
 	}
 

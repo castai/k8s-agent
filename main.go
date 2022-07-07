@@ -60,7 +60,7 @@ func main() {
 		log.Data["cluster_id"] = clusterID
 	}
 
-	// Create trace struct.
+	// trace is used to debug HTTP client issues
 	trace, debug := trace()
 	ctx := httptrace.WithClientTrace(signals.SetupSignalHandler(), trace)
 
@@ -245,7 +245,7 @@ func retrieveKubeConfig(log logrus.FieldLogger, cfg config.Config) (*rest.Config
 	return inClusterConfig, nil
 }
 
-type Debug struct {
+type debug struct {
 	DNS struct {
 		Start   string       `json:"start"`
 		End     string       `json:"end"`
@@ -271,8 +271,9 @@ type Debug struct {
 	} `json:"first_received_response_byte"`
 }
 
-func trace() (*httptrace.ClientTrace, *Debug) {
-	d := &Debug{}
+// trace processes information related to a specific HTTP client request
+func trace() (*httptrace.ClientTrace, *debug) {
+	d := &debug{}
 
 	t := &httptrace.ClientTrace{
 		DNSStart: func(info httptrace.DNSStartInfo) {
