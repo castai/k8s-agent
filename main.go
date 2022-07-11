@@ -1,29 +1,28 @@
 package main
 
 import (
-	"castai-agent/internal/services/replicas"
-	castailog "castai-agent/pkg/log"
 	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"k8s.io/client-go/tools/leaderelection"
 	"net/http"
 	_ "net/http/pprof"
 	"time"
-
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/leaderelection"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller"
 	"castai-agent/internal/services/providers"
+	"castai-agent/internal/services/replicas"
+	castailog "castai-agent/pkg/log"
 )
 
 // These should be set via `go build` during a release
@@ -89,10 +88,8 @@ func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg
 	}
 
 	ctrlHealthz := controller.NewHealthzProvider(cfg)
-
 	// if pod is holding invalid leader lease, this health check will ensure to kill it by failing pod health check
 	leaderWatchDog := leaderelection.NewLeaderHealthzAdaptor(time.Minute * 2)
-
 	closeHealthz := runHealthzEndpoints(cfg, log, ctrlHealthz.Check, leaderWatchDog.Check, exitCh)
 	defer closeHealthz()
 
@@ -178,11 +175,18 @@ func runPProf(cfg config.Config, log *logrus.Entry, exitCh chan error) (closeFun
 
 func runHealthzEndpoints(cfg config.Config, log *logrus.Entry, controllerCheck healthz.Checker, leaderCheck healthz.Checker, exitCh chan error) func() {
 	log.Infof("starting healthz on port: %d", cfg.HealthzPort)
-	healthzSrv := &http.Server{Addr: portToServerAddr(cfg.HealthzPort), Handler: &healthz.Handler{Checks: map[string]healthz.Checker{
-		"server":     healthz.Ping,
-		"controller": controllerCheck,
-		"leader":     leaderCheck,
-	}}}
+	svcStartupDelay := 2 * time.Second
+
+	healthzSrv := &http.Server{
+		Addr: portToServerAddr(cfg.HealthzPort),
+		Handler: &healthz.Handler{
+			Checks: map[string]healthz.Checker{
+				"server":     healthz.Ping,
+				"controller": controllerCheck,
+				"leader":     leaderCheck,
+			},
+		},
+	}
 	closeFunc := func() {
 		if err := healthzSrv.Close(); err != nil {
 			log.Errorf("closing healthz server: %v", err)
@@ -190,6 +194,7 @@ func runHealthzEndpoints(cfg config.Config, log *logrus.Entry, controllerCheck h
 	}
 
 	go func() {
+		time.Sleep(svcStartupDelay) // set the initial delay to avoid logging false positive errors caused at start-up
 		exitCh <- fmt.Errorf("healthz server: %w", healthzSrv.ListenAndServe())
 	}()
 	return closeFunc
