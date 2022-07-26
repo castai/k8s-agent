@@ -67,7 +67,10 @@ type Opt func(ctx context.Context, c *client) error
 // WithEC2Client configures an EC2 SDK client. AWS region must be already discovered or set on an environment variable.
 func WithEC2Client() func(ctx context.Context, c *client) error {
 	return func(ctx context.Context, c *client) error {
-		sess, err := session.NewSession(aws.NewConfig().WithRegion(*c.region))
+		sess, err := session.NewSession(aws.
+			NewConfig().
+			WithRegion(*c.region).
+			WithCredentialsChainVerboseErrors(true))
 		if err != nil {
 			return fmt.Errorf("creating aws sdk session: %w", err)
 		}
