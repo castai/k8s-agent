@@ -40,7 +40,7 @@ func main() {
 
 	remoteLogger := logrus.New()
 	remoteLogger.SetLevel(logrus.Level(cfg.Log.Level))
-	log := logrus.WithField("version", Version)
+	log := remoteLogger.WithField("version", Version)
 
 	localLog := logrus.New()
 	localLog.SetLevel(logrus.DebugLevel)

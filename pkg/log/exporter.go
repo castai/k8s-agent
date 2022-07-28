@@ -2,6 +2,8 @@ package log
 
 import (
 	"context"
+	"fmt"
+	"github.com/samber/lo"
 	"sync"
 	"time"
 
@@ -79,7 +81,9 @@ func (ex *exporter) sendLogEvent(clusterID string, e *logrus.Entry) {
 				Level:   e.Level.String(),
 				Time:    e.Time,
 				Message: e.Message,
-				Fields:  e.Data,
+				Fields: lo.MapValues(e.Data, func(value interface{}, _ string) string {
+					return fmt.Sprintf("%v", value)
+				}),
 			},
 		})
 	if err != nil {
