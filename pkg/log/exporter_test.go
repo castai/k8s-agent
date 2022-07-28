@@ -25,24 +25,27 @@ func TestSetupLogExporter(t *testing.T) {
 
 	t.Run("sends the log msg", func(t *testing.T) {
 		r := require.New(t)
+
 		mockapi.EXPECT().SendLogEvent(gomock.Any(), gomock.Any(), gomock.Any()).
-			Do(assertClusterFields(r, mockClusterID, "eks")).Return(&castai.IngestAgentLogsResponse{}, nil).Times(1)
+			Do(func(_ context.Context, clusterID string, req *castai.IngestAgentLogsRequest) *castai.IngestAgentLogsResponse {
+				fields := req.LogEvent.Fields
+				r.Equal(mockClusterID, fields["cluster_id"])
+				r.Equal("eks", fields["provider"])
+				r.Equal("false", fields["sample_boolean_value"])
+				r.Equal("3", fields["int_val"])
+				r.Equal("1.000000004", fields["float_val"])
+				return &castai.IngestAgentLogsResponse{}
+			}).Return(&castai.IngestAgentLogsResponse{}, nil).Times(1)
+
 		log := logger.WithFields(logrus.Fields{
 			"cluster_id": mockClusterID,
 			"provider":   "eks",
+			// log interface allows not just the strings - must make sure we correctly convert them to strings when sending
+			"sample_boolean_value": false,
+			"int_val":              3,
+			"float_val":            1.000000004,
 		})
 		log.Log(logrus.ErrorLevel, "failed to discover account id")
 		time.Sleep(1 * time.Second)
 	})
-}
-
-func assertClusterFields(
-	r *require.Assertions, mockClusterID, provider string,
-) func(_ context.Context, clusterID string, req *castai.IngestAgentLogsRequest) *castai.IngestAgentLogsResponse {
-	return func(_ context.Context, clusterID string, req *castai.IngestAgentLogsRequest) *castai.IngestAgentLogsResponse {
-		fields := req.LogEvent.Fields
-		r.Equal(mockClusterID, fields["cluster_id"])
-		r.Equal(provider, fields["provider"])
-		return &castai.IngestAgentLogsResponse{}
-	}
 }
