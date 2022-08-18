@@ -26,8 +26,8 @@ import (
 const (
 	defaultRetryCount     = 3
 	defaultTimeout        = 10 * time.Second
-	sendDeltaReadTimeout  = 1 * time.Minute
-	totalSendDeltaTimeout = 3 * time.Minute
+	sendDeltaReadTimeout  = 2 * time.Minute
+	totalSendDeltaTimeout = 5 * time.Minute
 	headerAPIKey          = "X-Api-Key"
 	headerContinuityToken = "Continuity-Token"
 	headerContentType     = "Content-Type"
