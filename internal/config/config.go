@@ -107,7 +107,7 @@ func Get() Config {
 	viper.SetDefault("controller.interval", 15*time.Second)
 	viper.SetDefault("controller.prep_timeout", 10*time.Minute)
 	viper.SetDefault("controller.initial_sleep_duration", 30*time.Second)
-	viper.SetDefault("controller.healthy_snapshot_interval_limit", 10*time.Minute)
+	viper.SetDefault("controller.healthy_snapshot_interval_limit", 12*time.Minute)
 	viper.SetDefault("controller.initialization_timeout_extension", 5*time.Minute)
 
 	viper.SetDefault("healthz_port", 9876)
