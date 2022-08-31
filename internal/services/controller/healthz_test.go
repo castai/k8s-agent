@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"github.com/sirupsen/logrus"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 
 func TestNewHealthzProvider(t *testing.T) {
 	t.Run("unhealthy statuses", func(t *testing.T) {
+		log := logrus.New()
 		cfg := config.Config{Controller: &config.Controller{
 			Interval:                       15 * time.Second,
 			PrepTimeout:                    time.Millisecond,
@@ -19,7 +21,7 @@ func TestNewHealthzProvider(t *testing.T) {
 			HealthySnapshotIntervalLimit:   time.Millisecond,
 		}}
 
-		h := NewHealthzProvider(cfg)
+		h := NewHealthzProvider(cfg, log)
 
 		t.Run("should return initialize timeout error", func(t *testing.T) {
 			h.Initializing()
@@ -39,6 +41,7 @@ func TestNewHealthzProvider(t *testing.T) {
 	})
 
 	t.Run("healthy statuses", func(t *testing.T) {
+		log := logrus.New()
 		cfg := config.Config{Controller: &config.Controller{
 			Interval:                       15 * time.Second,
 			PrepTimeout:                    10 * time.Minute,
@@ -47,7 +50,7 @@ func TestNewHealthzProvider(t *testing.T) {
 			HealthySnapshotIntervalLimit:   10 * time.Minute,
 		}}
 
-		h := NewHealthzProvider(cfg)
+		h := NewHealthzProvider(cfg, log)
 
 		t.Run("agent is considered healthy before controller initialization", func(t *testing.T) {
 			require.NoError(t, h.Check(nil))

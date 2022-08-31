@@ -2,28 +2,37 @@ package controller
 
 import (
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"net/http"
 	"time"
 
 	"castai-agent/internal/config"
 )
 
-func NewHealthzProvider(cfg config.Config) *HealthzProvider {
+func NewHealthzProvider(cfg config.Config, log logrus.FieldLogger) *HealthzProvider {
 	return &HealthzProvider{
 		cfg:             cfg,
+		log:             log,
 		initHardTimeout: cfg.Controller.PrepTimeout + cfg.Controller.InitialSleepDuration + cfg.Controller.InitializationTimeoutExtension,
 	}
 }
 
 type HealthzProvider struct {
 	cfg             config.Config
+	log             logrus.FieldLogger
 	initHardTimeout time.Duration
 
 	initializeStartedAt *time.Time
 	lastHealthyActionAt *time.Time
 }
 
-func (h *HealthzProvider) Check(_ *http.Request) error {
+func (h *HealthzProvider) Check(_ *http.Request) (err error) {
+	defer func() {
+		if err != nil {
+			h.log.Warnf("Health check failed due to: %v", err)
+		}
+	}()
+
 	if h.lastHealthyActionAt != nil {
 		if time.Since(*h.lastHealthyActionAt) > h.cfg.Controller.HealthySnapshotIntervalLimit {
 			return fmt.Errorf("time since initialization or last snapshot sent is over the considered healthy limit of %s", h.cfg.Controller.HealthySnapshotIntervalLimit)
