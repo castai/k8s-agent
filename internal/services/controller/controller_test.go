@@ -113,7 +113,7 @@ func TestController_HappyPath(t *testing.T) {
 		Interval:             15 * time.Second,
 		PrepTimeout:          2 * time.Second,
 		InitialSleepDuration: 10 * time.Millisecond,
-	}, version, agentVersion, NewHealthzProvider(defaultHealthzCfg))
+	}, version, agentVersion, NewHealthzProvider(defaultHealthzCfg, log))
 	f.Start(ctx.Done())
 
 	go func() {

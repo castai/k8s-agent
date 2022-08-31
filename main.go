@@ -88,7 +88,7 @@ func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg
 		defer closePprof()
 	}
 
-	ctrlHealthz := controller.NewHealthzProvider(cfg)
+	ctrlHealthz := controller.NewHealthzProvider(cfg, log)
 
 	// if pod is holding invalid leader lease, this health check will ensure to kill it by failing pod health check
 	leaderWatchDog := leaderelection.NewLeaderHealthzAdaptor(time.Minute * 2)
