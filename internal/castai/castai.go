@@ -108,6 +108,7 @@ type client struct {
 }
 
 func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) error {
+	roundtripTimer := NewTimer()
 	c.log.Debugf("sending delta with items[%d]", len(delta.Items))
 
 	cfg := config.Get().API
@@ -159,7 +160,9 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 		Jitter:   0.2,
 		Steps:    3,
 	}
+	numAttempts := 0
 	err = wait.ExponentialBackoffWithContext(ctx, backoff, func() (done bool, err error) {
+		numAttempts++
 		resp, err = c.deltaHTTPClient.Do(req)
 		if err != nil {
 			c.log.Warnf("failed sending delta request: %v", err)
@@ -176,10 +179,20 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 		}
 	}()
 
+	roundtripTimer.Stop()
+
+	log := c.log.WithFields(logrus.Fields{
+		"full_snapshot":         delta.FullSnapshot,
+		"items":                 len(delta.Items),
+		"response_code":         resp.StatusCode,
+		"attempts":              numAttempts,
+		"roundtrip_duration_ms": roundtripTimer.Duration().Milliseconds(),
+	})
+
 	if resp.StatusCode > 399 {
 		var buf bytes.Buffer
 		if _, err := buf.ReadFrom(resp.Body); err != nil {
-			c.log.Errorf("failed reading error response body: %v", err)
+			log.Errorf("failed reading error response body: %v", err)
 		}
 
 		if strings.Contains(buf.String(), ErrInvalidContinuityToken.Error()) {
@@ -188,7 +201,7 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 		return fmt.Errorf("delta request error status_code=%d body=%s", resp.StatusCode, buf.String())
 	}
 	c.continuityToken = resp.Header.Get(headerContinuityToken)
-	c.log.WithField("full_snapshot", delta.FullSnapshot).Infof("delta with items[%d] sent, response_code=%d", len(delta.Items), resp.StatusCode)
+	log.Infof("delta upload finished")
 
 	return nil
 }
