@@ -18,8 +18,5 @@ func (t *Timer) Stop() {
 }
 
 func (t *Timer) Duration() time.Duration {
-	if t.stoppedAt.IsZero() {
-		t.stoppedAt = time.Now()
-	}
 	return t.stoppedAt.Sub(t.startedAt)
 }
