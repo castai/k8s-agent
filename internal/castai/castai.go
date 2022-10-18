@@ -70,7 +70,7 @@ func NewDefaultRestyClient() *resty.Client {
 		Transport: createHTTPTransport(),
 	})
 
-	restyClient.SetHostURL(cfg.URL)
+	restyClient.SetBaseURL(cfg.URL)
 	restyClient.SetRetryCount(defaultRetryCount)
 	restyClient.Header.Set(headerAPIKey, cfg.Key)
 
