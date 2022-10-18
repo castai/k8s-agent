@@ -70,7 +70,7 @@ func NewDefaultRestyClient() *resty.Client {
 		Transport: createHTTPTransport(),
 	})
 
-	restyClient.SetHostURL(cfg.URL)
+	restyClient.SetBaseURL(cfg.URL)
 	restyClient.SetRetryCount(defaultRetryCount)
 	restyClient.Header.Set(headerAPIKey, cfg.Key)
 
@@ -108,7 +108,14 @@ type client struct {
 }
 
 func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) error {
-	c.log.Debugf("sending delta with items[%d]", len(delta.Items))
+	roundtripTimer := NewTimer()
+
+	log := c.log.WithFields(logrus.Fields{
+		"full_snapshot": delta.FullSnapshot,
+		"items":         len(delta.Items),
+	})
+
+	log.Debugf("sending delta")
 
 	cfg := config.Get().API
 
@@ -122,19 +129,19 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 	go func() {
 		defer func() {
 			if err := pipeWriter.Close(); err != nil {
-				c.log.Errorf("closing gzip pipe: %v", err)
+				log.Errorf("closing gzip pipe: %v", err)
 			}
 		}()
 
 		gzipWriter := gzip.NewWriter(pipeWriter)
 		defer func() {
 			if err := gzipWriter.Close(); err != nil {
-				c.log.Errorf("closing gzip writer: %v", err)
+				log.Errorf("closing gzip writer: %v", err)
 			}
 		}()
 
 		if err := json.NewEncoder(gzipWriter).Encode(delta); err != nil {
-			c.log.Errorf("compressing json: %v", err)
+			log.Errorf("compressing json: %v", err)
 		}
 	}()
 
@@ -160,10 +167,14 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 		Jitter:   0.2,
 		Steps:    3,
 	}
+	numAttempts := 0
 	err = wait.ExponentialBackoffWithContext(ctx, backoff, func() (done bool, err error) {
+		numAttempts++
+		log = log.WithField("attempts", numAttempts)
+
 		resp, err = c.deltaHTTPClient.Do(req)
 		if err != nil {
-			c.log.Warnf("failed sending delta request: %v", err)
+			log.Warnf("failed sending delta request: %v", err)
 			return false, fmt.Errorf("sending delta request: %w", err)
 		}
 		return true, nil
@@ -173,14 +184,21 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			c.log.Errorf("closing response body: %v", err)
+			log.Errorf("closing response body: %v", err)
 		}
 	}()
+
+	roundtripTimer.Stop()
+
+	log = log.WithFields(logrus.Fields{
+		"roundtrip_duration_ms": roundtripTimer.Duration().Milliseconds(),
+		"response_code":         resp.StatusCode,
+	})
 
 	if resp.StatusCode > 399 {
 		var buf bytes.Buffer
 		if _, err := buf.ReadFrom(resp.Body); err != nil {
-			c.log.Errorf("failed reading error response body: %v", err)
+			log.Errorf("failed reading error response body: %v", err)
 		}
 
 		if strings.Contains(buf.String(), ErrInvalidContinuityToken.Error()) {
@@ -189,7 +207,7 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 		return fmt.Errorf("delta request error status_code=%d body=%s", resp.StatusCode, buf.String())
 	}
 	c.continuityToken = resp.Header.Get(headerContinuityToken)
-	c.log.WithField("full_snapshot", delta.FullSnapshot).Infof("delta with items[%d] sent, response_code=%d", len(delta.Items), resp.StatusCode)
+	log.Infof("delta upload finished")
 
 	return nil
 }
