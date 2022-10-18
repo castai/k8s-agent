@@ -109,7 +109,13 @@ type client struct {
 
 func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) error {
 	roundtripTimer := NewTimer()
-	c.log.Debugf("sending delta with items[%d]", len(delta.Items))
+
+	log := c.log.WithFields(logrus.Fields{
+		"full_snapshot": delta.FullSnapshot,
+		"items":         len(delta.Items),
+	})
+
+	log.Debugf("sending delta")
 
 	cfg := config.Get().API
 
@@ -123,19 +129,19 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 	go func() {
 		defer func() {
 			if err := pipeWriter.Close(); err != nil {
-				c.log.Errorf("closing gzip pipe: %v", err)
+				log.Errorf("closing gzip pipe: %v", err)
 			}
 		}()
 
 		gzipWriter := gzip.NewWriter(pipeWriter)
 		defer func() {
 			if err := gzipWriter.Close(); err != nil {
-				c.log.Errorf("closing gzip writer: %v", err)
+				log.Errorf("closing gzip writer: %v", err)
 			}
 		}()
 
 		if err := json.NewEncoder(gzipWriter).Encode(delta); err != nil {
-			c.log.Errorf("compressing json: %v", err)
+			log.Errorf("compressing json: %v", err)
 		}
 	}()
 
@@ -163,9 +169,11 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 	numAttempts := 0
 	err = wait.ExponentialBackoffWithContext(ctx, backoff, func() (done bool, err error) {
 		numAttempts++
+		log = log.WithField("attempts", numAttempts)
+
 		resp, err = c.deltaHTTPClient.Do(req)
 		if err != nil {
-			c.log.Warnf("failed sending delta request: %v", err)
+			log.Warnf("failed sending delta request: %v", err)
 			return false, fmt.Errorf("sending delta request: %w", err)
 		}
 		return true, nil
@@ -175,19 +183,13 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			c.log.Errorf("closing response body: %v", err)
+			log.Errorf("closing response body: %v", err)
 		}
 	}()
 
 	roundtripTimer.Stop()
 
-	log := c.log.WithFields(logrus.Fields{
-		"full_snapshot":         delta.FullSnapshot,
-		"items":                 len(delta.Items),
-		"response_code":         resp.StatusCode,
-		"attempts":              numAttempts,
-		"roundtrip_duration_ms": roundtripTimer.Duration().Milliseconds(),
-	})
+	log = log.WithField("roundtrip_duration_ms", roundtripTimer.Duration().Milliseconds())
 
 	if resp.StatusCode > 399 {
 		var buf bytes.Buffer
