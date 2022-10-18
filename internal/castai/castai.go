@@ -189,7 +189,10 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 
 	roundtripTimer.Stop()
 
-	log = log.WithField("roundtrip_duration_ms", roundtripTimer.Duration().Milliseconds())
+	log = log.WithFields(logrus.Fields{
+		"roundtrip_duration_ms": roundtripTimer.Duration().Milliseconds(),
+		"response_code":         resp.StatusCode,
+	})
 
 	if resp.StatusCode > 399 {
 		var buf bytes.Buffer
