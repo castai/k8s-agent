@@ -153,9 +153,10 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 
 	var resp *http.Response
 
+	// Retry 3 times with 25ms, 250ms and 2.5s sleep intervals (not accounting for jitter).
 	backoff := wait.Backoff{
-		Duration: 10 * time.Millisecond,
-		Factor:   1.5,
+		Duration: 25 * time.Millisecond,
+		Factor:   10,
 		Jitter:   0.2,
 		Steps:    3,
 	}
