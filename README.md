@@ -24,6 +24,15 @@ KUBECONFIG=/path/to/kubeconfig
 
 Then, based on the Kubernetes provider, you need to provide additional environment variables.
 
+#### AKS
+
+```text
+PROVIDER=aks
+AKS_LOCATION=your-cluster-location
+AKS_SUBSCRIPTION_ID=your-cluster-subscription-id
+AKS_NODE_RESOURCE_GROUP=your-cluster-resource-group
+```
+
 #### EKS
 
 ```text
@@ -31,6 +40,12 @@ PROVIDER=eks
 EKS_ACCOUNT_ID=your-aws-account-id
 EKS_REGION=your-cluster-region
 EKS_CLUSTER_NAME=your-cluster-name
+```
+
+#### kOps
+
+```text
+PROVIDER=kops
 ```
 
 #### GKE
@@ -44,11 +59,6 @@ GKE_LOCATION=your-cluster-location
 ```
 note, when using zonal `GKE_REGION` and `GKE_LOCATION` is often the same, i.e. `europe-west3-a`
 
-#### kOps
-
-```text
-PROVIDER=kops
-```
 
 #### Issues
 
