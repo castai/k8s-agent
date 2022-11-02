@@ -36,11 +36,18 @@ jobs:
         if: github.event_name == 'release'
         run: echo "RELEASE_TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
 
-      - name: Build Go binary
-        run: go build -ldflags "-s -w -X main.GitCommit=$GITHUB_SHA -X main.GitRef=$GITHUB_REF -X main.Version=${RELEASE_TAG:-commit-$GITHUB_SHA}" -o bin/castai-agent .
+      - name: Build Go binary amd64
+        run: go build -ldflags "-s -w -X main.GitCommit=$GITHUB_SHA -X main.GitRef=$GITHUB_REF -X main.Version=${RELEASE_TAG:-commit-$GITHUB_SHA}" -o bin/castai-agent-amd64 .
         env:
           GOOS: linux
           GOARCH: amd64
+          CGO_ENABLED: 0
+
+      - name: Build Go binary amd64
+        run: go build -ldflags "-s -w -X main.GitCommit=$GITHUB_SHA -X main.GitRef=$GITHUB_REF -X main.Version=${RELEASE_TAG:-commit-$GITHUB_SHA}" -o bin/castai-agent-arm64 .
+        env:
+          GOOS: linux
+          GOARCH: arm64
           CGO_ENABLED: 0
 
       - name: Test
@@ -73,6 +80,7 @@ jobs:
         with:
           context: .
           push: true
+          platforms: linux/arm64,linux/amd64
           tags: |
             us-docker.pkg.dev/castai-hub/library/agent:${{ env.RELEASE_TAG }}
             us-docker.pkg.dev/castai-hub/library/agent:latest
