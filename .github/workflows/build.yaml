@@ -43,7 +43,7 @@ jobs:
           GOARCH: amd64
           CGO_ENABLED: 0
 
-      - name: Build Go binary amd64
+      - name: Build Go binary arm64
         run: go build -ldflags "-s -w -X main.GitCommit=$GITHUB_SHA -X main.GitRef=$GITHUB_REF -X main.Version=${RELEASE_TAG:-commit-$GITHUB_SHA}" -o bin/castai-agent-arm64 .
         env:
           GOOS: linux
