@@ -85,6 +85,10 @@ jobs:
             us-docker.pkg.dev/castai-hub/library/agent:${{ env.RELEASE_TAG }}
             us-docker.pkg.dev/castai-hub/library/agent:latest
 
+      - name: Docker pull for fossa main
+        if: github.event_name == 'release'
+        run: docker pull us-docker.pkg.dev/castai-hub/library/agent:${{ env.RELEASE_TAG }}
+
       - name: FOSSA scan docker image
         if: github.event_name == 'release'
         uses: fossas/fossa-action@v1
