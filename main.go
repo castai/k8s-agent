@@ -106,8 +106,7 @@ func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg
 	}
 
 	if err := v1beta1.AddToScheme(scheme.Scheme); err != nil {
-		log.Errorf("Failed to add metrics objs to scheme: %v", err.Error())
-		return err
+		return fmt.Errorf("adding metrics objs to scheme: %w", err)
 	}
 
 	restconfig.NegotiatedSerializer = serializer.NewCodecFactory(scheme.Scheme)
@@ -119,7 +118,7 @@ func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg
 
 	metricsClient, err := versioned.NewForConfig(restconfig)
 	if err != nil {
-		log.Warnf("Failed to initialize the metrics client, will not collect metrics: %v", err.Error())
+		return fmt.Errorf("initializing metrics client: %w", err)
 	}
 
 	provider, err := providers.GetProvider(ctx, log, clientset)
