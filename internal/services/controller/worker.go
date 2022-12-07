@@ -51,6 +51,7 @@ func Loop(
 		ctrl := New(
 			log,
 			f,
+			clientset.Discovery(),
 			castaiclient,
 			metricsClient,
 			provider,

@@ -11,6 +11,13 @@ import (
 	"sync"
 	"time"
 
+	"castai-agent/internal/castai"
+	"castai-agent/internal/config"
+	custominformers "castai-agent/internal/services/controller/informers"
+	"castai-agent/internal/services/providers/types"
+	"castai-agent/internal/services/version"
+	"castai-agent/pkg/labels"
+
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
@@ -20,18 +27,13 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	"k8s.io/metrics/pkg/client/clientset/versioned"
-	"k8s.io/utils/clock"
-
-	"castai-agent/internal/castai"
-	"castai-agent/internal/config"
-	"castai-agent/internal/services/providers/types"
-	"castai-agent/internal/services/version"
-	"castai-agent/pkg/labels"
 )
 
 var (
@@ -54,7 +56,6 @@ type Controller struct {
 
 	triggerRestart func()
 
-	metricsClient   versioned.Interface
 	agentVersion    *config.AgentVersion
 	healthzProvider *HealthzProvider
 }
@@ -62,6 +63,7 @@ type Controller struct {
 func New(
 	log logrus.FieldLogger,
 	f informers.SharedInformerFactory,
+	discovery discovery.DiscoveryInterface,
 	castaiclient castai.Client,
 	metricsClient versioned.Interface,
 	provider types.Provider,
@@ -98,6 +100,30 @@ func New(
 			f.Autoscaling().V1().HorizontalPodAutoscalers().Informer()
 	}
 
+	_, res, err := discovery.ServerGroupsAndResources()
+	if err == nil {
+		supportsMetrics := lo.SomeBy(res, func(resourceList *metav1.APIResourceList) bool {
+			if resourceList.GroupVersion != "metrics.k8s.io/v1beta1" {
+				return false
+			}
+
+			return lo.SomeBy(resourceList.APIResources, func(resource metav1.APIResource) bool {
+				return resource.Kind == "PodMetrics"
+			})
+		})
+
+		if supportsMetrics {
+			log.Infof("Cluster supports pod metrics, will collect them.")
+			metricsInformer := f.InformerFor(&v1beta1.PodMetrics{}, func(_ kubernetes.Interface, _ time.Duration) cache.SharedIndexInformer {
+				return custominformers.NewPodMetricsInformer(log, metricsClient)
+			})
+
+			typeInformerMap[reflect.TypeOf(&v1beta1.PodMetrics{})] = metricsInformer
+		}
+	} else {
+		log.Errorf("Failed to discover API Resources")
+	}
+
 	c := &Controller{
 		log:             log,
 		clusterID:       clusterID,
@@ -109,7 +135,6 @@ func New(
 		informers:       typeInformerMap,
 		agentVersion:    agentVersion,
 		healthzProvider: healthzProvider,
-		metricsClient:   metricsClient,
 	}
 
 	c.registerEventHandlers()
@@ -294,32 +319,6 @@ func (c *Controller) Run(ctx context.Context) error {
 		wait.Until(func() {
 			c.send(ctx)
 		}, c.cfg.Interval, ctx.Done())
-	}()
-
-	metricsType := reflect.TypeOf(&v1beta1.PodMetrics{})
-	go func() {
-		const fetchInterval = 30 * time.Second
-		backoff := wait.NewExponentialBackoffManager(fetchInterval, 5*time.Minute, fetchInterval, 2, 0.2, clock.RealClock{})
-		wait.BackoffUntil(func() {
-			result, err := c.metricsClient.MetricsV1beta1().
-				PodMetricses("").
-				List(ctx, metav1.ListOptions{})
-			if err != nil {
-				c.log.Infof("Failed getting pod metrics, check metrics server health: %v", err.Error())
-				return
-			}
-
-			// Avoid adding things to the delta when it's being sent.
-			c.deltaMu.Lock()
-			defer c.deltaMu.Unlock()
-
-			for _, metrics := range result.Items {
-				metrics := metrics
-				// Skip labels, as we already have that in the pod list.
-				metrics.Labels = map[string]string{}
-				c.genericHandler(c.log, metricsType, eventUpdate, &metrics)
-			}
-		}, backoff, true, ctx.Done())
 	}()
 
 	go func() {
