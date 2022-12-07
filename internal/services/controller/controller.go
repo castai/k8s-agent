@@ -72,7 +72,7 @@ func New(
 	v version.Interface,
 	agentVersion *config.AgentVersion,
 	healthzProvider *HealthzProvider,
-) *Controller {
+) (*Controller, error) {
 	healthzProvider.Initializing()
 
 	typeInformerMap := map[reflect.Type]cache.SharedInformer{
@@ -101,27 +101,27 @@ func New(
 	}
 
 	_, res, err := discovery.ServerGroupsAndResources()
-	if err == nil {
-		supportsMetrics := lo.SomeBy(res, func(resourceList *metav1.APIResourceList) bool {
-			if resourceList.GroupVersion != "metrics.k8s.io/v1beta1" {
-				return false
-			}
+	if err != nil {
+		return nil, fmt.Errorf("discovering server groups and resources: %w", err)
+	}
 
-			return lo.SomeBy(resourceList.APIResources, func(resource metav1.APIResource) bool {
-				return resource.Kind == "PodMetrics"
-			})
+	supportsMetrics := lo.SomeBy(res, func(resourceList *metav1.APIResourceList) bool {
+		if resourceList.GroupVersion != "metrics.k8s.io/v1beta1" {
+			return false
+		}
+
+		return lo.SomeBy(resourceList.APIResources, func(resource metav1.APIResource) bool {
+			return resource.Kind == "PodMetrics"
+		})
+	})
+
+	if supportsMetrics {
+		log.Infof("Cluster supports pod metrics, will collect them.")
+		metricsInformer := f.InformerFor(&v1beta1.PodMetrics{}, func(_ kubernetes.Interface, _ time.Duration) cache.SharedIndexInformer {
+			return custominformers.NewPodMetricsInformer(log, metricsClient)
 		})
 
-		if supportsMetrics {
-			log.Infof("Cluster supports pod metrics, will collect them.")
-			metricsInformer := f.InformerFor(&v1beta1.PodMetrics{}, func(_ kubernetes.Interface, _ time.Duration) cache.SharedIndexInformer {
-				return custominformers.NewPodMetricsInformer(log, metricsClient)
-			})
-
-			typeInformerMap[reflect.TypeOf(&v1beta1.PodMetrics{})] = metricsInformer
-		}
-	} else {
-		log.Errorf("Failed to discover API Resources")
+		typeInformerMap[reflect.TypeOf(&v1beta1.PodMetrics{})] = metricsInformer
 	}
 
 	c := &Controller{
@@ -139,7 +139,7 @@ func New(
 
 	c.registerEventHandlers()
 
-	return c
+	return c, nil
 }
 
 func (c *Controller) registerEventHandlers() {

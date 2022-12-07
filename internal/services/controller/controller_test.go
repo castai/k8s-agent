@@ -111,7 +111,7 @@ func TestController_HappyPath(t *testing.T) {
 	f := informers.NewSharedInformerFactory(clientset, 0)
 	log := logrus.New()
 	log.SetLevel(logrus.DebugLevel)
-	ctrl := New(log, f, clientset.Discovery(), castaiclient, metricsClient, provider, clusterID.String(), &config.Controller{
+	ctrl, _ := New(log, f, clientset.Discovery(), castaiclient, metricsClient, provider, clusterID.String(), &config.Controller{
 		Interval:             15 * time.Second,
 		PrepTimeout:          2 * time.Second,
 		InitialSleepDuration: 10 * time.Millisecond,

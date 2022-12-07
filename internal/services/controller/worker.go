@@ -48,7 +48,7 @@ func Loop(
 		log = log.WithField("k8s_version", v.Full())
 
 		f := informers.NewSharedInformerFactory(clientset, 0)
-		ctrl := New(
+		ctrl, err := New(
 			log,
 			f,
 			clientset.Discovery(),
@@ -61,6 +61,10 @@ func Loop(
 			agentVersion,
 			healthzProvider,
 		)
+		if err != nil {
+			return fmt.Errorf("creating controller: %w", err)
+		}
+
 		f.Start(ctrlCtx.Done())
 
 		// Loop the controller. This is a blocking call.
