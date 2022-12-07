@@ -12,7 +12,7 @@ The helm chart for the CAST AI Kubernetes agent is published in the [castai/helm
 
 ## Contributing
 
-### Run the agent in your IDE
+### Run the agent in your IDE 
 
 You must provide the these environment variables:
 

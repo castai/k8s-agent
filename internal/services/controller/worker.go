@@ -3,10 +3,12 @@ package controller
 import (
 	"context"
 	"fmt"
+
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/metrics/pkg/client/clientset/versioned"
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
@@ -18,6 +20,7 @@ func Loop(
 	ctx context.Context,
 	log logrus.FieldLogger,
 	clientset kubernetes.Interface,
+	metricsClient versioned.Interface,
 	castaiclient castai.Client,
 	provider types.Provider,
 	clusterID string,
@@ -49,6 +52,7 @@ func Loop(
 			log,
 			f,
 			castaiclient,
+			metricsClient,
 			provider,
 			clusterID,
 			cfg.Controller,

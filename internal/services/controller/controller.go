@@ -23,6 +23,8 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
+	"k8s.io/metrics/pkg/client/clientset/versioned"
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
@@ -51,6 +53,7 @@ type Controller struct {
 
 	triggerRestart func()
 
+	metricsClient   versioned.Interface
 	agentVersion    *config.AgentVersion
 	healthzProvider *HealthzProvider
 }
@@ -59,6 +62,7 @@ func New(
 	log logrus.FieldLogger,
 	f informers.SharedInformerFactory,
 	castaiclient castai.Client,
+	metricsClient versioned.Interface,
 	provider types.Provider,
 	clusterID string,
 	cfg *config.Controller,
@@ -104,6 +108,7 @@ func New(
 		informers:       typeInformerMap,
 		agentVersion:    agentVersion,
 		healthzProvider: healthzProvider,
+		metricsClient:   metricsClient,
 	}
 
 	c.registerEventHandlers()
@@ -290,6 +295,27 @@ func (c *Controller) Run(ctx context.Context) error {
 		}, c.cfg.Interval, ctx.Done())
 	}()
 
+	metricsType := reflect.TypeOf(&v1beta1.PodMetrics{})
+	go func() {
+		const dur = 1 * time.Minute
+		wait.Until(func() {
+			result, err := c.metricsClient.MetricsV1beta1().
+				PodMetricses("all-namespaces").
+				List(ctx, metav1.ListOptions{})
+			if err != nil {
+				c.log.Errorf("getting pod metrics: %v", err.Error())
+				return
+			}
+
+			for _, metrics := range result.Items {
+				metrics := metrics
+				// Skip labels, as we already have that in the pod list.
+				metrics.Labels = map[string]string{}
+				c.genericHandler(c.log, metricsType, eventUpdate, &metrics)
+			}
+		}, dur, ctx.Done())
+	}()
+
 	go func() {
 		<-ctx.Done()
 		c.queue.ShutDown()
@@ -390,6 +416,7 @@ func (c *Controller) send(ctx context.Context) {
 
 	if err := c.castaiclient.SendDelta(ctx, c.clusterID, c.delta.toCASTAIRequest()); err != nil {
 		if !errors.Is(err, context.Canceled) {
+			c.log.Errorf("delta: %+v", c.delta.toCASTAIRequest())
 			c.log.Errorf("failed sending delta: %v", err)
 		}
 
