@@ -25,6 +25,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	"k8s.io/metrics/pkg/client/clientset/versioned"
+	"k8s.io/utils/clock"
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
@@ -297,15 +298,20 @@ func (c *Controller) Run(ctx context.Context) error {
 
 	metricsType := reflect.TypeOf(&v1beta1.PodMetrics{})
 	go func() {
-		const dur = 1 * time.Minute
-		wait.Until(func() {
+		const fetchInterval = 30 * time.Second
+		backoff := wait.NewExponentialBackoffManager(fetchInterval, 5*time.Minute, fetchInterval, 2, 0.2, clock.RealClock{})
+		wait.BackoffUntil(func() {
 			result, err := c.metricsClient.MetricsV1beta1().
 				PodMetricses("all-namespaces").
 				List(ctx, metav1.ListOptions{})
 			if err != nil {
-				c.log.Errorf("getting pod metrics: %v", err.Error())
+				c.log.Infof("Failed getting pod metrics, check metrics server health: %v", err.Error())
 				return
 			}
+
+			// Avoid adding things to the delta when it's being sent.
+			c.deltaMu.Lock()
+			defer c.deltaMu.Unlock()
 
 			for _, metrics := range result.Items {
 				metrics := metrics
@@ -313,7 +319,7 @@ func (c *Controller) Run(ctx context.Context) error {
 				metrics.Labels = map[string]string{}
 				c.genericHandler(c.log, metricsType, eventUpdate, &metrics)
 			}
-		}, dur, ctx.Done())
+		}, backoff, true, ctx.Done())
 	}()
 
 	go func() {
