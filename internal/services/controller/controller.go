@@ -422,7 +422,6 @@ func (c *Controller) send(ctx context.Context) {
 
 	if err := c.castaiclient.SendDelta(ctx, c.clusterID, c.delta.toCASTAIRequest()); err != nil {
 		if !errors.Is(err, context.Canceled) {
-			c.log.Errorf("delta: %+v", c.delta.toCASTAIRequest())
 			c.log.Errorf("failed sending delta: %v", err)
 		}
 
