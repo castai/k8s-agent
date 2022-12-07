@@ -302,7 +302,7 @@ func (c *Controller) Run(ctx context.Context) error {
 		backoff := wait.NewExponentialBackoffManager(fetchInterval, 5*time.Minute, fetchInterval, 2, 0.2, clock.RealClock{})
 		wait.BackoffUntil(func() {
 			result, err := c.metricsClient.MetricsV1beta1().
-				PodMetricses("all-namespaces").
+				PodMetricses("").
 				List(ctx, metav1.ListOptions{})
 			if err != nil {
 				c.log.Infof("Failed getting pod metrics, check metrics server health: %v", err.Error())
