@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -20,16 +21,23 @@ type PodMetricsInformer interface {
 }
 
 type metricsWatch struct {
-	resultChan chan watch.Event
-	client     versioned.Interface
-	log        logrus.FieldLogger
+	resultChan  chan watch.Event
+	client      versioned.Interface
+	log         logrus.FieldLogger
+	listOptions metav1.ListOptions
 }
 
-func NewMetricsWatch(ctx context.Context, log logrus.FieldLogger, client versioned.Interface) watch.Interface {
+func NewMetricsWatch(
+	ctx context.Context,
+	log logrus.FieldLogger,
+	client versioned.Interface,
+	listOptions metav1.ListOptions,
+) watch.Interface {
 	metrics := &metricsWatch{
-		resultChan: make(chan watch.Event),
-		log:        log,
-		client:     client,
+		resultChan:  make(chan watch.Event),
+		log:         log,
+		client:      client,
+		listOptions: withDefaultTimeout(listOptions),
 	}
 
 	go metrics.Start(ctx)
@@ -44,7 +52,7 @@ func (m *metricsWatch) Start(ctx context.Context) {
 	wait.BackoffUntil(func() {
 		result, err := m.client.MetricsV1beta1().
 			PodMetricses("").
-			List(ctx, metav1.ListOptions{})
+			List(ctx, m.listOptions)
 		if err != nil {
 			m.log.Infof("Failed getting pod metrics, check metrics server health: %v", err.Error())
 			return
@@ -79,10 +87,14 @@ func NewPodMetricsInformer(log logrus.FieldLogger, client versioned.Interface) c
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-				return client.MetricsV1beta1().PodMetricses("").List(context.TODO(), options)
+				options = withDefaultTimeout(options)
+
+				return client.MetricsV1beta1().
+					PodMetricses("").
+					List(context.TODO(), options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				return NewMetricsWatch(context.TODO(), log, client), nil
+				return NewMetricsWatch(context.TODO(), log, client, options), nil
 			},
 			DisableChunking: true,
 		},
@@ -90,4 +102,12 @@ func NewPodMetricsInformer(log logrus.FieldLogger, client versioned.Interface) c
 		time.Second*30,
 		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
 	)
+}
+
+func withDefaultTimeout(options metav1.ListOptions) metav1.ListOptions {
+	if options.TimeoutSeconds == nil {
+		options.TimeoutSeconds = lo.ToPtr(int64(15))
+	}
+
+	return options
 }
