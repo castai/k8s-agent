@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
+	metrics_fake "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
@@ -68,6 +69,7 @@ func TestController_HappyPath(t *testing.T) {
 	require.NoError(t, err)
 
 	clientset := fake.NewSimpleClientset(node, pod)
+	metricsClient := metrics_fake.NewSimpleClientset()
 
 	version.EXPECT().MinorInt().Return(19).MaxTimes(2)
 	version.EXPECT().Full().Return("1.19+").MaxTimes(2)
@@ -109,7 +111,7 @@ func TestController_HappyPath(t *testing.T) {
 	f := informers.NewSharedInformerFactory(clientset, 0)
 	log := logrus.New()
 	log.SetLevel(logrus.DebugLevel)
-	ctrl := New(log, f, castaiclient, provider, clusterID.String(), &config.Controller{
+	ctrl, _ := New(log, f, clientset.Discovery(), castaiclient, metricsClient, provider, clusterID.String(), &config.Controller{
 		Interval:             15 * time.Second,
 		PrepTimeout:          2 * time.Second,
 		InitialSleepDuration: 10 * time.Millisecond,

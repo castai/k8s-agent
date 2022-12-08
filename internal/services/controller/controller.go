@@ -11,6 +11,13 @@ import (
 	"sync"
 	"time"
 
+	"castai-agent/internal/castai"
+	"castai-agent/internal/config"
+	custominformers "castai-agent/internal/services/controller/informers"
+	"castai-agent/internal/services/providers/types"
+	"castai-agent/internal/services/version"
+	"castai-agent/pkg/labels"
+
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
@@ -20,15 +27,13 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-
-	"castai-agent/internal/castai"
-	"castai-agent/internal/config"
-	"castai-agent/internal/services/providers/types"
-	"castai-agent/internal/services/version"
-	"castai-agent/pkg/labels"
+	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
+	"k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 var (
@@ -58,14 +63,16 @@ type Controller struct {
 func New(
 	log logrus.FieldLogger,
 	f informers.SharedInformerFactory,
+	discovery discovery.DiscoveryInterface,
 	castaiclient castai.Client,
+	metricsClient versioned.Interface,
 	provider types.Provider,
 	clusterID string,
 	cfg *config.Controller,
 	v version.Interface,
 	agentVersion *config.AgentVersion,
 	healthzProvider *HealthzProvider,
-) *Controller {
+) (*Controller, error) {
 	healthzProvider.Initializing()
 
 	typeInformerMap := map[reflect.Type]cache.SharedInformer{
@@ -93,6 +100,30 @@ func New(
 			f.Autoscaling().V1().HorizontalPodAutoscalers().Informer()
 	}
 
+	_, res, err := discovery.ServerGroupsAndResources()
+	if err != nil {
+		return nil, fmt.Errorf("discovering server groups and resources: %w", err)
+	}
+
+	supportsMetrics := lo.SomeBy(res, func(resourceList *metav1.APIResourceList) bool {
+		if resourceList.GroupVersion != "metrics.k8s.io/v1beta1" {
+			return false
+		}
+
+		return lo.SomeBy(resourceList.APIResources, func(resource metav1.APIResource) bool {
+			return resource.Kind == "PodMetrics"
+		})
+	})
+
+	if supportsMetrics {
+		log.Infof("Cluster supports pod metrics, will collect them.")
+		metricsInformer := f.InformerFor(&v1beta1.PodMetrics{}, func(_ kubernetes.Interface, _ time.Duration) cache.SharedIndexInformer {
+			return custominformers.NewPodMetricsInformer(log, metricsClient)
+		})
+
+		typeInformerMap[reflect.TypeOf(&v1beta1.PodMetrics{})] = metricsInformer
+	}
+
 	c := &Controller{
 		log:             log,
 		clusterID:       clusterID,
@@ -108,7 +139,7 @@ func New(
 
 	c.registerEventHandlers()
 
-	return c
+	return c, nil
 }
 
 func (c *Controller) registerEventHandlers() {

@@ -3,10 +3,12 @@ package controller
 import (
 	"context"
 	"fmt"
+
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/metrics/pkg/client/clientset/versioned"
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
@@ -18,6 +20,7 @@ func Loop(
 	ctx context.Context,
 	log logrus.FieldLogger,
 	clientset kubernetes.Interface,
+	metricsClient versioned.Interface,
 	castaiclient castai.Client,
 	provider types.Provider,
 	clusterID string,
@@ -45,10 +48,12 @@ func Loop(
 		log = log.WithField("k8s_version", v.Full())
 
 		f := informers.NewSharedInformerFactory(clientset, 0)
-		ctrl := New(
+		ctrl, err := New(
 			log,
 			f,
+			clientset.Discovery(),
 			castaiclient,
+			metricsClient,
 			provider,
 			clusterID,
 			cfg.Controller,
@@ -56,6 +61,10 @@ func Loop(
 			agentVersion,
 			healthzProvider,
 		)
+		if err != nil {
+			return fmt.Errorf("creating controller: %w", err)
+		}
+
 		f.Start(ctrlCtx.Done())
 
 		// Loop the controller. This is a blocking call.

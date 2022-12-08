@@ -1,29 +1,33 @@
 package main
 
 import (
-	"castai-agent/internal/services/replicas"
-	castailog "castai-agent/pkg/log"
 	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"k8s.io/client-go/tools/leaderelection"
 	"net/http"
 	_ "net/http/pprof"
 	"time"
 
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
-
 	"github.com/sirupsen/logrus"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/leaderelection"
+	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
+	"k8s.io/metrics/pkg/client/clientset/versioned"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller"
 	"castai-agent/internal/services/providers"
+	"castai-agent/internal/services/replicas"
+	castailog "castai-agent/pkg/log"
 )
 
 // These should be set via `go build` during a release
@@ -101,9 +105,20 @@ func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg
 		return err
 	}
 
+	if err := v1beta1.AddToScheme(scheme.Scheme); err != nil {
+		return fmt.Errorf("adding metrics objs to scheme: %w", err)
+	}
+
+	restconfig.NegotiatedSerializer = serializer.NewCodecFactory(scheme.Scheme)
+
 	clientset, err := kubernetes.NewForConfig(restconfig)
 	if err != nil {
 		return err
+	}
+
+	metricsClient, err := versioned.NewForConfig(restconfig)
+	if err != nil {
+		return fmt.Errorf("initializing metrics client: %w", err)
 	}
 
 	provider, err := providers.GetProvider(ctx, log, clientset)
@@ -133,7 +148,18 @@ func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg
 			log.Infof("clusterID: %s provided by env variable", clusterID)
 		}
 
-		err = controller.Loop(ctx, log, clientset, castaiclient, provider, clusterID, cfg, agentVersion, ctrlHealthz)
+		err = controller.Loop(
+			ctx,
+			log,
+			clientset,
+			metricsClient,
+			castaiclient,
+			provider,
+			clusterID,
+			cfg,
+			agentVersion,
+			ctrlHealthz,
+		)
 		if err != nil {
 			return fmt.Errorf("controller loop error: %w", err)
 		}

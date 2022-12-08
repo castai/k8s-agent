@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
+	metrics_fake "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 )
 
 func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
@@ -41,6 +42,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 	require.NoError(t, err)
 
 	clientset := fake.NewSimpleClientset()
+	metricsClient := metrics_fake.NewSimpleClientset()
 	f := informers.NewSharedInformerFactory(clientset, 0)
 
 	version.EXPECT().MinorInt().Return(19).MaxTimes(2)
@@ -121,7 +123,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 		})
 
 	log.SetLevel(logrus.DebugLevel)
-	ctrl := New(log, f, castaiclient, provider, clusterID.String(), &config.Controller{
+	ctrl, _ := New(log, f, clientset.Discovery(), castaiclient, metricsClient, provider, clusterID.String(), &config.Controller{
 		Interval:             2 * time.Second,
 		PrepTimeout:          2 * time.Second,
 		InitialSleepDuration: 10 * time.Millisecond,
