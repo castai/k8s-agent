@@ -11,13 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"castai-agent/internal/castai"
-	"castai-agent/internal/config"
-	custominformers "castai-agent/internal/services/controller/informers"
-	"castai-agent/internal/services/providers/types"
-	"castai-agent/internal/services/version"
-	"castai-agent/pkg/labels"
-
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
@@ -29,11 +22,17 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	"k8s.io/metrics/pkg/client/clientset/versioned"
+	"k8s.io/utils/clock"
+
+	"castai-agent/internal/castai"
+	"castai-agent/internal/config"
+	"castai-agent/internal/services/providers/types"
+	"castai-agent/internal/services/version"
+	"castai-agent/pkg/labels"
 )
 
 var (
@@ -56,8 +55,10 @@ type Controller struct {
 
 	triggerRestart func()
 
+	metricsClient   versioned.Interface
 	agentVersion    *config.AgentVersion
 	healthzProvider *HealthzProvider
+	supportsMetrics bool
 }
 
 func New(
@@ -115,15 +116,6 @@ func New(
 		})
 	})
 
-	if supportsMetrics {
-		log.Infof("Cluster supports pod metrics, will collect them.")
-		metricsInformer := f.InformerFor(&v1beta1.PodMetrics{}, func(_ kubernetes.Interface, _ time.Duration) cache.SharedIndexInformer {
-			return custominformers.NewPodMetricsInformer(log, metricsClient)
-		})
-
-		typeInformerMap[reflect.TypeOf(&v1beta1.PodMetrics{})] = metricsInformer
-	}
-
 	c := &Controller{
 		log:             log,
 		clusterID:       clusterID,
@@ -135,6 +127,8 @@ func New(
 		informers:       typeInformerMap,
 		agentVersion:    agentVersion,
 		healthzProvider: healthzProvider,
+		metricsClient:   metricsClient,
+		supportsMetrics: supportsMetrics,
 	}
 
 	c.registerEventHandlers()
@@ -329,6 +323,40 @@ func (c *Controller) Run(ctx context.Context) error {
 		wait.Until(func() {
 			c.send(ctx)
 		}, c.cfg.Interval, ctx.Done())
+	}()
+
+	go func() {
+		if !c.supportsMetrics {
+			c.log.Infof("Cluster does not support PodMetrics, will not collect them.")
+			return
+		}
+
+		c.log.Infof("Starting to collect PodMetrics.")
+		metricsType := reflect.TypeOf(&v1beta1.PodMetrics{})
+		const fetchInterval = 30 * time.Second
+		backoff := wait.NewExponentialBackoffManager(fetchInterval, 5*time.Minute, fetchInterval, 2, 0.2, clock.RealClock{})
+		wait.BackoffUntil(func() {
+			result, err := c.metricsClient.MetricsV1beta1().
+				PodMetricses("").
+				List(ctx, metav1.ListOptions{
+					TimeoutSeconds: lo.ToPtr(int64(30)),
+				})
+			if err != nil {
+				c.log.Infof("Failed getting pod metrics, check metrics server health: %v", err.Error())
+				return
+			}
+
+			// Avoid adding things to the delta while it's being sent.
+			c.deltaMu.Lock()
+			defer c.deltaMu.Unlock()
+
+			for _, metrics := range result.Items {
+				metrics := metrics
+				// Skip labels, as we already have that in the pod list.
+				metrics.Labels = map[string]string{}
+				c.genericHandler(c.log, metricsType, eventUpdate, &metrics)
+			}
+		}, backoff, true, ctx.Done())
 	}()
 
 	go func() {
