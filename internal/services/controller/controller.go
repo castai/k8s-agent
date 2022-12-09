@@ -264,8 +264,18 @@ func (c *Controller) Run(ctx context.Context) error {
 	c.triggerRestart = cancel
 
 	syncs := make([]cache.InformerSynced, 0, len(c.informers))
-	for _, informer := range c.informers {
-		syncs = append(syncs, informer.HasSynced)
+	for objType, informer := range c.informers {
+		objType := objType
+		informer := informer
+		syncs = append(syncs, func() bool {
+			hasSynced := informer.HasSynced()
+			message := lo.Ternary(hasSynced,
+				"Informer cache for %v has been synced.",
+				"Informer cache for %v has not been synced.")
+			c.log.Infof(message, objType.String())
+
+			return hasSynced
+		})
 	}
 
 	waitStartedAt := time.Now()
