@@ -83,10 +83,10 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 
 			var actualValues []string
 			for _, item := range d.Items {
-				actualValues = append(actualValues, fmt.Sprintf("%s-%s-%s", item.Event, item.Kind, item.Data))
+				actualValues = append(actualValues, fmt.Sprintf("%s-%s-%v", item.Event, item.Kind, item.Data))
 			}
 
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%s", castai.EventAdd, "Pod", podData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Pod", podData))
 
 			err := clientset.CoreV1().Pods("default").Delete(ctx, pod.Name, metav1.DeleteOptions{})
 			require.NoError(t, err)
@@ -107,10 +107,10 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 
 			var actualValues []string
 			for _, item := range d.Items {
-				actualValues = append(actualValues, fmt.Sprintf("%s-%s-%s", item.Event, item.Kind, item.Data))
+				actualValues = append(actualValues, fmt.Sprintf("%s-%s-%v", item.Event, item.Kind, item.Data))
 			}
 
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%s", castai.EventDelete, "Pod", podData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventDelete, "Pod", podData))
 
 			return nil
 		})
