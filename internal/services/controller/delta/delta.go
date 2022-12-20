@@ -67,7 +67,7 @@ func (d *Delta) ToCASTAIRequest() *castai.Delta {
 	var items []*castai.DeltaItem
 
 	for _, i := range d.Cache {
-		data, err := encode(i.Obj)
+		data, err := Encode(i.Obj)
 		if err != nil {
 			d.log.Errorf("failed to encode %T: %v", i.Obj, err)
 			continue
@@ -99,7 +99,7 @@ func (d *Delta) ToCASTAIRequest() *castai.Delta {
 	}
 }
 
-func encode(obj interface{}) (*json.RawMessage, error) {
+func Encode(obj interface{}) (*json.RawMessage, error) {
 	b, err := json.Marshal(obj)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling %T to json: %v", obj, err)

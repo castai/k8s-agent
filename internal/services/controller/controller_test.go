@@ -8,12 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"go.uber.org/goleak"
-
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	v1 "k8s.io/api/core/v1"
@@ -27,6 +26,7 @@ import (
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/internal/config"
+	"castai-agent/internal/services/controller/delta"
 	mock_workqueue "castai-agent/internal/services/controller/mock"
 	mock_types "castai-agent/internal/services/providers/types/mock"
 	mock_version "castai-agent/internal/services/version/mock"
@@ -61,11 +61,11 @@ func TestController_HappyPath(t *testing.T) {
 	node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node1", Labels: map[string]string{}}}
 	expectedNode := node.DeepCopy()
 	expectedNode.Labels[labels.CastaiFakeSpot] = "true"
-	nodeData, err := encode(expectedNode)
+	nodeData, err := delta.Encode(expectedNode)
 	require.NoError(t, err)
 
 	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "pod1"}}
-	podData, err := encode(pod)
+	podData, err := delta.Encode(pod)
 	require.NoError(t, err)
 
 	clientset := fake.NewSimpleClientset(node, pod)
