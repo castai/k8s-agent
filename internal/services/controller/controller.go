@@ -44,8 +44,7 @@ type Controller struct {
 	provider     types.Provider
 	queue        workqueue.Interface
 	cfg          *config.Controller
-	informers    map[reflect.Type]cache.SharedInformer
-	handlers     map[reflect.Type]handlers.Handler
+	informers    map[reflect.Type]*custominformers.HandledInformer
 
 	delta   *delta.Delta
 	deltaMu sync.Mutex
@@ -71,7 +70,9 @@ func New(
 ) *Controller {
 	healthzProvider.Initializing()
 
-	typeInformerMap := map[reflect.Type]cache.SharedInformer{
+	queue := workqueue.NewNamed("castai-agent")
+
+	typesWithDefaultInformers := map[reflect.Type]cache.SharedInformer{
 		reflect.TypeOf(&corev1.Node{}):                  f.Core().V1().Nodes().Informer(),
 		reflect.TypeOf(&corev1.Pod{}):                   f.Core().V1().Pods().Informer(),
 		reflect.TypeOf(&corev1.PersistentVolume{}):      f.Core().V1().PersistentVolumes().Informer(),
@@ -88,11 +89,11 @@ func New(
 	}
 
 	if v.MinorInt() >= 17 {
-		typeInformerMap[reflect.TypeOf(&storagev1.CSINode{})] = f.Storage().V1().CSINodes().Informer()
+		typesWithDefaultInformers[reflect.TypeOf(&storagev1.CSINode{})] = f.Storage().V1().CSINodes().Informer()
 	}
 
 	if v.MinorInt() >= 18 {
-		typeInformerMap[reflect.TypeOf(&autoscalingv1.HorizontalPodAutoscaler{})] =
+		typesWithDefaultInformers[reflect.TypeOf(&autoscalingv1.HorizontalPodAutoscaler{})] =
 			f.Autoscaling().V1().HorizontalPodAutoscalers().Informer()
 	}
 
@@ -102,8 +103,22 @@ func New(
 			return custominformers.NewPodMetricsInformer(log, metricsClient)
 		})
 
-		typeInformerMap[reflect.TypeOf(&v1beta1.PodMetrics{})] = metricsInformer
+		typesWithDefaultInformers[reflect.TypeOf(&v1beta1.PodMetrics{})] = metricsInformer
 	}
+
+	handledInformers := map[reflect.Type]*custominformers.HandledInformer{}
+	for typ, informer := range typesWithDefaultInformers {
+		handledInformers[typ] = custominformers.NewHandledInformer(log, queue, informer, typ)
+	}
+
+	eventType := reflect.TypeOf(&corev1.Event{})
+	handledInformers[eventType] = custominformers.NewHandledInformer(
+		log,
+		queue,
+		f.Core().V1().Events().Informer(),
+		eventType,
+		handlers.NewOnlyPodOOMEventFilter(),
+	)
 
 	c := &Controller{
 		log:             log,
@@ -112,13 +127,11 @@ func New(
 		provider:        provider,
 		cfg:             cfg,
 		delta:           delta.New(log, clusterID, v.Full()),
-		queue:           workqueue.NewNamed("castai-agent"),
-		informers:       typeInformerMap,
+		queue:           queue,
+		informers:       handledInformers,
 		agentVersion:    agentVersion,
 		healthzProvider: healthzProvider,
 	}
-
-	c.registerEventHandlers()
 
 	return c
 }
@@ -254,13 +267,9 @@ func (c *Controller) collectInitialSnapshot(ctx context.Context) error {
 	defer cancel()
 
 	// Collect initial state from cached informers and push to deltas queue.
-	for objType, informer := range c.informers {
+	for _, informer := range c.informers {
 		for _, item := range informer.GetStore().List() {
-			handler, found := c.handlers[objType]
-			if !found {
-				return fmt.Errorf("handler for type %v not found", objType.String())
-			}
-			handler.OnAdd(item)
+			informer.Handler.OnAdd(item)
 		}
 	}
 

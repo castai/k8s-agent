@@ -10,8 +10,6 @@ import (
 	"castai-agent/internal/castai"
 	"castai-agent/internal/services/controller/delta"
 	"castai-agent/internal/services/controller/handlers/transformers"
-	"castai-agent/internal/services/controller/handlers/transformers/cleaner"
-	"castai-agent/internal/services/controller/handlers/transformers/deletedfinalstateunknown"
 )
 
 type handler struct {
@@ -25,17 +23,32 @@ type Handler interface {
 	cache.ResourceEventHandler
 }
 
-func NewHandler(log logrus.FieldLogger, queue workqueue.Interface, handledType reflect.Type) Handler {
+func NewHandler(
+	log logrus.FieldLogger,
+	queue workqueue.Interface,
+	handledType reflect.Type,
+	filters Filters,
+	transformers transformers.Transformers,
+) Handler {
 	return &handler{
-		log:         log,
-		handledType: handledType,
-		queue:       queue,
-		filters:     Filters{},
-		transformers: transformers.Transformers{
-			deletedfinalstateunknown.Transformer,
-			cleaner.Transformer,
-		},
+		log:          log,
+		handledType:  handledType,
+		queue:        queue,
+		filters:      filters,
+		transformers: transformers,
 	}
+}
+
+func (h *handler) OnAdd(obj interface{}) {
+	h.handle(castai.EventAdd, obj)
+}
+
+func (h *handler) OnUpdate(_, obj interface{}) {
+	h.handle(castai.EventUpdate, obj)
+}
+
+func (h *handler) OnDelete(obj interface{}) {
+	h.handle(castai.EventDelete, obj)
 }
 
 func (h *handler) handle(e castai.EventType, obj interface{}) {
@@ -54,16 +67,4 @@ func (h *handler) handle(e castai.EventType, obj interface{}) {
 
 	item := delta.NewItem(e, obj.(delta.Object))
 	h.queue.Add(item)
-}
-
-func (h *handler) OnAdd(obj interface{}) {
-	h.handle(castai.EventAdd, obj)
-}
-
-func (h *handler) OnUpdate(_, obj interface{}) {
-	h.handle(castai.EventUpdate, obj)
-}
-
-func (h *handler) OnDelete(obj interface{}) {
-	h.handle(castai.EventDelete, obj)
 }

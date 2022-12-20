@@ -13,6 +13,7 @@ import (
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/services/controller/delta"
+	"castai-agent/internal/services/controller/handlers/transformers"
 	mock_workqueue "castai-agent/internal/services/controller/mock"
 )
 
@@ -78,7 +79,7 @@ func Test_handler(t *testing.T) {
 		t.Run(fmt.Sprintf("should handle all events for object type %v", item.GetName()), func(t *testing.T) {
 			queue := mock_workqueue.NewMockInterface(gomock.NewController(t))
 
-			h := NewHandler(logrus.New(), queue, reflect.TypeOf(item))
+			h := NewHandler(logrus.New(), queue, reflect.TypeOf(item), Filters{}, transformers.Transformers{})
 			queue.EXPECT().Add(delta.NewItem(castai.EventAdd, item))
 			h.OnAdd(item)
 
