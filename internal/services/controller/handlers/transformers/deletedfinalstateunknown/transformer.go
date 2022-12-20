@@ -10,7 +10,7 @@ import (
 func New() transformers.Transformer {
 	return func(e castai.EventType, obj interface{}) (castai.EventType, interface{}) {
 		if obj, ok := obj.(cache.DeletedFinalStateUnknown); ok {
-			return e, obj
+			return castai.EventDelete, obj.Obj
 		}
 
 		return e, obj

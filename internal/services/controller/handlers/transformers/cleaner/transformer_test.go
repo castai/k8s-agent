@@ -11,7 +11,7 @@ import (
 	"castai-agent/internal/castai"
 )
 
-func TestCleanObj(t *testing.T) {
+func Test_Transformer(t *testing.T) {
 	tests := []struct {
 		name    string
 		obj     interface{}

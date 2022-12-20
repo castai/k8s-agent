@@ -32,8 +32,8 @@ func NewHandler(log logrus.FieldLogger, queue workqueue.Interface, handledType r
 		queue:       queue,
 		filters:     Filters{},
 		transformers: transformers.Transformers{
-			cleaner.New(),
 			deletedfinalstateunknown.New(),
+			cleaner.New(),
 		},
 	}
 }
