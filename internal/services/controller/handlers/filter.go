@@ -23,7 +23,6 @@ func (fs Filters) apply(e castai.EventType, obj interface{}) bool {
 
 func NewOnlyPodOOMEventFilter() Filter {
 	return func(e castai.EventType, obj interface{}) bool {
-		//TODO: check if the type is a pointer type
 		k8sEvent, ok := obj.(*corev1.Event)
 		if !ok {
 			return false
