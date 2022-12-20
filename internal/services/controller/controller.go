@@ -79,13 +79,12 @@ func New(
 		reflect.TypeOf(&corev1.ReplicationController{}): f.Core().V1().ReplicationControllers().Informer(),
 		reflect.TypeOf(&corev1.Namespace{}):             f.Core().V1().Namespaces().Informer(),
 		reflect.TypeOf(&corev1.Service{}):               f.Core().V1().Services().Informer(),
-		//reflect.TypeOf(&corev1.Event{}):                 f.Core().V1().Events().Informer(),
-		reflect.TypeOf(&appsv1.Deployment{}):      f.Apps().V1().Deployments().Informer(),
-		reflect.TypeOf(&appsv1.ReplicaSet{}):      f.Apps().V1().ReplicaSets().Informer(),
-		reflect.TypeOf(&appsv1.DaemonSet{}):       f.Apps().V1().DaemonSets().Informer(),
-		reflect.TypeOf(&appsv1.StatefulSet{}):     f.Apps().V1().StatefulSets().Informer(),
-		reflect.TypeOf(&storagev1.StorageClass{}): f.Storage().V1().StorageClasses().Informer(),
-		reflect.TypeOf(&batchv1.Job{}):            f.Batch().V1().Jobs().Informer(),
+		reflect.TypeOf(&appsv1.Deployment{}):            f.Apps().V1().Deployments().Informer(),
+		reflect.TypeOf(&appsv1.ReplicaSet{}):            f.Apps().V1().ReplicaSets().Informer(),
+		reflect.TypeOf(&appsv1.DaemonSet{}):             f.Apps().V1().DaemonSets().Informer(),
+		reflect.TypeOf(&appsv1.StatefulSet{}):           f.Apps().V1().StatefulSets().Informer(),
+		reflect.TypeOf(&storagev1.StorageClass{}):       f.Storage().V1().StorageClasses().Informer(),
+		reflect.TypeOf(&batchv1.Job{}):                  f.Batch().V1().Jobs().Informer(),
 	}
 
 	if v.MinorInt() >= 17 {
