@@ -1,13 +1,14 @@
 package cleaner
 
 import (
-	"castai-agent/internal/castai"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"castai-agent/internal/castai"
 )
 
 func TestCleanObj(t *testing.T) {
