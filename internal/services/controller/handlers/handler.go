@@ -1,9 +1,6 @@
 package handlers
 
 import (
-	"castai-agent/internal/services/controller/handlers/transformers"
-	"castai-agent/internal/services/controller/handlers/transformers/cleaner"
-	"castai-agent/internal/services/controller/handlers/transformers/deletedfinalstateunknown"
 	"reflect"
 
 	"github.com/sirupsen/logrus"
@@ -12,6 +9,9 @@ import (
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/services/controller/delta"
+	"castai-agent/internal/services/controller/handlers/transformers"
+	"castai-agent/internal/services/controller/handlers/transformers/cleaner"
+	"castai-agent/internal/services/controller/handlers/transformers/deletedfinalstateunknown"
 )
 
 type handler struct {
