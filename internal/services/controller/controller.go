@@ -166,10 +166,9 @@ func (c *Controller) Run(ctx context.Context) error {
 		informer := informer
 		syncs = append(syncs, func() bool {
 			hasSynced := informer.HasSynced()
-			message := lo.Ternary(hasSynced,
-				"Informer cache for %v has been synced.",
-				"Informer cache for %v has not been synced.")
-			c.log.Infof(message, objType.String())
+			if hasSynced {
+				c.log.Infof("Informer cache for %v has not been synced.", objType.String())
+			}
 
 			return hasSynced
 		})
