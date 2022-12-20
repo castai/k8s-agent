@@ -1,4 +1,4 @@
-package controller
+package delta
 
 import (
 	"encoding/json"
@@ -24,12 +24,12 @@ func TestDelta(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		items    []*item
+		items    []*Item
 		expected *castai.Delta
 	}{
 		{
 			name:  "empty items",
-			items: []*item{},
+			items: []*Item{},
 			expected: &castai.Delta{
 				ClusterID:      clusterID,
 				ClusterVersion: version,
@@ -38,7 +38,7 @@ func TestDelta(t *testing.T) {
 		},
 		{
 			name: "multiple items",
-			items: []*item{
+			items: []*Item{
 				{
 					obj:   pod1,
 					event: eventAdd,
@@ -67,8 +67,8 @@ func TestDelta(t *testing.T) {
 			},
 		},
 		{
-			name: "debounce: override added item with updated data",
-			items: []*item{
+			name: "debounce: override added Item with updated data",
+			items: []*Item{
 				{
 					obj:   pod1,
 					event: eventAdd,
@@ -92,8 +92,8 @@ func TestDelta(t *testing.T) {
 			},
 		},
 		{
-			name: "debounce: keep only delete event when an added item is deleted",
-			items: []*item{
+			name: "debounce: keep only delete event when an added Item is deleted",
+			items: []*Item{
 				{
 					obj:   pod1,
 					event: eventAdd,
@@ -117,8 +117,8 @@ func TestDelta(t *testing.T) {
 			},
 		},
 		{
-			name: "debounce: keep only delete event when an updated item is deleted",
-			items: []*item{
+			name: "debounce: keep only delete event when an updated Item is deleted",
+			items: []*Item{
 				{
 					obj:   pod1,
 					event: eventUpdate,
@@ -142,8 +142,8 @@ func TestDelta(t *testing.T) {
 			},
 		},
 		{
-			name: "debounce: override updated item with newer updated data",
-			items: []*item{
+			name: "debounce: override updated Item with newer updated data",
+			items: []*Item{
 				{
 					obj:   pod1,
 					event: eventUpdate,
@@ -167,8 +167,8 @@ func TestDelta(t *testing.T) {
 			},
 		},
 		{
-			name: "debounce: change deleted item to updated when it is readded",
-			items: []*item{
+			name: "debounce: change deleted Item to updated when it is readded",
+			items: []*Item{
 				{
 					obj:   pod1,
 					event: eventDelete,
@@ -195,10 +195,10 @@ func TestDelta(t *testing.T) {
 	for _, test := range tests {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
-			d := newDelta(logrus.New(), clusterID, version)
+			d := New(logrus.New(), clusterID, version)
 
 			for _, item := range test.items {
-				d.add(item)
+				d.Add(item)
 			}
 
 			got := d.toCASTAIRequest()

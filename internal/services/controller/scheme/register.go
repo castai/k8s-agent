@@ -1,4 +1,4 @@
-package controller
+package scheme
 
 import (
 	appsv1 "k8s.io/api/apps/v1"
@@ -11,7 +11,7 @@ import (
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
 )
 
-var scheme = runtime.NewScheme()
+var Scheme = runtime.NewScheme()
 var builder = runtime.SchemeBuilder{
 	corev1.AddToScheme,
 	appsv1.AddToScheme,
@@ -22,5 +22,5 @@ var builder = runtime.SchemeBuilder{
 }
 
 func init() {
-	utilruntime.Must(builder.AddToScheme(scheme))
+	utilruntime.Must(builder.AddToScheme(Scheme))
 }

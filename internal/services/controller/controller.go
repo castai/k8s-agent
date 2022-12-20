@@ -7,16 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"regexp"
 	"sync"
 	"time"
-
-	"castai-agent/internal/castai"
-	"castai-agent/internal/config"
-	custominformers "castai-agent/internal/services/controller/informers"
-	"castai-agent/internal/services/providers/types"
-	"castai-agent/internal/services/version"
-	"castai-agent/pkg/labels"
 
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
@@ -34,12 +26,15 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	"k8s.io/metrics/pkg/client/clientset/versioned"
-)
 
-var (
-	// sensitiveValuePattern matches strings which are usually used to name variables holding sensitive values, like
-	// passwords. This is a case-insensitive match of the listed words.
-	sensitiveValuePattern = regexp.MustCompile(`(?i)passwd|pass|password|pwd|secret|token|key`)
+	"castai-agent/internal/castai"
+	"castai-agent/internal/config"
+	"castai-agent/internal/services/controller/delta"
+	"castai-agent/internal/services/controller/handlers"
+	custominformers "castai-agent/internal/services/controller/informers"
+	"castai-agent/internal/services/providers/types"
+	"castai-agent/internal/services/version"
+	"castai-agent/pkg/labels"
 )
 
 type Controller struct {
@@ -50,8 +45,9 @@ type Controller struct {
 	queue        workqueue.Interface
 	cfg          *config.Controller
 	informers    map[reflect.Type]cache.SharedInformer
+	handlers     map[reflect.Type]handlers.Handler
 
-	delta   *delta
+	delta   *delta.Delta
 	deltaMu sync.Mutex
 
 	triggerRestart func()
@@ -83,12 +79,13 @@ func New(
 		reflect.TypeOf(&corev1.ReplicationController{}): f.Core().V1().ReplicationControllers().Informer(),
 		reflect.TypeOf(&corev1.Namespace{}):             f.Core().V1().Namespaces().Informer(),
 		reflect.TypeOf(&corev1.Service{}):               f.Core().V1().Services().Informer(),
-		reflect.TypeOf(&appsv1.Deployment{}):            f.Apps().V1().Deployments().Informer(),
-		reflect.TypeOf(&appsv1.ReplicaSet{}):            f.Apps().V1().ReplicaSets().Informer(),
-		reflect.TypeOf(&appsv1.DaemonSet{}):             f.Apps().V1().DaemonSets().Informer(),
-		reflect.TypeOf(&appsv1.StatefulSet{}):           f.Apps().V1().StatefulSets().Informer(),
-		reflect.TypeOf(&storagev1.StorageClass{}):       f.Storage().V1().StorageClasses().Informer(),
-		reflect.TypeOf(&batchv1.Job{}):                  f.Batch().V1().Jobs().Informer(),
+		//reflect.TypeOf(&corev1.Event{}):                 f.Core().V1().Events().Informer(),
+		reflect.TypeOf(&appsv1.Deployment{}):      f.Apps().V1().Deployments().Informer(),
+		reflect.TypeOf(&appsv1.ReplicaSet{}):      f.Apps().V1().ReplicaSets().Informer(),
+		reflect.TypeOf(&appsv1.DaemonSet{}):       f.Apps().V1().DaemonSets().Informer(),
+		reflect.TypeOf(&appsv1.StatefulSet{}):     f.Apps().V1().StatefulSets().Informer(),
+		reflect.TypeOf(&storagev1.StorageClass{}): f.Storage().V1().StorageClasses().Informer(),
+		reflect.TypeOf(&batchv1.Job{}):            f.Batch().V1().Jobs().Informer(),
 	}
 
 	if v.MinorInt() >= 17 {
@@ -130,7 +127,7 @@ func New(
 		castaiclient:    castaiclient,
 		provider:        provider,
 		cfg:             cfg,
-		delta:           newDelta(log, clusterID, v.Full()),
+		delta:           delta.New(log, clusterID, v.Full()),
 		queue:           workqueue.NewNamed("castai-agent"),
 		informers:       typeInformerMap,
 		agentVersion:    agentVersion,
@@ -143,115 +140,16 @@ func New(
 }
 
 func (c *Controller) registerEventHandlers() {
+	c.handlers = map[reflect.Type]handlers.Handler{}
+
 	for typ, informer := range c.informers {
 		typ := typ
 		informer := informer
-		log := c.log.WithField("informer", typ.String())
-		h := c.createEventHandlers(log, typ)
-		informer.AddEventHandler(h)
-	}
-}
 
-func (c *Controller) createEventHandlers(log logrus.FieldLogger, typ reflect.Type) cache.ResourceEventHandler {
-	return cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			c.deletedUnknownHandler(log, eventAdd, obj, func(log logrus.FieldLogger, e event, obj interface{}) {
-				c.genericHandler(log, typ, e, obj)
-			})
-		},
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			c.deletedUnknownHandler(log, eventUpdate, newObj, func(log logrus.FieldLogger, e event, obj interface{}) {
-				c.genericHandler(log, typ, e, obj)
-			})
-		},
-		DeleteFunc: func(obj interface{}) {
-			c.deletedUnknownHandler(log, eventDelete, obj, func(log logrus.FieldLogger, e event, obj interface{}) {
-				c.genericHandler(log, typ, e, obj)
-			})
-		},
-	}
-}
+		handler := handlers.NewHandler(c.log, c.queue, typ)
+		c.handlers[typ] = handler
 
-type handlerFunc func(log logrus.FieldLogger, event event, obj interface{})
-
-// deletedUnknownHandler is used to handle cache.DeletedFinalStateUnknown where an object was deleted but the watch
-// deletion event was missed while disconnected from the api-server.
-func (c *Controller) deletedUnknownHandler(log logrus.FieldLogger, e event, obj interface{}, next handlerFunc) {
-	if deleted, ok := obj.(cache.DeletedFinalStateUnknown); ok {
-		next(log, eventDelete, deleted.Obj)
-	} else {
-		next(log, e, obj)
-	}
-}
-
-// genericHandler is used to add an object to the queue.
-func (c *Controller) genericHandler(
-	log logrus.FieldLogger,
-	expected reflect.Type,
-	e event,
-	obj interface{},
-) {
-	if reflect.TypeOf(obj) != expected {
-		log.Errorf("expected to get %v but got %T", expected, obj)
-		return
-	}
-
-	cleanObj(obj)
-
-	c.log.Debugf("generic handler called: %s: %s", e, reflect.TypeOf(obj))
-
-	c.queue.Add(&item{
-		obj:   obj.(object),
-		event: e,
-	})
-}
-
-// cleanObj removes unnecessary or sensitive values from K8s objects.
-func cleanObj(obj interface{}) {
-	removeManagedFields(obj)
-	removeSensitiveEnvVars(obj)
-}
-
-func removeManagedFields(obj interface{}) {
-	if metaobj, ok := obj.(metav1.Object); ok {
-		metaobj.SetManagedFields(nil)
-	}
-}
-
-func removeSensitiveEnvVars(obj interface{}) {
-	var containers []*corev1.Container
-
-	switch o := obj.(type) {
-	case *corev1.Pod:
-		for i := range o.Spec.Containers {
-			containers = append(containers, &o.Spec.Containers[i])
-		}
-	case *appsv1.Deployment:
-		for i := range o.Spec.Template.Spec.Containers {
-			containers = append(containers, &o.Spec.Template.Spec.Containers[i])
-		}
-	case *appsv1.StatefulSet:
-		for i := range o.Spec.Template.Spec.Containers {
-			containers = append(containers, &o.Spec.Template.Spec.Containers[i])
-		}
-	case *appsv1.ReplicaSet:
-		for i := range o.Spec.Template.Spec.Containers {
-			containers = append(containers, &o.Spec.Template.Spec.Containers[i])
-		}
-	case *appsv1.DaemonSet:
-		for i := range o.Spec.Template.Spec.Containers {
-			containers = append(containers, &o.Spec.Template.Spec.Containers[i])
-		}
-	}
-
-	if len(containers) == 0 {
-		return
-	}
-
-	for _, c := range containers {
-		c.Env = lo.Filter(c.Env, func(envVar corev1.EnvVar, _ int) bool {
-			return envVar.Value == "" || !sensitiveValuePattern.MatchString(envVar.Name)
-		})
+		informer.AddEventHandler(handler)
 	}
 }
 
@@ -300,7 +198,7 @@ func (c *Controller) Run(ctx context.Context) error {
 				return
 			}
 			// Resync only when at least one full snapshot has already been sent.
-			if cfg.Resync && !c.delta.fullSnapshot {
+			if cfg.Resync && !c.delta.IsFullSnapshot() {
 				c.log.Info("restarting controller to resync data")
 				c.triggerRestart()
 			}
@@ -354,7 +252,11 @@ func (c *Controller) collectInitialSnapshot(ctx context.Context) error {
 	// Collect initial state from cached informers and push to deltas queue.
 	for objType, informer := range c.informers {
 		for _, item := range informer.GetStore().List() {
-			c.genericHandler(c.log, objType, eventAdd, item)
+			handler, found := c.handlers[objType]
+			if !found {
+				return fmt.Errorf("handler for type %v not found", objType.String())
+			}
+			handler.OnAdd(item)
 		}
 	}
 
@@ -390,14 +292,14 @@ func (c *Controller) pollQueueUntilShutdown() {
 func (c *Controller) processItem(i interface{}) {
 	defer c.queue.Done(i)
 
-	di, ok := i.(*item)
+	di, ok := i.(*delta.Item)
 	if !ok {
-		c.log.Errorf("expected queue item to be of type %T but got %T", &item{}, i)
+		c.log.Errorf("expected queue item to be of type %T but got %T", &delta.Item{}, i)
 		return
 	}
 
 	c.deltaMu.Lock()
-	c.delta.add(di)
+	c.delta.Add(di)
 	c.deltaMu.Unlock()
 }
 
@@ -408,8 +310,8 @@ func (c *Controller) send(ctx context.Context) {
 	nodesByName := map[string]*corev1.Node{}
 	var nodes []*corev1.Node
 
-	for _, item := range c.delta.cache {
-		n, ok := item.obj.(*corev1.Node)
+	for _, item := range c.delta.Cache {
+		n, ok := item.Obj.(*corev1.Node)
 		if !ok {
 			continue
 		}
@@ -429,7 +331,7 @@ func (c *Controller) send(ctx context.Context) {
 		}
 	}
 
-	if err := c.castaiclient.SendDelta(ctx, c.clusterID, c.delta.toCASTAIRequest()); err != nil {
+	if err := c.castaiclient.SendDelta(ctx, c.clusterID, c.delta.ToCASTAIRequest()); err != nil {
 		if !errors.Is(err, context.Canceled) {
 			c.log.Errorf("failed sending delta: %v", err)
 		}
@@ -444,7 +346,7 @@ func (c *Controller) send(ctx context.Context) {
 
 	c.healthzProvider.SnapshotSent()
 
-	c.delta.clear()
+	c.delta.Clear()
 }
 
 func (c *Controller) debugQueueContent(maxItems int) string {
