@@ -145,7 +145,8 @@ func (c *Controller) registerEventHandlers() {
 		typ := typ
 		informer := informer
 
-		handler := handlers.NewHandler(c.log, c.queue, typ)
+		log := c.log.WithField("informer", typ.String())
+		handler := handlers.NewHandler(log, c.queue, typ)
 		c.handlers[typ] = handler
 
 		informer.AddEventHandler(handler)
@@ -166,7 +167,7 @@ func (c *Controller) Run(ctx context.Context) error {
 		informer := informer
 		syncs = append(syncs, func() bool {
 			hasSynced := informer.HasSynced()
-			if hasSynced {
+			if !hasSynced {
 				c.log.Infof("Informer cache for %v has not been synced.", objType.String())
 			}
 
@@ -196,7 +197,7 @@ func (c *Controller) Run(ctx context.Context) error {
 				return
 			}
 			// Resync only when at least one full snapshot has already been sent.
-			if cfg.Resync && !c.delta.IsFullSnapshot() {
+			if cfg.Resync && !c.delta.FullSnapshot {
 				c.log.Info("restarting controller to resync data")
 				c.triggerRestart()
 			}
