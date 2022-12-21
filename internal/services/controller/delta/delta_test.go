@@ -1,4 +1,4 @@
-package controller
+package delta
 
 import (
 	"encoding/json"
@@ -24,12 +24,12 @@ func TestDelta(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		items    []*item
+		items    []*Item
 		expected *castai.Delta
 	}{
 		{
 			name:  "empty items",
-			items: []*item{},
+			items: []*Item{},
 			expected: &castai.Delta{
 				ClusterID:      clusterID,
 				ClusterVersion: version,
@@ -38,15 +38,9 @@ func TestDelta(t *testing.T) {
 		},
 		{
 			name: "multiple items",
-			items: []*item{
-				{
-					obj:   pod1,
-					event: eventAdd,
-				},
-				{
-					obj:   pod2,
-					event: eventAdd,
-				},
+			items: []*Item{
+				NewItem(castai.EventAdd, pod1),
+				NewItem(castai.EventAdd, pod2),
 			},
 			expected: &castai.Delta{
 				ClusterID:      clusterID,
@@ -68,15 +62,9 @@ func TestDelta(t *testing.T) {
 		},
 		{
 			name: "debounce: override added item with updated data",
-			items: []*item{
-				{
-					obj:   pod1,
-					event: eventAdd,
-				},
-				{
-					obj:   pod1Updated,
-					event: eventUpdate,
-				},
+			items: []*Item{
+				NewItem(castai.EventAdd, pod1),
+				NewItem(castai.EventUpdate, pod1Updated),
 			},
 			expected: &castai.Delta{
 				ClusterID:      clusterID,
@@ -93,15 +81,9 @@ func TestDelta(t *testing.T) {
 		},
 		{
 			name: "debounce: keep only delete event when an added item is deleted",
-			items: []*item{
-				{
-					obj:   pod1,
-					event: eventAdd,
-				},
-				{
-					obj:   pod1,
-					event: eventDelete,
-				},
+			items: []*Item{
+				NewItem(castai.EventAdd, pod1),
+				NewItem(castai.EventDelete, pod1),
 			},
 			expected: &castai.Delta{
 				ClusterID:      clusterID,
@@ -118,15 +100,9 @@ func TestDelta(t *testing.T) {
 		},
 		{
 			name: "debounce: keep only delete event when an updated item is deleted",
-			items: []*item{
-				{
-					obj:   pod1,
-					event: eventUpdate,
-				},
-				{
-					obj:   pod1,
-					event: eventDelete,
-				},
+			items: []*Item{
+				NewItem(castai.EventUpdate, pod1),
+				NewItem(castai.EventDelete, pod1),
 			},
 			expected: &castai.Delta{
 				ClusterID:      clusterID,
@@ -143,15 +119,9 @@ func TestDelta(t *testing.T) {
 		},
 		{
 			name: "debounce: override updated item with newer updated data",
-			items: []*item{
-				{
-					obj:   pod1,
-					event: eventUpdate,
-				},
-				{
-					obj:   pod1Updated,
-					event: eventUpdate,
-				},
+			items: []*Item{
+				NewItem(castai.EventUpdate, pod1),
+				NewItem(castai.EventUpdate, pod1Updated),
 			},
 			expected: &castai.Delta{
 				ClusterID:      clusterID,
@@ -167,16 +137,10 @@ func TestDelta(t *testing.T) {
 			},
 		},
 		{
-			name: "debounce: change deleted item to updated when it is readded",
-			items: []*item{
-				{
-					obj:   pod1,
-					event: eventDelete,
-				},
-				{
-					obj:   pod1Updated,
-					event: eventAdd,
-				},
+			name: "debounce: change deleted item to updated when it is re-added",
+			items: []*Item{
+				NewItem(castai.EventDelete, pod1),
+				NewItem(castai.EventUpdate, pod1Updated),
 			},
 			expected: &castai.Delta{
 				ClusterID:      clusterID,
@@ -195,13 +159,13 @@ func TestDelta(t *testing.T) {
 	for _, test := range tests {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
-			d := newDelta(logrus.New(), clusterID, version)
+			d := New(logrus.New(), clusterID, version)
 
 			for _, item := range test.items {
-				d.add(item)
+				d.Add(item)
 			}
 
-			got := d.toCASTAIRequest()
+			got := d.ToCASTAIRequest()
 
 			require.Equal(t, clusterID, got.ClusterID)
 			require.Equal(t, version, got.ClusterVersion)
@@ -215,7 +179,7 @@ func TestDelta(t *testing.T) {
 }
 
 func mustEncode(t *testing.T, obj interface{}) *json.RawMessage {
-	data, err := encode(obj)
+	data, err := Encode(obj)
 	require.NoError(t, err)
 	return data
 }

@@ -3,31 +3,26 @@ package controller
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"go.uber.org/goleak"
 
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
-	appsv1 "k8s.io/api/apps/v1"
-	autoscalingv1 "k8s.io/api/autoscaling/v1"
+	"go.uber.org/goleak"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
-	"k8s.io/client-go/tools/cache"
 	metrics_fake "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/internal/config"
-	mock_workqueue "castai-agent/internal/services/controller/mock"
+	"castai-agent/internal/services/controller/delta"
 	mock_types "castai-agent/internal/services/providers/types/mock"
 	mock_version "castai-agent/internal/services/version/mock"
 	"castai-agent/pkg/labels"
@@ -61,11 +56,11 @@ func TestController_HappyPath(t *testing.T) {
 	node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node1", Labels: map[string]string{}}}
 	expectedNode := node.DeepCopy()
 	expectedNode.Labels[labels.CastaiFakeSpot] = "true"
-	nodeData, err := encode(expectedNode)
+	nodeData, err := delta.Encode(expectedNode)
 	require.NoError(t, err)
 
 	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "pod1"}}
-	podData, err := encode(pod)
+	podData, err := delta.Encode(pod)
 	require.NoError(t, err)
 
 	clientset := fake.NewSimpleClientset(node, pod)
@@ -127,282 +122,4 @@ func TestController_HappyPath(t *testing.T) {
 			cancel()
 		}
 	}, 10*time.Millisecond, ctx.Done())
-}
-
-func TestCleanObj(t *testing.T) {
-	tests := []struct {
-		name    string
-		obj     interface{}
-		matcher func(r *require.Assertions, obj interface{})
-	}{
-		{
-			name: "should clean managed fields",
-			obj: &v1.Pod{ObjectMeta: metav1.ObjectMeta{
-				ManagedFields: []metav1.ManagedFieldsEntry{
-					{
-						Manager:    "mngr",
-						Operation:  "op",
-						APIVersion: "v",
-						FieldsType: "t",
-					},
-				},
-			}},
-			matcher: func(r *require.Assertions, obj interface{}) {
-				pod := obj.(*v1.Pod)
-				r.Nil(pod.ManagedFields)
-			},
-		},
-		{
-			name: "should remove sensitive env vars from pod",
-			obj: &v1.Pod{Spec: v1.PodSpec{Containers: []v1.Container{
-				{
-					Env: []v1.EnvVar{
-						{
-							Name:  "LOG_LEVEL",
-							Value: "5",
-						},
-						{
-							Name:  "PASSWORD",
-							Value: "secret",
-						},
-						{
-							Name: "TOKEN",
-							ValueFrom: &v1.EnvVarSource{
-								SecretKeyRef: &v1.SecretKeySelector{
-									LocalObjectReference: v1.LocalObjectReference{
-										Name: "secret",
-									},
-								},
-							},
-						},
-					},
-				},
-				{
-					Env: []v1.EnvVar{
-						{
-							Name:  "PWD",
-							Value: "super_secret",
-						},
-					},
-				},
-				{
-					Env: []v1.EnvVar{
-						{
-							Name:  "API_KEY",
-							Value: "secret",
-						},
-						{
-							Name:  "TIMEOUT",
-							Value: "1s",
-						},
-					},
-				},
-			}}},
-			matcher: func(r *require.Assertions, obj interface{}) {
-				pod := obj.(*v1.Pod)
-
-				r.Equal([]v1.EnvVar{
-					{
-						Name:  "LOG_LEVEL",
-						Value: "5",
-					},
-					{
-						Name: "TOKEN",
-						ValueFrom: &v1.EnvVarSource{
-							SecretKeyRef: &v1.SecretKeySelector{
-								LocalObjectReference: v1.LocalObjectReference{
-									Name: "secret",
-								},
-							},
-						},
-					},
-				}, pod.Spec.Containers[0].Env)
-
-				r.Empty(pod.Spec.Containers[1].Env)
-
-				r.Equal([]v1.EnvVar{
-					{
-						Name:  "TIMEOUT",
-						Value: "1s",
-					},
-				}, pod.Spec.Containers[2].Env)
-
-			},
-		},
-		{
-			name: "should remove sensitive env vars from statefulset",
-			obj: &appsv1.StatefulSet{Spec: appsv1.StatefulSetSpec{Template: v1.PodTemplateSpec{Spec: v1.PodSpec{Containers: []v1.Container{
-				{
-					Env: []v1.EnvVar{
-						{
-							Name:  "LOG_LEVEL",
-							Value: "5",
-						},
-						{
-							Name:  "PASSWORD",
-							Value: "secret",
-						},
-						{
-							Name: "TOKEN",
-							ValueFrom: &v1.EnvVarSource{
-								SecretKeyRef: &v1.SecretKeySelector{
-									LocalObjectReference: v1.LocalObjectReference{
-										Name: "secret",
-									},
-								},
-							},
-						},
-					},
-				},
-				{
-					Env: []v1.EnvVar{
-						{
-							Name:  "PWD",
-							Value: "super_secret",
-						},
-					},
-				},
-			}}}}},
-			matcher: func(r *require.Assertions, obj interface{}) {
-				sts := obj.(*appsv1.StatefulSet)
-
-				r.Equal([]v1.EnvVar{
-					{
-						Name:  "LOG_LEVEL",
-						Value: "5",
-					},
-					{
-						Name: "TOKEN",
-						ValueFrom: &v1.EnvVarSource{
-							SecretKeyRef: &v1.SecretKeySelector{
-								LocalObjectReference: v1.LocalObjectReference{
-									Name: "secret",
-								},
-							},
-						},
-					},
-				}, sts.Spec.Template.Spec.Containers[0].Env)
-
-				r.Empty(sts.Spec.Template.Spec.Containers[1].Env)
-			},
-		},
-	}
-	for _, test := range tests {
-		test := test
-		t.Run(test.name, func(t *testing.T) {
-			r := require.New(t)
-
-			cleanObj(test.obj)
-
-			test.matcher(r, test.obj)
-		})
-	}
-}
-
-func TestEventHandlers(t *testing.T) {
-
-	pod := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "pod",
-			Namespace: v1.NamespaceDefault,
-		},
-	}
-
-	hpa := &autoscalingv1.HorizontalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "horizontalpodautoscaler",
-			Namespace: v1.NamespaceDefault,
-		},
-	}
-
-	items := []object{pod, hpa}
-
-	t.Run("should handle add events", func(t *testing.T) {
-		queue := mock_workqueue.NewMockInterface(gomock.NewController(t))
-
-		c := &Controller{
-			log:   logrus.New(),
-			queue: queue,
-		}
-
-		for i := range items {
-			handlers := c.createEventHandlers(c.log, reflect.TypeOf(items[i]))
-			queue.EXPECT().Add(&item{
-				obj:   items[i],
-				event: eventAdd,
-			})
-			handlers.OnAdd(items[i])
-		}
-	})
-
-	t.Run("should handle update events", func(t *testing.T) {
-		queue := mock_workqueue.NewMockInterface(gomock.NewController(t))
-
-		c := &Controller{
-			log:   logrus.New(),
-			queue: queue,
-		}
-
-		updates := make([]object, len(items))
-		copy(updates, items)
-		for i := range updates {
-			updates[i].SetLabels(map[string]string{"a": "b"})
-		}
-
-		for i := range items {
-			handlers := c.createEventHandlers(c.log, reflect.TypeOf(items[i]))
-			queue.EXPECT().Add(&item{
-				obj:   items[i],
-				event: eventUpdate,
-			})
-			handlers.OnUpdate(items[i], updates[i])
-		}
-	})
-
-	t.Run("should handle delete events", func(t *testing.T) {
-		queue := mock_workqueue.NewMockInterface(gomock.NewController(t))
-
-		c := &Controller{
-			log:   logrus.New(),
-			queue: queue,
-		}
-
-		for i := range items {
-			handlers := c.createEventHandlers(c.log, reflect.TypeOf(items[i]))
-			queue.EXPECT().Add(&item{
-				obj:   items[i],
-				event: eventDelete,
-			})
-
-			handlers.OnDelete(items[i])
-		}
-	})
-
-	t.Run("should handle cache.DeletedFinalStateUnknown events", func(t *testing.T) {
-		queue := mock_workqueue.NewMockInterface(gomock.NewController(t))
-
-		c := &Controller{
-			log:   logrus.New(),
-			queue: queue,
-		}
-
-		handlers := c.createEventHandlers(c.log, reflect.TypeOf(&v1.Pod{}))
-
-		pod := &v1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "pod",
-				Namespace: v1.NamespaceDefault,
-			},
-		}
-
-		queue.EXPECT().Add(&item{
-			obj:   pod,
-			event: eventDelete,
-		})
-
-		handlers.OnDelete(cache.DeletedFinalStateUnknown{
-			Key: "default/pod",
-			Obj: pod,
-		})
-	})
 }

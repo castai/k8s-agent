@@ -10,12 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"castai-agent/internal/castai"
-	mock_castai "castai-agent/internal/castai/mock"
-	"castai-agent/internal/config"
-	mock_types "castai-agent/internal/services/providers/types/mock"
-	mock_version "castai-agent/internal/services/version/mock"
-
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -26,6 +20,13 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	metrics_fake "k8s.io/metrics/pkg/client/clientset/versioned/fake"
+
+	"castai-agent/internal/castai"
+	mock_castai "castai-agent/internal/castai/mock"
+	"castai-agent/internal/config"
+	"castai-agent/internal/services/controller/delta"
+	mock_types "castai-agent/internal/services/providers/types/mock"
+	mock_version "castai-agent/internal/services/version/mock"
 )
 
 func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
@@ -38,7 +39,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 	defer cancel()
 
 	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "pod1"}}
-	podData, err := encode(pod)
+	podData, err := delta.Encode(pod)
 	require.NoError(t, err)
 
 	clientset := fake.NewSimpleClientset()
