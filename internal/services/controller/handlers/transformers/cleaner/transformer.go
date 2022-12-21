@@ -9,7 +9,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"castai-agent/internal/castai"
-	"castai-agent/internal/services/controller/handlers/transformers"
 )
 
 var (
@@ -18,11 +17,10 @@ var (
 	sensitiveValuePattern = regexp.MustCompile(`(?i)passwd|pass|password|pwd|secret|token|key`)
 )
 
-func New() transformers.Transformer {
-	return func(e castai.EventType, obj interface{}) (castai.EventType, interface{}) {
-		cleanObj(obj)
-		return e, obj
-	}
+func Transformer(e castai.EventType, obj interface{}) (castai.EventType, interface{}) {
+	cleanObj(obj)
+
+	return e, obj
 }
 
 // cleanObj removes unnecessary or sensitive values from K8s objects.

@@ -12,8 +12,6 @@ import (
 )
 
 func Test_Transformer(t *testing.T) {
-	transformer := New()
-
 	tests := []struct {
 		name           string
 		event          castai.EventType
@@ -64,7 +62,7 @@ func Test_Transformer(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			r := require.New(t)
-			event, object := transformer(test.event, test.object)
+			event, object := Transformer(test.event, test.object)
 
 			r.Equal(test.expectedEvent, event)
 			r.Equal(test.expectedObject, object)

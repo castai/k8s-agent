@@ -174,10 +174,8 @@ func Test_Transformer(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			r := require.New(t)
 
-			transformer := New()
-
 			for _, event := range []castai.EventType{castai.EventAdd, castai.EventUpdate, castai.EventDelete} {
-				transformer(event, test.obj)
+				Transformer(event, test.obj)
 				test.matcher(r, test.obj)
 			}
 		})
