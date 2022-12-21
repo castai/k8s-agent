@@ -19,8 +19,8 @@ type HandledInformer struct {
 }
 
 var defaultTransformers = transformers.Transformers{
-	deletedfinalstateunknown.New(),
-	cleaner.New(),
+	deletedfinalstateunknown.Transformer,
+	cleaner.Transformer,
 }
 
 func NewHandledInformer(
@@ -30,6 +30,7 @@ func NewHandledInformer(
 	handledType reflect.Type,
 	filters ...handlers.Filter,
 ) *HandledInformer {
+	log = log.WithField("informer", handledType.String())
 	handler := handlers.NewHandler(log, queue, handledType, filters, defaultTransformers)
 	informer.AddEventHandler(handler)
 
