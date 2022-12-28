@@ -139,8 +139,6 @@ func TestNew(t *testing.T) {
 		provider := mock_types.NewMockProvider(mockctrl)
 
 		clientset := fake.NewSimpleClientset()
-
-		clientset = fake.NewSimpleClientset()
 		clientset.Discovery().(*fakediscovery.FakeDiscovery).
 			PrependReactor("get", "group",
 				func(_ k8stesting.Action) (handled bool, ret runtime.Object, err error) {
