@@ -1,4 +1,4 @@
-package handlers
+package filters
 
 import (
 	"castai-agent/internal/castai"
@@ -7,7 +7,7 @@ import (
 type Filter func(e castai.EventType, obj interface{}) bool
 type Filters []Filter
 
-func (fs Filters) apply(e castai.EventType, obj interface{}) bool {
+func (fs Filters) Apply(e castai.EventType, obj interface{}) bool {
 	for _, f := range fs {
 		f := f
 		if !f(e, obj) {
