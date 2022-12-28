@@ -156,21 +156,6 @@ func isMetricsServerAPIAvailable(log logrus.FieldLogger, discovery discovery.Dis
 	return metricsAPIAvailable
 }
 
-func (c *Controller) registerEventHandlers() {
-	c.handlers = map[reflect.Type]handlers.Handler{}
-
-	for typ, informer := range c.informers {
-		typ := typ
-		informer := informer
-
-		log := c.log.WithField("informer", typ.String())
-		handler := handlers.NewHandler(log, c.queue, typ)
-		c.handlers[typ] = handler
-
-		informer.AddEventHandler(handler)
-	}
-}
-
 func (c *Controller) Run(ctx context.Context) error {
 	defer c.queue.ShutDown()
 
