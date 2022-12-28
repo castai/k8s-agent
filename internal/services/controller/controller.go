@@ -68,7 +68,7 @@ func New(
 	v version.Interface,
 	agentVersion *config.AgentVersion,
 	healthzProvider *HealthzProvider,
-) (*Controller, error) {
+) *Controller {
 	healthzProvider.Initializing()
 
 	typeInformerMap := map[reflect.Type]cache.SharedInformer{
@@ -120,7 +120,7 @@ func New(
 
 	c.registerEventHandlers()
 
-	return c, nil
+	return c
 }
 
 func isMetricsServerAPIAvailable(log logrus.FieldLogger, discovery discovery.DiscoveryInterface) bool {
