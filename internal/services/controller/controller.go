@@ -30,7 +30,7 @@ import (
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller/delta"
-	"castai-agent/internal/services/controller/handlers"
+	"castai-agent/internal/services/controller/handlers/filters/onlypodoom"
 	custominformers "castai-agent/internal/services/controller/informers"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/internal/services/version"
@@ -117,7 +117,7 @@ func New(
 		queue,
 		f.Core().V1().Events().Informer(),
 		eventType,
-		handlers.NewOnlyPodOOMEventFilter(),
+		onlypodoom.Filter,
 	)
 
 	c := &Controller{

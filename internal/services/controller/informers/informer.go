@@ -8,6 +8,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 
 	"castai-agent/internal/services/controller/handlers"
+	"castai-agent/internal/services/controller/handlers/filters"
 	"castai-agent/internal/services/controller/handlers/transformers"
 	"castai-agent/internal/services/controller/handlers/transformers/cleaner"
 	"castai-agent/internal/services/controller/handlers/transformers/deletedfinalstateunknown"
@@ -28,7 +29,7 @@ func NewHandledInformer(
 	queue workqueue.Interface,
 	informer cache.SharedInformer,
 	handledType reflect.Type,
-	filters ...handlers.Filter,
+	filters ...filters.Filter,
 ) *HandledInformer {
 	log = log.WithField("informer", handledType.String())
 	handler := handlers.NewHandler(log, queue, handledType, filters, defaultTransformers)

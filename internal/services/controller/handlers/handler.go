@@ -9,6 +9,7 @@ import (
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/services/controller/delta"
+	"castai-agent/internal/services/controller/handlers/filters"
 	"castai-agent/internal/services/controller/handlers/transformers"
 )
 
@@ -16,7 +17,7 @@ type handler struct {
 	log          logrus.FieldLogger
 	handledType  reflect.Type
 	queue        workqueue.Interface
-	filters      Filters
+	filters      filters.Filters
 	transformers transformers.Transformers
 }
 type Handler interface {
@@ -27,7 +28,7 @@ func NewHandler(
 	log logrus.FieldLogger,
 	queue workqueue.Interface,
 	handledType reflect.Type,
-	filters Filters,
+	filters filters.Filters,
 	transformers transformers.Transformers,
 ) Handler {
 	return &handler{
@@ -52,7 +53,7 @@ func (h *handler) OnDelete(obj interface{}) {
 }
 
 func (h *handler) handle(e castai.EventType, obj interface{}) {
-	if !h.filters.apply(e, obj) {
+	if !h.filters.Apply(e, obj) {
 		return
 	}
 
