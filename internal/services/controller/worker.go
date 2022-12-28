@@ -48,7 +48,7 @@ func Loop(
 		log = log.WithField("k8s_version", v.Full())
 
 		f := informers.NewSharedInformerFactory(clientset, 0)
-		ctrl, err := New(
+		ctrl := New(
 			log,
 			f,
 			clientset.Discovery(),
@@ -61,9 +61,6 @@ func Loop(
 			agentVersion,
 			healthzProvider,
 		)
-		if err != nil {
-			return fmt.Errorf("creating controller: %w", err)
-		}
 
 		f.Start(ctrlCtx.Done())
 

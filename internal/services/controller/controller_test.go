@@ -2,7 +2,9 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,9 +16,13 @@ import (
 	"go.uber.org/goleak"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	fakediscovery "k8s.io/client-go/discovery/fake"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
+	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	metrics_fake "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 
 	"castai-agent/internal/castai"
@@ -106,7 +112,7 @@ func TestController_HappyPath(t *testing.T) {
 	f := informers.NewSharedInformerFactory(clientset, 0)
 	log := logrus.New()
 	log.SetLevel(logrus.DebugLevel)
-	ctrl, _ := New(log, f, clientset.Discovery(), castaiclient, metricsClient, provider, clusterID.String(), &config.Controller{
+	ctrl := New(log, f, clientset.Discovery(), castaiclient, metricsClient, provider, clusterID.String(), &config.Controller{
 		Interval:             15 * time.Second,
 		PrepTimeout:          2 * time.Second,
 		InitialSleepDuration: 10 * time.Millisecond,
@@ -122,4 +128,54 @@ func TestController_HappyPath(t *testing.T) {
 			cancel()
 		}
 	}, 10*time.Millisecond, ctx.Done())
+}
+
+func TestNew(t *testing.T) {
+	t.Run("should not collect pod metrics when discovery api is unavailable", func(t *testing.T) {
+		r := require.New(t)
+		mockctrl := gomock.NewController(t)
+		castaiclient := mock_castai.NewMockClient(mockctrl)
+		version := mock_version.NewMockInterface(mockctrl)
+		provider := mock_types.NewMockProvider(mockctrl)
+
+		clientset := fake.NewSimpleClientset()
+		clientset.Discovery().(*fakediscovery.FakeDiscovery).
+			PrependReactor("get", "group",
+				func(_ k8stesting.Action) (handled bool, ret runtime.Object, err error) {
+					return true, nil, errors.New("some error")
+				})
+		metricsClient := metrics_fake.NewSimpleClientset()
+
+		version.EXPECT().MinorInt().Return(19).MaxTimes(2)
+		version.EXPECT().Full().Return("1.19+").MaxTimes(2)
+
+		clusterID := uuid.New()
+		agentVersion := &config.AgentVersion{Version: "1.2.3"}
+
+		f := informers.NewSharedInformerFactory(clientset, 0)
+		log := logrus.New()
+		log.SetLevel(logrus.DebugLevel)
+		ctrl := New(
+			log,
+			f,
+			clientset.Discovery(),
+			castaiclient,
+			metricsClient,
+			provider,
+			clusterID.String(),
+			&config.Controller{
+				Interval:             15 * time.Second,
+				PrepTimeout:          2 * time.Second,
+				InitialSleepDuration: 10 * time.Millisecond,
+			},
+			version,
+			agentVersion,
+			NewHealthzProvider(defaultHealthzCfg, log),
+		)
+
+		r.NotNil(ctrl)
+
+		_, found := ctrl.informers[reflect.TypeOf(&v1beta1.PodMetrics{})]
+		r.False(found, "pod metrics informer should not be registered if metrics api is not available")
+	})
 }
