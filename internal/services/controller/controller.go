@@ -96,22 +96,7 @@ func New(
 			f.Autoscaling().V1().HorizontalPodAutoscalers().Informer()
 	}
 
-	_, res, err := discovery.ServerGroupsAndResources()
-	if err != nil {
-		return nil, fmt.Errorf("discovering server groups and resources: %w", err)
-	}
-
-	supportsMetrics := lo.SomeBy(res, func(resourceList *metav1.APIResourceList) bool {
-		if resourceList.GroupVersion != "metrics.k8s.io/v1beta1" {
-			return false
-		}
-
-		return lo.SomeBy(resourceList.APIResources, func(resource metav1.APIResource) bool {
-			return resource.Kind == "PodMetrics"
-		})
-	})
-
-	if supportsMetrics {
+	if isMetricsServerAPIAvailable(log, discovery) {
 		log.Infof("Cluster supports pod metrics, will collect them.")
 		metricsInformer := f.InformerFor(&v1beta1.PodMetrics{}, func(_ kubernetes.Interface, _ time.Duration) cache.SharedIndexInformer {
 			return custominformers.NewPodMetricsInformer(log, metricsClient)
@@ -136,6 +121,26 @@ func New(
 	c.registerEventHandlers()
 
 	return c, nil
+}
+
+func isMetricsServerAPIAvailable(log logrus.FieldLogger, discovery discovery.DiscoveryInterface) bool {
+	_, res, err := discovery.ServerGroupsAndResources()
+	if err != nil {
+		log.Warnf("Error when calling k8s discovery API: %v", err.Error())
+		return false
+	}
+
+	metricsAPIAvailable := lo.SomeBy(res, func(resourceList *metav1.APIResourceList) bool {
+		if resourceList.GroupVersion != "metrics.k8s.io/v1beta1" {
+			return false
+		}
+
+		return lo.SomeBy(resourceList.APIResources, func(resource metav1.APIResource) bool {
+			return resource.Kind == "PodMetrics"
+		})
+	})
+
+	return metricsAPIAvailable
 }
 
 func (c *Controller) registerEventHandlers() {
