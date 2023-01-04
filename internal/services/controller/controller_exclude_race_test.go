@@ -50,6 +50,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 	version.EXPECT().Full().Return("1.19+").MaxTimes(2)
 
 	clusterID := uuid.New()
+	organizationID := uuid.New()
 	log := logrus.New()
 
 	var invocations int64
@@ -124,7 +125,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 		})
 
 	log.SetLevel(logrus.DebugLevel)
-	ctrl := New(log, f, clientset.Discovery(), castaiclient, metricsClient, provider, clusterID.String(), &config.Controller{
+	ctrl := New(log, f, clientset.Discovery(), castaiclient, metricsClient, provider, clusterID.String(), organizationID.String(), &config.Controller{
 		Interval:             2 * time.Second,
 		PrepTimeout:          2 * time.Second,
 		InitialSleepDuration: 10 * time.Millisecond,

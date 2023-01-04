@@ -40,8 +40,9 @@ type exporter struct {
 }
 
 type Config struct {
-	ClusterID   string
-	SendTimeout time.Duration
+	ClusterID      string
+	OrganizationID string
+	SendTimeout    time.Duration
 }
 
 func (ex *exporter) Levels() []logrus.Level {

@@ -14,7 +14,7 @@ The helm chart for the CAST AI Kubernetes agent is published in the [castai/helm
 
 ### Run the agent in your IDE 
 
-You must provide the these environment variables:
+You must provide these environment variables:
 
 ```text
 API_KEY=your-castai-api-key
@@ -58,16 +58,6 @@ GKE_REGION=your-cluster-region
 GKE_LOCATION=your-cluster-location
 ```
 note, when using zonal `GKE_REGION` and `GKE_LOCATION` is often the same, i.e. `europe-west3-a`
-
-
-#### Issues
-
-If you encounter "Error: no Auth Provider found for name "gcp"", add a discard import to the main fn: 
-```go
-import (
-    _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
-)
-```
 
 ### Release procedure (with automatic release notes)
 

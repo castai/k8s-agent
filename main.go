@@ -57,9 +57,12 @@ func main() {
 
 	castailog.SetupLogExporter(remoteLogger, localLog, castaiClient, &loggingConfig)
 
-	clusterIDHandler := func(clusterID string) {
+	clusterIDHandler := func(clusterID, organizationID string) {
 		loggingConfig.ClusterID = clusterID
 		log.Data["cluster_id"] = clusterID
+
+		loggingConfig.OrganizationID = organizationID
+		log.Data["organization_id"] = organizationID
 	}
 
 	ctx := signals.SetupSignalHandler()
@@ -70,7 +73,7 @@ func main() {
 	log.Info("agent shutdown")
 }
 
-func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg config.Config, clusterIDChanged func(clusterID string)) error {
+func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg config.Config, clusterIDChanged func(clusterID, organizationID string)) error {
 	ctx, ctxCancel := context.WithCancel(ctx)
 	defer ctxCancel()
 
@@ -131,8 +134,11 @@ func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg
 
 	leaderFunc := func(ctx context.Context) error {
 		clusterID := ""
+		organizationID := ""
+
 		if cfg.Static != nil {
 			clusterID = cfg.Static.ClusterID
+			organizationID = cfg.Static.OrganizationID
 		}
 
 		if clusterID == "" {
@@ -141,10 +147,11 @@ func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg
 				return fmt.Errorf("registering cluster: %w", err)
 			}
 			clusterID = reg.ClusterID
-			clusterIDChanged(clusterID)
+			organizationID = reg.OrganizationID
+			clusterIDChanged(clusterID, organizationID)
 			log.Infof("cluster registered: %v, clusterID: %s", reg, clusterID)
 		} else {
-			clusterIDChanged(clusterID)
+			clusterIDChanged(clusterID, organizationID)
 			log.Infof("clusterID: %s provided by env variable", clusterID)
 		}
 
@@ -156,6 +163,7 @@ func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg
 			castaiclient,
 			provider,
 			clusterID,
+			organizationID,
 			cfg,
 			agentVersion,
 			ctrlHealthz,

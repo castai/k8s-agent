@@ -38,13 +38,14 @@ import (
 )
 
 type Controller struct {
-	log          logrus.FieldLogger
-	clusterID    string
-	castaiclient castai.Client
-	provider     types.Provider
-	queue        workqueue.Interface
-	cfg          *config.Controller
-	informers    map[reflect.Type]*custominformers.HandledInformer
+	log            logrus.FieldLogger
+	clusterID      string
+	organizationID string
+	castaiclient   castai.Client
+	provider       types.Provider
+	queue          workqueue.Interface
+	cfg            *config.Controller
+	informers      map[reflect.Type]*custominformers.HandledInformer
 
 	delta   *delta.Delta
 	deltaMu sync.Mutex
@@ -63,6 +64,7 @@ func New(
 	metricsClient versioned.Interface,
 	provider types.Provider,
 	clusterID string,
+	organizationID string,
 	cfg *config.Controller,
 	v version.Interface,
 	agentVersion *config.AgentVersion,
@@ -123,6 +125,7 @@ func New(
 	c := &Controller{
 		log:             log,
 		clusterID:       clusterID,
+		organizationID:  organizationID,
 		castaiclient:    castaiclient,
 		provider:        provider,
 		cfg:             cfg,

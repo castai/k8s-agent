@@ -19,6 +19,7 @@ func TestSetupLogExporter(t *testing.T) {
 	logger, hook := test.NewNullLogger()
 	defer hook.Reset()
 	mockClusterID := uuid.New().String()
+	mockOrganizationID := uuid.New().String()
 	ctrl := gomock.NewController(t)
 	mockapi := mock_castai.NewMockClient(ctrl)
 	SetupLogExporter(logger, nil, mockapi, &Config{ClusterID: mockClusterID, SendTimeout: time.Second})
@@ -30,6 +31,7 @@ func TestSetupLogExporter(t *testing.T) {
 			Do(func(_ context.Context, clusterID string, req *castai.IngestAgentLogsRequest) *castai.IngestAgentLogsResponse {
 				fields := req.LogEvent.Fields
 				r.Equal(mockClusterID, fields["cluster_id"])
+				r.Equal(mockOrganizationID, fields["organization_id"])
 				r.Equal("eks", fields["provider"])
 				r.Equal("false", fields["sample_boolean_value"])
 				r.Equal("3", fields["int_val"])
@@ -38,8 +40,9 @@ func TestSetupLogExporter(t *testing.T) {
 			}).Return(&castai.IngestAgentLogsResponse{}, nil).Times(1)
 
 		log := logger.WithFields(logrus.Fields{
-			"cluster_id": mockClusterID,
-			"provider":   "eks",
+			"cluster_id":      mockClusterID,
+			"organization_id": mockOrganizationID,
+			"provider":        "eks",
 			// log interface allows not just the strings - must make sure we correctly convert them to strings when sending
 			"sample_boolean_value": false,
 			"int_val":              3,
