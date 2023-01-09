@@ -14,7 +14,7 @@ import (
 var (
 	// sensitiveValuePattern matches strings which are usually used to name variables holding sensitive values, like
 	// passwords. This is a case-insensitive match of the listed words.
-	sensitiveValuePattern = regexp.MustCompile(`(?i)passwd|pass|password|pwd|secret|token|key`)
+	sensitiveValuePattern = regexp.MustCompile(`(?i)passwd|pass|password|pwd|secret|token|key|creds|credential`)
 )
 
 func Transformer(e castai.EventType, obj interface{}) (castai.EventType, interface{}) {
