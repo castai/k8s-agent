@@ -57,6 +57,10 @@ func Test_Transformer(t *testing.T) {
 								},
 							},
 						},
+						{
+							Name:  "GCP_CREDENTIALS",
+							Value: "super secret",
+						},
 					},
 				},
 				{
