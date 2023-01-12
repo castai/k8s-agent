@@ -81,7 +81,7 @@ jobs:
           context: .
           file: ./redhat/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
-          tags: us-docker.pkg.dev/castai-hub/library/agent-rh-ubi:${{ github.sha }}
+          tags: us-docker.pkg.dev/castai-hub/library/agent:${{ github.sha }}-rh-ubi
 
       - name: Build and push release
         if: github.event_name == 'release'
@@ -103,8 +103,8 @@ jobs:
           push: true
           platforms: linux/arm64,linux/amd64
           tags: |
-            us-docker.pkg.dev/castai-hub/library/agent-rh-ubi:${{ env.RELEASE_TAG }}
-            us-docker.pkg.dev/castai-hub/library/agent-rh-ubi:latest
+            us-docker.pkg.dev/castai-hub/library/agent:${{ env.RELEASE_TAG }}-rh-ubi
+            us-docker.pkg.dev/castai-hub/library/agent:latest-rh-ubi
 
       - name: Docker pull for fossa main
         if: github.event_name == 'release'
@@ -112,7 +112,7 @@ jobs:
 
       - name: Docker pull for fossa main RedHat UBI
         if: github.event_name == 'release'
-        run: docker pull us-docker.pkg.dev/castai-hub/library/agent-rh-ubi:${{ env.RELEASE_TAG }}
+        run: docker pull us-docker.pkg.dev/castai-hub/library/agent:${{ env.RELEASE_TAG }}-rh-ubi
 
       - name: FOSSA scan docker image
         if: github.event_name == 'release'
@@ -126,4 +126,4 @@ jobs:
         uses: fossas/fossa-action@v1
         with:
           api-key: ${{ secrets.FOSSA_API_KEY }}
-          container: us-docker.pkg.dev/castai-hub/library/agent-rh-ubi:${{ env.RELEASE_TAG }}
+          container: us-docker.pkg.dev/castai-hub/library/agent:${{ env.RELEASE_TAG }}-rh-ubi
