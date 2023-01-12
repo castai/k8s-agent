@@ -74,6 +74,15 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: us-docker.pkg.dev/castai-hub/library/agent:${{ github.sha }}
 
+      - name: Build and push main RedHat UBI
+        if: github.event_name != 'release'
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: ./redhat/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: us-docker.pkg.dev/castai-hub/library/agent-rh-ubi:${{ github.sha }}
+
       - name: Build and push release
         if: github.event_name == 'release'
         uses: docker/build-push-action@v2
@@ -85,9 +94,25 @@ jobs:
             us-docker.pkg.dev/castai-hub/library/agent:${{ env.RELEASE_TAG }}
             us-docker.pkg.dev/castai-hub/library/agent:latest
 
+      - name: Build and push release RedHat UBI
+        if: github.event_name == 'release'
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: ./redhat/Dockerfile
+          push: true
+          platforms: linux/arm64,linux/amd64
+          tags: |
+            us-docker.pkg.dev/castai-hub/library/agent-rh-ubi:${{ env.RELEASE_TAG }}
+            us-docker.pkg.dev/castai-hub/library/agent-rh-ubi:latest
+
       - name: Docker pull for fossa main
         if: github.event_name == 'release'
         run: docker pull us-docker.pkg.dev/castai-hub/library/agent:${{ env.RELEASE_TAG }}
+
+      - name: Docker pull for fossa main RedHat UBI
+        if: github.event_name == 'release'
+        run: docker pull us-docker.pkg.dev/castai-hub/library/agent-rh-ubi:${{ env.RELEASE_TAG }}
 
       - name: FOSSA scan docker image
         if: github.event_name == 'release'
@@ -95,3 +120,10 @@ jobs:
         with:
           api-key: ${{ secrets.FOSSA_API_KEY }}
           container: us-docker.pkg.dev/castai-hub/library/agent:${{ env.RELEASE_TAG }}
+
+      - name: FOSSA scan docker image RedHat UBI
+        if: github.event_name == 'release'
+        uses: fossas/fossa-action@v1
+        with:
+          api-key: ${{ secrets.FOSSA_API_KEY }}
+          container: us-docker.pkg.dev/castai-hub/library/agent-rh-ubi:${{ env.RELEASE_TAG }}
