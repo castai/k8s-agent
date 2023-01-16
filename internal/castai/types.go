@@ -34,13 +34,21 @@ type AKSParams struct {
 	SubscriptionID    string `json:"subscriptionId"`
 }
 
+type OpenshiftParams struct {
+	CSP         string `json:"cloud"`
+	Region      string `json:"region"`
+	ClusterName string `json:"clusterName"`
+	InternalID  string `json:"internalId"`
+}
+
 type RegisterClusterRequest struct {
-	ID   uuid.UUID   `json:"id"`
-	Name string      `json:"name"`
-	EKS  *EKSParams  `json:"eks"`
-	GKE  *GKEParams  `json:"gke"`
-	KOPS *KOPSParams `json:"kops"`
-	AKS  *AKSParams  `json:"aks"`
+	ID        uuid.UUID        `json:"id"`
+	Name      string           `json:"name"`
+	EKS       *EKSParams       `json:"eks"`
+	GKE       *GKEParams       `json:"gke"`
+	KOPS      *KOPSParams      `json:"kops"`
+	AKS       *AKSParams       `json:"aks"`
+	Openshift *OpenshiftParams `json:"openshift"`
 }
 
 type Cluster struct {

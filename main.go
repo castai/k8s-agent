@@ -4,13 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
+	"os"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
@@ -25,6 +27,7 @@ import (
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller"
+	"castai-agent/internal/services/discovery"
 	"castai-agent/internal/services/providers"
 	"castai-agent/internal/services/replicas"
 	castailog "castai-agent/pkg/log"
@@ -55,11 +58,20 @@ func main() {
 
 	castaiClient := castai.NewClient(log, castai.NewDefaultRestyClient(), castai.NewDefaultDeltaHTTPClient())
 
-	castailog.SetupLogExporter(remoteLogger, localLog, castaiClient, &loggingConfig)
+	waitForRegistrationCh := make(chan struct{})
+	var registrationChClose sync.Once
+	registrationChCloseBody := func() {
+		close(waitForRegistrationCh)
+	}
+	defer func() {
+		registrationChClose.Do(registrationChCloseBody)
+	}()
+	castailog.SetupLogExporter(waitForRegistrationCh, remoteLogger, localLog, castaiClient, &loggingConfig)
 
 	clusterIDHandler := func(clusterID string) {
 		loggingConfig.ClusterID = clusterID
 		log.Data["cluster_id"] = clusterID
+		registrationChClose.Do(registrationChCloseBody)
 	}
 
 	ctx := signals.SetupSignalHandler()
@@ -121,7 +133,14 @@ func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg
 		return fmt.Errorf("initializing metrics client: %w", err)
 	}
 
-	provider, err := providers.GetProvider(ctx, log, clientset)
+	dynamicClient, err := dynamic.NewForConfig(restconfig)
+	if err != nil {
+		return fmt.Errorf("initializing dynamic client: %w", err)
+	}
+
+	discoveryService := discovery.New(clientset, dynamicClient)
+
+	provider, err := providers.GetProvider(ctx, log, discoveryService, dynamicClient)
 	if err != nil {
 		return fmt.Errorf("getting provider: %w", err)
 	}
@@ -230,7 +249,11 @@ func kubeConfigFromPath(kubepath string) (*rest.Config, error) {
 		return nil, nil
 	}
 
-	data, err := ioutil.ReadFile(kubepath)
+	if _, err := os.Stat(kubepath); os.IsNotExist(err) {
+		return nil, err
+	}
+
+	data, err := os.ReadFile(kubepath)
 	if err != nil {
 		return nil, fmt.Errorf("reading kubeconfig at %s: %w", kubepath, err)
 	}

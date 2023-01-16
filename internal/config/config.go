@@ -15,12 +15,13 @@ type Config struct {
 	API        API    `mapstructure:"api"`
 	Kubeconfig string `mapstructure:"kubeconfig"`
 
-	Provider string  `mapstructure:"provider"`
-	CASTAI   *CASTAI `mapstructure:"castai"`
-	EKS      *EKS    `mapstructure:"eks"`
-	GKE      *GKE    `mapstructure:"gke"`
-	KOPS     *KOPS   `mapstructure:"kops"`
-	AKS      *AKS    `mapstructure:"aks"`
+	Provider  string     `mapstructure:"provider"`
+	CASTAI    *CASTAI    `mapstructure:"castai"`
+	EKS       *EKS       `mapstructure:"eks"`
+	GKE       *GKE       `mapstructure:"gke"`
+	KOPS      *KOPS      `mapstructure:"kops"`
+	AKS       *AKS       `mapstructure:"aks"`
+	OpenShift *OpenShift `mapstructure:"openshift"`
 
 	Static      *Static     `mapstructure:"static"`
 	Controller  *Controller `mapstructure:"controller"`
@@ -68,6 +69,10 @@ type AKS struct {
 	NodeResourceGroup string `mapstructure:"node_resource_group"`
 	Location          string `mapstructure:"location"`
 	SubscriptionID    string `mapstructure:"subscription_id"`
+}
+
+type OpenShift struct {
+	CSP string `mapstructure:"csp"`
 }
 
 type Static struct {

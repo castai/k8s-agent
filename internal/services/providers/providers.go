@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/client-go/dynamic"
+
+	"castai-agent/internal/services/discovery"
 	"castai-agent/internal/services/providers/aks"
+	"castai-agent/internal/services/providers/openshift"
 
 	"github.com/sirupsen/logrus"
-	"k8s.io/client-go/kubernetes"
 
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/providers/castai"
@@ -17,7 +20,7 @@ import (
 	"castai-agent/internal/services/providers/types"
 )
 
-func GetProvider(ctx context.Context, log logrus.FieldLogger, clientset kubernetes.Interface) (types.Provider, error) {
+func GetProvider(ctx context.Context, log logrus.FieldLogger, discoveryService discovery.Service, dyno dynamic.Interface) (types.Provider, error) {
 	cfg := config.Get()
 
 	if cfg.Provider == castai.Name || cfg.CASTAI != nil {
@@ -33,11 +36,15 @@ func GetProvider(ctx context.Context, log logrus.FieldLogger, clientset kubernet
 	}
 
 	if cfg.Provider == kops.Name || cfg.KOPS != nil {
-		return kops.New(log.WithField("provider", kops.Name), clientset)
+		return kops.New(log.WithField("provider", kops.Name), discoveryService)
 	}
 
 	if cfg.Provider == aks.Name || cfg.AKS != nil {
 		return aks.New(log.WithField("provider", aks.Name))
+	}
+
+	if cfg.Provider == openshift.Name {
+		return openshift.New(discoveryService, dyno), nil
 	}
 
 	return nil, fmt.Errorf("unknown provider %q", cfg.Provider)
