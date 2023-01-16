@@ -12,11 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// GetKOPSClusterNameAndStateStore discovers the cluster name and kOps state store bucket from the kube-system namespace
-// annotation. kOps annotates the kube-system namespace with annotations such as this:
-// * addons.k8s.io/core.addons.k8s.io: '{"version":"1.4.0","channel":"s3://bucket/cluster-name/addons/bootstrap-channel.yaml","manifestHash":"hash"}'
-// We can retrieve the state store bucket name and the cluster name from the "channel" property of the annotation value.
-func (s *Service) GetKOPSClusterNameAndStateStore(ctx context.Context, log logrus.FieldLogger) (clusterName, stateStore *string, reterr error) {
+func (s *ServiceImpl) GetKOPSClusterNameAndStateStore(ctx context.Context, log logrus.FieldLogger) (clusterName, stateStore *string, reterr error) {
 	ns, err := s.getKubeSystemNamespace(ctx)
 	if err != nil {
 		return nil, nil, err

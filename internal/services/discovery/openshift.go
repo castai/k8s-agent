@@ -33,7 +33,7 @@ var (
 	}
 )
 
-func (s *Service) GetOpenshiftClusterID(ctx context.Context) (*string, error) {
+func (s *ServiceImpl) GetOpenshiftClusterID(ctx context.Context) (*string, error) {
 	clusterVersion, err := s.dyno.Resource(OpenshiftClusterVersionsGVR).Get(ctx, "version", metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("getting openshift cluster version: %w", err)
@@ -51,7 +51,7 @@ func (s *Service) GetOpenshiftClusterID(ctx context.Context) (*string, error) {
 	return &clusterID, nil
 }
 
-func (s *Service) GetOpenshiftClusterName(ctx context.Context) (*string, error) {
+func (s *ServiceImpl) GetOpenshiftClusterName(ctx context.Context) (*string, error) {
 	masterSelector := labels.SelectorFromSet(labels.Set{OpenshiftMachineRoleLabel: OpenshiftMasterMachineRole}).String()
 	machines, err := s.dyno.Resource(OpenshiftMachinesGVR).
 		Namespace(OpenshiftMachineAPINamespace).

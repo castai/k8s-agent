@@ -21,6 +21,7 @@ import (
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/internal/config"
+	"castai-agent/internal/services/discovery"
 	mock_awsclient "castai-agent/internal/services/providers/eks/client/mock"
 	"castai-agent/internal/services/providers/gke"
 	"castai-agent/internal/services/providers/types"
@@ -81,8 +82,9 @@ func TestProvider_RegisterCluster(t *testing.T) {
 		})
 
 		clientset := fake.NewSimpleClientset(objects...)
+		discoveryService := discovery.New(clientset, nil)
 
-		p, err := New(logrus.New(), clientset)
+		p, err := New(logrus.New(), discoveryService)
 		require.NoError(t, err)
 
 		castaiclient := mock_castai.NewMockClient(gomock.NewController(t))
@@ -134,7 +136,10 @@ func TestProvider_RegisterCluster(t *testing.T) {
 			},
 		}
 
-		p, err := New(logrus.New(), fake.NewSimpleClientset(namespace))
+		clientset := fake.NewSimpleClientset(namespace)
+		discoveryService := discovery.New(clientset, nil)
+
+		p, err := New(logrus.New(), discoveryService)
 		require.NoError(t, err)
 
 		castaiclient := mock_castai.NewMockClient(gomock.NewController(t))
