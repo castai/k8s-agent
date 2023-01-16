@@ -11,6 +11,7 @@ import (
 	"k8s.io/client-go/dynamic"
 
 	"castai-agent/internal/castai"
+	"castai-agent/internal/config"
 	"castai-agent/internal/services/discovery"
 	"castai-agent/internal/services/providers/types"
 )
@@ -37,29 +38,37 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 		return nil, fmt.Errorf("getting cluster id: %w", err)
 	}
 
-	csp, region, err := p.discoveryService.GetCSPAndRegion(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("getting csp and region: %w", err)
-	}
+	var csp, region, clusterName, internalID string
 
-	openshiftClusterID, err := p.discoveryService.GetOpenshiftClusterID(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("getting openshift cluster id: %w", err)
-	}
+	if cfg := config.Get().OpenShift; cfg != nil {
+		csp, region, clusterName, internalID = cfg.CSP, cfg.Region, cfg.ClusterName, cfg.InternalID
+	} else {
+		c, r, err := p.discoveryService.GetCSPAndRegion(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("getting csp and region: %w", err)
+		}
 
-	clusterName, err := p.discoveryService.GetOpenshiftClusterName(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("getting openshift cluster name: %w", err)
+		id, err := p.discoveryService.GetOpenshiftClusterID(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("getting openshift cluster id: %w", err)
+		}
+
+		cn, err := p.discoveryService.GetOpenshiftClusterName(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("getting openshift cluster name: %w", err)
+		}
+
+		csp, region, clusterName, internalID = *c, *r, *cn, *id
 	}
 
 	resp, err := client.RegisterCluster(ctx, &castai.RegisterClusterRequest{
 		ID:   *clusterID,
-		Name: *clusterName,
+		Name: clusterName,
 		Openshift: &castai.OpenshiftParams{
-			CSP:         *csp,
-			Region:      *region,
-			ClusterName: *clusterName,
-			InternalID:  *openshiftClusterID,
+			CSP:         csp,
+			Region:      region,
+			ClusterName: clusterName,
+			InternalID:  internalID,
 		},
 	})
 	if err != nil {

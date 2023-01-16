@@ -72,7 +72,10 @@ type AKS struct {
 }
 
 type OpenShift struct {
-	CSP string `mapstructure:"csp"`
+	CSP         string `mapstructure:"csp"`
+	Region      string `mapstructure:"region"`
+	ClusterName string `mapstructure:"cluster_name"`
+	InternalID  string `mapstructure:"internal_id"`
 }
 
 type Static struct {
@@ -189,6 +192,21 @@ func Get() Config {
 		}
 		if cfg.AKS.NodeResourceGroup == "" {
 			requiredWhenDiscoveryDisabled("AKS_NODE_RESOURCE_GROUP")
+		}
+	}
+
+	if cfg.OpenShift != nil {
+		if cfg.OpenShift.CSP == "" {
+			requiredWhenDiscoveryDisabled("OPENSHIFT_CSP")
+		}
+		if cfg.OpenShift.Region == "" {
+			requiredWhenDiscoveryDisabled("OPENSHIFT_REGION")
+		}
+		if cfg.OpenShift.ClusterName == "" {
+			requiredWhenDiscoveryDisabled("OPENSHIFT_CLUSTER_NAME")
+		}
+		if cfg.OpenShift.InternalID == "" {
+			requiredWhenDiscoveryDisabled("OPENSHIFT_INTERNAL_ID")
 		}
 	}
 
