@@ -8,10 +8,19 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/yaml"
+	fakedynamic "k8s.io/client-go/dynamic/fake"
 
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/internal/config"
+	"castai-agent/internal/services/controller/scheme"
+	"castai-agent/internal/services/discovery"
 	mock_discovery "castai-agent/internal/services/discovery/mock"
 	"castai-agent/internal/services/providers/types"
 )
@@ -104,4 +113,127 @@ func TestProvider_RegisterCluster(t *testing.T) {
 			r.Equal(expected, got)
 		})
 	}
+}
+
+func TestOpenshift_FilterSpot(t *testing.T) {
+	r := require.New(t)
+
+	onDemand, err := unstructuredMachine(`
+apiVersion: machine.openshift.io/v1beta1
+kind: Machine
+metadata:
+  labels:
+    machine.openshift.io/cluster-api-cluster: foo-bar
+    machine.openshift.io/cluster-api-machine-role: master
+    machine.openshift.io/cluster-api-machine-type: master
+    machine.openshift.io/instance-type: m5.2xlarge
+    machine.openshift.io/region: eu-central-1
+    machine.openshift.io/zone: eu-central-1a
+  name: foo-bar-master-0
+  namespace: openshift-machine-api
+  uid: 803fbff1-bab4-412c-912b-0ba7f0ef1dcd
+spec:
+  providerSpec:
+    value: {}
+status:
+  providerStatus:
+    instanceId: i-0b9c9c9c9c9c9c9c9
+`)
+	r.NoError(err)
+
+	spot, err := unstructuredMachine(`
+apiVersion: machine.openshift.io/v1beta1
+kind: Machine
+metadata:
+  labels:
+    machine.openshift.io/cluster-api-cluster: foo-bar
+    machine.openshift.io/cluster-api-machine-role: worker
+    machine.openshift.io/cluster-api-machine-type: worker
+    machine.openshift.io/instance-type: m5.2xlarge
+    machine.openshift.io/region: eu-central-1
+    machine.openshift.io/zone: eu-central-1a
+  name: foo-bar-worker-0
+  namespace: openshift-machine-api
+  uid: 803fbff1-bab4-412c-912b-0ba7f0ef1dcf
+spec:
+  providerSpec:
+    value:
+      spotMarketOptions: {}
+status:
+  providerStatus:
+    instanceId: i-0b9c9c9c9c9c9c9cf
+`)
+	r.NoError(err)
+
+	nonExisting, err := unstructuredMachine(`
+apiVersion: machine.openshift.io/v1beta1
+kind: Machine
+metadata:
+  labels:
+    machine.openshift.io/cluster-api-cluster: foo-bar
+    machine.openshift.io/cluster-api-machine-role: worker
+    machine.openshift.io/cluster-api-machine-type: worker
+    machine.openshift.io/instance-type: m5.2xlarge
+    machine.openshift.io/region: eu-central-1
+    machine.openshift.io/zone: eu-central-1a
+  name: foo-bar-worker-1
+  namespace: openshift-machine-api
+  uid: 803fbff1-bab4-412c-912b-0ba7f0ef1dcc
+spec:
+  providerSpec:
+    value:
+status:
+  providerStatus:
+    instanceId: i-0b9c9c9c9c9c9c9cc
+`)
+	r.NoError(err)
+
+	objects := []runtime.Object{
+		onDemand,
+		spot,
+		nonExisting,
+	}
+
+	nodes := []*v1.Node{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "spot"},
+			Spec: v1.NodeSpec{
+				ProviderID: "aws:///eu-central-1/i-0b9c9c9c9c9c9c9cf",
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "on-demand"},
+			Spec: v1.NodeSpec{
+				ProviderID: "aws:///eu-central-1/i-0b9c9c9c9c9c9c9c9",
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "non-existing"},
+			Spec: v1.NodeSpec{
+				ProviderID: "aws:///eu-central-1/i-99999999999999999",
+			},
+		},
+	}
+
+	dyno := fakedynamic.NewSimpleDynamicClient(scheme.Scheme, objects...)
+
+	p := New(nil, dyno)
+
+	spots, err := p.FilterSpot(context.Background(), nodes)
+
+	r.NoError(err)
+	r.Equal([]*v1.Node{nodes[0]}, spots)
+}
+
+func unstructuredMachine(yamlStr string) (*unstructured.Unstructured, error) {
+	var machine unstructured.Unstructured
+	machine.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   discovery.OpenshiftMachinesGVR.Group,
+		Version: discovery.OpenshiftMachinesGVR.Version,
+		Kind:    "Machine",
+	})
+	if err := yaml.Unmarshal([]byte(yamlStr), &machine.Object); err != nil {
+		return nil, err
+	}
+	return &machine, nil
 }
