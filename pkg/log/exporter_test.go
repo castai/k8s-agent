@@ -22,10 +22,10 @@ func TestSetupLogExporter(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockapi := mock_castai.NewMockClient(ctrl)
 
-	ch := make(chan struct{})
-	close(ch)
+	registrator := castai.NewRegistrator()
+	registrator.ReleaseWaiters()
 
-	SetupLogExporter(ch, logger, nil, mockapi, &Config{ClusterID: mockClusterID, SendTimeout: time.Second})
+	SetupLogExporter(registrator, logger, nil, mockapi, &Config{ClusterID: mockClusterID, SendTimeout: time.Second})
 
 	t.Run("sends the log msg", func(t *testing.T) {
 		r := require.New(t)

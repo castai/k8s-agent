@@ -14,7 +14,6 @@ import (
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/discovery"
 	"castai-agent/internal/services/providers/types"
-	"castai-agent/pkg/cloud"
 )
 
 const Name = "openshift"
@@ -39,38 +38,41 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 		return nil, fmt.Errorf("getting cluster id: %w", err)
 	}
 
-	var csp cloud.Cloud
-	var region, clusterName, internalID string
+	req := &castai.RegisterClusterRequest{
+		ID:        *clusterID,
+		Openshift: &castai.OpenshiftParams{},
+	}
 
 	if cfg := config.Get().OpenShift; cfg != nil {
-		csp, region, clusterName, internalID = cloud.Cloud(cfg.CSP), cfg.Region, cfg.ClusterName, cfg.InternalID
+		req.Name = cfg.ClusterName
+		req.Openshift.CSP = cfg.CSP
+		req.Openshift.Region = cfg.Region
+		req.Openshift.ClusterName = cfg.ClusterName
+		req.Openshift.InternalID = cfg.InternalID
 	} else {
-		csp, region, err = p.discoveryService.GetCSPAndRegion(ctx)
+		csp, region, err := p.discoveryService.GetCSPAndRegion(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("getting csp and region: %w", err)
 		}
 
-		internalID, err = p.discoveryService.GetOpenshiftClusterID(ctx)
+		internalID, err := p.discoveryService.GetOpenshiftClusterID(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("getting openshift cluster id: %w", err)
 		}
 
-		clusterName, err = p.discoveryService.GetOpenshiftClusterName(ctx)
+		clusterName, err := p.discoveryService.GetOpenshiftClusterName(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("getting openshift cluster name: %w", err)
 		}
+
+		req.Name = clusterName
+		req.Openshift.CSP = string(csp)
+		req.Openshift.Region = region
+		req.Openshift.ClusterName = clusterName
+		req.Openshift.InternalID = internalID
 	}
 
-	resp, err := client.RegisterCluster(ctx, &castai.RegisterClusterRequest{
-		ID:   *clusterID,
-		Name: clusterName,
-		Openshift: &castai.OpenshiftParams{
-			CSP:         string(csp),
-			Region:      region,
-			ClusterName: clusterName,
-			InternalID:  internalID,
-		},
-	})
+	resp, err := client.RegisterCluster(ctx, req)
 	if err != nil {
 		return nil, err
 	}

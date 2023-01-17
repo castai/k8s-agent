@@ -10,10 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/util/yaml"
 	fakedynamic "k8s.io/client-go/dynamic/fake"
 
 	"castai-agent/internal/castai"
@@ -119,7 +116,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 func TestOpenshift_FilterSpot(t *testing.T) {
 	r := require.New(t)
 
-	onDemand, err := unstructuredMachine(`
+	onDemand, err := discovery.UnstructuredMachine(`
 apiVersion: machine.openshift.io/v1beta1
 kind: Machine
 metadata:
@@ -142,7 +139,7 @@ status:
 `)
 	r.NoError(err)
 
-	spot, err := unstructuredMachine(`
+	spot, err := discovery.UnstructuredMachine(`
 apiVersion: machine.openshift.io/v1beta1
 kind: Machine
 metadata:
@@ -166,7 +163,7 @@ status:
 `)
 	r.NoError(err)
 
-	nonExisting, err := unstructuredMachine(`
+	nonExisting, err := discovery.UnstructuredMachine(`
 apiVersion: machine.openshift.io/v1beta1
 kind: Machine
 metadata:
@@ -224,17 +221,4 @@ status:
 
 	r.NoError(err)
 	r.Equal([]*v1.Node{nodes[0]}, spots)
-}
-
-func unstructuredMachine(yamlStr string) (*unstructured.Unstructured, error) {
-	var machine unstructured.Unstructured
-	machine.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   discovery.OpenshiftMachinesGVR.Group,
-		Version: discovery.OpenshiftMachinesGVR.Version,
-		Kind:    "Machine",
-	})
-	if err := yaml.Unmarshal([]byte(yamlStr), &machine.Object); err != nil {
-		return nil, err
-	}
-	return &machine, nil
 }

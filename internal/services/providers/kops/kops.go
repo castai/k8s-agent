@@ -40,36 +40,42 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 		return nil, fmt.Errorf("getting cluster ID: %w", err)
 	}
 
-	var csp cloud.Cloud
-	var region, clusterName, stateStore string
+	req := &castai.RegisterClusterRequest{
+		ID:   *clusterID,
+		KOPS: &castai.KOPSParams{},
+	}
 
 	if cfg := config.Get().KOPS; cfg != nil {
-		csp, region, clusterName, stateStore = cloud.Cloud(cfg.CSP), cfg.Region, cfg.ClusterName, cfg.StateStore
+		req.Name = cfg.ClusterName
+		req.KOPS.CSP = cfg.CSP
+		req.KOPS.Region = cfg.Region
+		req.KOPS.ClusterName = cfg.ClusterName
+		req.KOPS.StateStore = cfg.StateStore
 	} else {
-		csp, region, err = p.discoveryService.GetCSPAndRegion(ctx)
+		csp, region, err := p.discoveryService.GetCSPAndRegion(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("getting csp and region: %w", err)
 		}
 
-		clusterName, stateStore, err = p.discoveryService.GetKOPSClusterNameAndStateStore(ctx, p.log)
+		clusterName, stateStore, err := p.discoveryService.GetKOPSClusterNameAndStateStore(ctx, p.log)
 		if err != nil {
 			return nil, fmt.Errorf("getting cluster name and state store: %w", err)
 		}
+
+		req.Name = clusterName
+		req.KOPS.CSP = string(csp)
+		req.KOPS.Region = region
+		req.KOPS.ClusterName = clusterName
+		req.KOPS.StateStore = stateStore
 	}
 
-	p.log.Infof(
-		"discovered kops cluster properties csp=%s region=%s cluster_name=%s state_store=%s",
-		csp,
-		region,
-		clusterName,
-		stateStore,
-	)
+	p.log.Infof("discovered kops cluster properties: %+v", req)
 
-	p.csp = csp
+	p.csp = cloud.Cloud(req.KOPS.CSP)
 
 	if p.csp == cloud.AWS {
 		opts := []awsclient.Opt{
-			awsclient.WithMetadata("", region, clusterName),
+			awsclient.WithMetadata("", req.KOPS.Region, req.KOPS.ClusterName),
 			awsclient.WithEC2Client(),
 			awsclient.WithValidateCredentials(),
 		}
@@ -84,16 +90,7 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 		}
 	}
 
-	resp, err := client.RegisterCluster(ctx, &castai.RegisterClusterRequest{
-		ID:   *clusterID,
-		Name: clusterName,
-		KOPS: &castai.KOPSParams{
-			CSP:         string(csp),
-			Region:      region,
-			ClusterName: clusterName,
-			StateStore:  stateStore,
-		},
-	})
+	resp, err := client.RegisterCluster(ctx, req)
 	if err != nil {
 		return nil, err
 	}

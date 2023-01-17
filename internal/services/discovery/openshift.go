@@ -8,6 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
 const (
@@ -76,4 +77,30 @@ func (s *ServiceImpl) GetOpenshiftClusterName(ctx context.Context) (string, erro
 	}
 
 	return clusterName, nil
+}
+
+func UnstructuredMachine(yamlStr string) (*unstructured.Unstructured, error) {
+	var machine unstructured.Unstructured
+	machine.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   OpenshiftMachinesGVR.Group,
+		Version: OpenshiftMachinesGVR.Version,
+		Kind:    "Machine",
+	})
+	if err := yaml.Unmarshal([]byte(yamlStr), &machine.Object); err != nil {
+		return nil, err
+	}
+	return &machine, nil
+}
+
+func UnstructuredVersion(yamlStr string) (*unstructured.Unstructured, error) {
+	var version unstructured.Unstructured
+	version.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   OpenshiftClusterVersionsGVR.Group,
+		Version: OpenshiftClusterVersionsGVR.Version,
+		Kind:    "ClusterVersion",
+	})
+	if err := yaml.Unmarshal([]byte(yamlStr), &version.Object); err != nil {
+		return nil, err
+	}
+	return &version, nil
 }

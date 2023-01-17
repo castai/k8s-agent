@@ -18,28 +18,28 @@ type Exporter interface {
 	Wait()
 }
 
-func SetupLogExporter(waitForRegistrationCh chan struct{}, logger *logrus.Logger, localLog logrus.FieldLogger, castaiclient castai.Client, cfg *Config) {
-	logExporter := newExporter(waitForRegistrationCh, cfg, localLog, castaiclient)
+func SetupLogExporter(registrator *castai.Registrator, logger *logrus.Logger, localLog logrus.FieldLogger, castaiclient castai.Client, cfg *Config) {
+	logExporter := newExporter(registrator, cfg, localLog, castaiclient)
 	logger.AddHook(logExporter)
 	logrus.RegisterExitHandler(logExporter.Wait)
 }
 
-func newExporter(waitForRegistrationCh chan struct{}, cfg *Config, localLog logrus.FieldLogger, client castai.Client) Exporter {
+func newExporter(registrator *castai.Registrator, cfg *Config, localLog logrus.FieldLogger, client castai.Client) Exporter {
 	return &exporter{
-		waitForRegistrationCh: waitForRegistrationCh,
-		cfg:                   cfg,
-		client:                client,
-		localLog:              localLog,
-		wg:                    sync.WaitGroup{},
+		registrator: registrator,
+		cfg:         cfg,
+		client:      client,
+		localLog:    localLog,
+		wg:          sync.WaitGroup{},
 	}
 }
 
 type exporter struct {
-	waitForRegistrationCh chan struct{}
-	localLog              logrus.FieldLogger
-	cfg                   *Config
-	client                castai.Client
-	wg                    sync.WaitGroup
+	registrator *castai.Registrator
+	localLog    logrus.FieldLogger
+	cfg         *Config
+	client      castai.Client
+	wg          sync.WaitGroup
 }
 
 type Config struct {
@@ -61,7 +61,7 @@ func (ex *exporter) Fire(entry *logrus.Entry) error {
 	ex.wg.Add(1)
 
 	go func(entry *logrus.Entry) {
-		<-ex.waitForRegistrationCh
+		ex.registrator.WaitUntilRegistered()
 		defer ex.wg.Done()
 		ex.sendLogEvent(ex.cfg.ClusterID, entry)
 	}(entry)

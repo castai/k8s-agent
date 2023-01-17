@@ -5,9 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/util/yaml"
 	fakedynamic "k8s.io/client-go/dynamic/fake"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 
@@ -17,7 +14,7 @@ import (
 func TestServiceImpl_GetOpenshiftClusterID(t *testing.T) {
 	r := require.New(t)
 
-	clusterVersionYAML := `
+	version, err := UnstructuredVersion(`
 apiVersion: config.openshift.io/v1
 kind: ClusterVersion
 metadata:
@@ -25,18 +22,11 @@ metadata:
   uid: dc0570f9-2c46-40b1-a5d0-c7233e82c7b6
 spec:
   clusterID: 91d87440-5173-47f0-aca5-65bc0144ad30
-`
+`)
+	r.NoError(err)
 
-	var version unstructured.Unstructured
-	version.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   OpenshiftClusterVersionsGVR.Group,
-		Version: OpenshiftClusterVersionsGVR.Version,
-		Kind:    "ClusterVersion",
-	})
-	r.NoError(yaml.Unmarshal([]byte(clusterVersionYAML), &version.Object))
-
-	clientset := fakeclientset.NewSimpleClientset(&version)
-	dyno := fakedynamic.NewSimpleDynamicClient(scheme.Scheme, &version)
+	clientset := fakeclientset.NewSimpleClientset(version)
+	dyno := fakedynamic.NewSimpleDynamicClient(scheme.Scheme, version)
 
 	s := New(clientset, dyno)
 
@@ -49,7 +39,7 @@ spec:
 func TestServiceImpl_GetOpenshiftClusterName(t *testing.T) {
 	r := require.New(t)
 
-	masterMachineYAML := `
+	masterMachine, err := UnstructuredMachine(`
 apiVersion: machine.openshift.io/v1beta1
 kind: Machine
 metadata:
@@ -63,18 +53,11 @@ metadata:
   name: foo-bar-master-0
   namespace: openshift-machine-api
   uid: 803fbff1-bab4-412c-912b-0ba7f0ef1dcd
-`
+`)
+	r.NoError(err)
 
-	var masterMachine unstructured.Unstructured
-	masterMachine.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   OpenshiftMachinesGVR.Group,
-		Version: OpenshiftMachinesGVR.Version,
-		Kind:    "Machine",
-	})
-	r.NoError(yaml.Unmarshal([]byte(masterMachineYAML), &masterMachine.Object))
-
-	clientset := fakeclientset.NewSimpleClientset(&masterMachine)
-	dyno := fakedynamic.NewSimpleDynamicClient(scheme.Scheme, &masterMachine)
+	clientset := fakeclientset.NewSimpleClientset(masterMachine)
+	dyno := fakedynamic.NewSimpleDynamicClient(scheme.Scheme, masterMachine)
 
 	s := New(clientset, dyno)
 

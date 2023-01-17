@@ -7,7 +7,6 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -58,20 +57,15 @@ func main() {
 
 	castaiClient := castai.NewClient(log, castai.NewDefaultRestyClient(), castai.NewDefaultDeltaHTTPClient())
 
-	waitForRegistrationCh := make(chan struct{})
-	var registrationChClose sync.Once
-	registrationChCloseBody := func() {
-		close(waitForRegistrationCh)
-	}
-	defer func() {
-		registrationChClose.Do(registrationChCloseBody)
-	}()
-	castailog.SetupLogExporter(waitForRegistrationCh, remoteLogger, localLog, castaiClient, &loggingConfig)
+	registrator := castai.NewRegistrator()
+	defer registrator.ReleaseWaiters()
+
+	castailog.SetupLogExporter(registrator, remoteLogger, localLog, castaiClient, &loggingConfig)
 
 	clusterIDHandler := func(clusterID string) {
 		loggingConfig.ClusterID = clusterID
 		log.Data["cluster_id"] = clusterID
-		registrationChClose.Do(registrationChCloseBody)
+		registrator.ReleaseWaiters()
 	}
 
 	ctx := signals.SetupSignalHandler()
