@@ -5,6 +5,7 @@
 package mock_discovery
 
 import (
+	cloud "castai-agent/pkg/cloud"
 	context "context"
 	reflect "reflect"
 
@@ -37,11 +38,11 @@ func (m *MockService) EXPECT() *MockServiceMockRecorder {
 }
 
 // GetCSPAndRegion mocks base method.
-func (m *MockService) GetCSPAndRegion(ctx context.Context) (*string, *string, error) {
+func (m *MockService) GetCSPAndRegion(ctx context.Context) (cloud.Cloud, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetCSPAndRegion", ctx)
-	ret0, _ := ret[0].(*string)
-	ret1, _ := ret[1].(*string)
+	ret0, _ := ret[0].(cloud.Cloud)
+	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -68,11 +69,11 @@ func (mr *MockServiceMockRecorder) GetClusterID(ctx interface{}) *gomock.Call {
 }
 
 // GetKOPSClusterNameAndStateStore mocks base method.
-func (m *MockService) GetKOPSClusterNameAndStateStore(ctx context.Context, log logrus.FieldLogger) (*string, *string, error) {
+func (m *MockService) GetKOPSClusterNameAndStateStore(ctx context.Context, log logrus.FieldLogger) (string, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetKOPSClusterNameAndStateStore", ctx, log)
-	ret0, _ := ret[0].(*string)
-	ret1, _ := ret[1].(*string)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -84,10 +85,10 @@ func (mr *MockServiceMockRecorder) GetKOPSClusterNameAndStateStore(ctx, log inte
 }
 
 // GetOpenshiftClusterID mocks base method.
-func (m *MockService) GetOpenshiftClusterID(ctx context.Context) (*string, error) {
+func (m *MockService) GetOpenshiftClusterID(ctx context.Context) (string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetOpenshiftClusterID", ctx)
-	ret0, _ := ret[0].(*string)
+	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -99,10 +100,10 @@ func (mr *MockServiceMockRecorder) GetOpenshiftClusterID(ctx interface{}) *gomoc
 }
 
 // GetOpenshiftClusterName mocks base method.
-func (m *MockService) GetOpenshiftClusterName(ctx context.Context) (*string, error) {
+func (m *MockService) GetOpenshiftClusterName(ctx context.Context) (string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetOpenshiftClusterName", ctx)
-	ret0, _ := ret[0].(*string)
+	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

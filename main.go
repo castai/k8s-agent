@@ -249,10 +249,6 @@ func kubeConfigFromPath(kubepath string) (*rest.Config, error) {
 		return nil, nil
 	}
 
-	if _, err := os.Stat(kubepath); os.IsNotExist(err) {
-		return nil, err
-	}
-
 	data, err := os.ReadFile(kubepath)
 	if err != nil {
 		return nil, fmt.Errorf("reading kubeconfig at %s: %w", kubepath, err)

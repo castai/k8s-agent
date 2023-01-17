@@ -38,6 +38,6 @@ func TestServiceImpl_GetKOPSClusterNameAndStateStore(t *testing.T) {
 	clusterName, stateStore, err := s.GetKOPSClusterNameAndStateStore(context.Background(), logrus.New())
 
 	require.NoError(t, err)
-	require.Equal(t, "test.k8s.local", *clusterName)
-	require.Equal(t, "s3://test-kops", *stateStore)
+	require.Equal(t, "test.k8s.local", clusterName)
+	require.Equal(t, "s3://test-kops", stateStore)
 }

@@ -23,6 +23,7 @@ import (
 	"castai-agent/internal/services/discovery"
 	mock_discovery "castai-agent/internal/services/discovery/mock"
 	"castai-agent/internal/services/providers/types"
+	"castai-agent/pkg/cloud"
 )
 
 func TestProvider_RegisterCluster(t *testing.T) {
@@ -30,7 +31,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 		ID:   uuid.New(),
 		Name: "test-cluster",
 		Openshift: &castai.OpenshiftParams{
-			CSP:         "aws",
+			CSP:         string(cloud.AWS),
 			Region:      "us-east-1",
 			ClusterName: "test-cluster",
 			InternalID:  uuid.New().String(),
@@ -51,9 +52,9 @@ func TestProvider_RegisterCluster(t *testing.T) {
 			},
 			discoveryServiceMock: func(t *testing.T, discoveryService *mock_discovery.MockService) {
 				discoveryService.EXPECT().GetClusterID(gomock.Any()).Return(&regReq.ID, nil)
-				discoveryService.EXPECT().GetCSPAndRegion(gomock.Any()).Return(&regReq.Openshift.CSP, &regReq.Openshift.Region, nil)
-				discoveryService.EXPECT().GetOpenshiftClusterID(gomock.Any()).Return(&regReq.Openshift.InternalID, nil)
-				discoveryService.EXPECT().GetOpenshiftClusterName(gomock.Any()).Return(&regReq.Name, nil)
+				discoveryService.EXPECT().GetCSPAndRegion(gomock.Any()).Return(cloud.Cloud(regReq.Openshift.CSP), regReq.Openshift.Region, nil)
+				discoveryService.EXPECT().GetOpenshiftClusterID(gomock.Any()).Return(regReq.Openshift.InternalID, nil)
+				discoveryService.EXPECT().GetOpenshiftClusterName(gomock.Any()).Return(regReq.Name, nil)
 			},
 		},
 		{

@@ -14,7 +14,7 @@ const (
 	OpenshiftMachineAPINamespace = "openshift-machine-api"
 
 	OpenshiftMachineRoleLabel = "machine.openshift.io/cluster-api-machine-role"
-	OpenshiftClusterIDLabel   = "machine.openshift.io/cluster-api-cluster"
+	OpenshiftClusterNameLabel = "machine.openshift.io/cluster-api-cluster"
 
 	OpenshiftMasterMachineRole = "master"
 )
@@ -33,41 +33,47 @@ var (
 	}
 )
 
-func (s *ServiceImpl) GetOpenshiftClusterID(ctx context.Context) (*string, error) {
+func (s *ServiceImpl) GetOpenshiftClusterID(ctx context.Context) (string, error) {
 	clusterVersion, err := s.dyno.Resource(OpenshiftClusterVersionsGVR).Get(ctx, "version", metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("getting openshift cluster version: %w", err)
+		return "", fmt.Errorf("getting openshift cluster version: %w", err)
 	}
 
 	clusterID, ok, err := unstructured.NestedString(clusterVersion.Object, "spec", "clusterID")
 	if err != nil {
-		return nil, fmt.Errorf("getting openshift cluster id: %w", err)
+		return "", fmt.Errorf("getting openshift cluster id: %w", err)
 	}
 
 	if !ok {
-		return nil, fmt.Errorf("openshift cluster id not found")
+		return "", fmt.Errorf("openshift cluster id not found")
 	}
 
-	return &clusterID, nil
+	return clusterID, nil
 }
 
-func (s *ServiceImpl) GetOpenshiftClusterName(ctx context.Context) (*string, error) {
+func (s *ServiceImpl) GetOpenshiftClusterName(ctx context.Context) (string, error) {
 	masterSelector := labels.SelectorFromSet(labels.Set{OpenshiftMachineRoleLabel: OpenshiftMasterMachineRole}).String()
 	machines, err := s.dyno.Resource(OpenshiftMachinesGVR).
 		Namespace(OpenshiftMachineAPINamespace).
 		List(ctx, metav1.ListOptions{LabelSelector: masterSelector})
 	if err != nil {
-		return nil, fmt.Errorf("listing openshift machines: %w", err)
+		return "", fmt.Errorf("listing openshift machines: %w", err)
 	}
 
 	if len(machines.Items) == 0 {
-		return nil, fmt.Errorf("no openshift machines found")
+		return "", fmt.Errorf("no openshift master machines found")
 	}
 
-	clusterName, ok := machines.Items[0].GetLabels()[OpenshiftClusterIDLabel]
+	machineLabels := machines.Items[0].GetLabels()
+
+	if machineLabels == nil {
+		return "", fmt.Errorf("openshift master machine has no labels")
+	}
+
+	clusterName, ok := machineLabels[OpenshiftClusterNameLabel]
 	if !ok {
-		return nil, fmt.Errorf("failed to find openshift cluster id")
+		return "", fmt.Errorf("openshift cluster name label not found")
 	}
 
-	return &clusterName, nil
+	return clusterName, nil
 }

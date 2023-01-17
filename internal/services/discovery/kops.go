@@ -12,10 +12,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func (s *ServiceImpl) GetKOPSClusterNameAndStateStore(ctx context.Context, log logrus.FieldLogger) (clusterName, stateStore *string, reterr error) {
+func (s *ServiceImpl) GetKOPSClusterNameAndStateStore(ctx context.Context, log logrus.FieldLogger) (clusterName, stateStore string, reterr error) {
 	ns, err := s.getKubeSystemNamespace(ctx)
 	if err != nil {
-		return nil, nil, err
+		return "", "", err
 	}
 
 	for k, v := range ns.Annotations {
@@ -32,10 +32,10 @@ func (s *ServiceImpl) GetKOPSClusterNameAndStateStore(ctx context.Context, log l
 		name := strings.Split(path, "/")[0]
 		store := fmt.Sprintf("%s://%s", manifest.Channel.Scheme, manifest.Channel.Host)
 
-		return &name, &store, nil
+		return name, store, nil
 	}
 
-	return nil, nil, errors.New("failed discovering cluster properties: cluster name, state store")
+	return "", "", errors.New("failed discovering cluster properties: cluster name, state store")
 }
 
 type kopsAddonManifest struct {

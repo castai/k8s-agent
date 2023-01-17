@@ -17,7 +17,7 @@ import (
 func TestServiceImpl_GetOpenshiftClusterID(t *testing.T) {
 	r := require.New(t)
 
-	clusterVersionJSON := `
+	clusterVersionYAML := `
 apiVersion: config.openshift.io/v1
 kind: ClusterVersion
 metadata:
@@ -27,32 +27,29 @@ spec:
   clusterID: 91d87440-5173-47f0-aca5-65bc0144ad30
 `
 
-	var clusterVersionMap map[string]any
-	r.NoError(yaml.Unmarshal([]byte(clusterVersionJSON), &clusterVersionMap))
-
-	version := &unstructured.Unstructured{}
+	var version unstructured.Unstructured
 	version.SetGroupVersionKind(schema.GroupVersionKind{
 		Group:   OpenshiftClusterVersionsGVR.Group,
 		Version: OpenshiftClusterVersionsGVR.Version,
 		Kind:    "ClusterVersion",
 	})
-	version.Object = clusterVersionMap
+	r.NoError(yaml.Unmarshal([]byte(clusterVersionYAML), &version.Object))
 
-	clientset := fakeclientset.NewSimpleClientset(version)
-	dyno := fakedynamic.NewSimpleDynamicClient(scheme.Scheme, version)
+	clientset := fakeclientset.NewSimpleClientset(&version)
+	dyno := fakedynamic.NewSimpleDynamicClient(scheme.Scheme, &version)
 
 	s := New(clientset, dyno)
 
 	internalID, err := s.GetOpenshiftClusterID(context.Background())
 
 	r.NoError(err)
-	r.Equal("91d87440-5173-47f0-aca5-65bc0144ad30", *internalID)
+	r.Equal("91d87440-5173-47f0-aca5-65bc0144ad30", internalID)
 }
 
 func TestServiceImpl_GetOpenshiftClusterName(t *testing.T) {
 	r := require.New(t)
 
-	masterMachineJSON := `
+	masterMachineYAML := `
 apiVersion: machine.openshift.io/v1beta1
 kind: Machine
 metadata:
@@ -67,24 +64,22 @@ metadata:
   namespace: openshift-machine-api
   uid: 803fbff1-bab4-412c-912b-0ba7f0ef1dcd
 `
-	var masterMachineMap map[string]any
-	r.NoError(yaml.Unmarshal([]byte(masterMachineJSON), &masterMachineMap))
 
-	masterMachine := &unstructured.Unstructured{}
+	var masterMachine unstructured.Unstructured
 	masterMachine.SetGroupVersionKind(schema.GroupVersionKind{
 		Group:   OpenshiftMachinesGVR.Group,
 		Version: OpenshiftMachinesGVR.Version,
 		Kind:    "Machine",
 	})
-	masterMachine.Object = masterMachineMap
+	r.NoError(yaml.Unmarshal([]byte(masterMachineYAML), &masterMachine.Object))
 
-	clientset := fakeclientset.NewSimpleClientset(masterMachine)
-	dyno := fakedynamic.NewSimpleDynamicClient(scheme.Scheme, masterMachine)
+	clientset := fakeclientset.NewSimpleClientset(&masterMachine)
+	dyno := fakedynamic.NewSimpleDynamicClient(scheme.Scheme, &masterMachine)
 
 	s := New(clientset, dyno)
 
 	clusterName, err := s.GetOpenshiftClusterName(context.Background())
 
 	r.NoError(err)
-	r.Equal("foo-bar", *clusterName)
+	r.Equal("foo-bar", clusterName)
 }

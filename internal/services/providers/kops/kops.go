@@ -14,6 +14,7 @@ import (
 	awsclient "castai-agent/internal/services/providers/eks/client"
 	"castai-agent/internal/services/providers/gke"
 	"castai-agent/internal/services/providers/types"
+	"castai-agent/pkg/cloud"
 	"castai-agent/pkg/labels"
 )
 
@@ -30,7 +31,7 @@ type Provider struct {
 	log              logrus.FieldLogger
 	discoveryService discovery.Service
 	awsClient        awsclient.Client
-	csp              string
+	csp              cloud.Cloud
 }
 
 func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*types.ClusterRegistration, error) {
@@ -39,22 +40,21 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 		return nil, fmt.Errorf("getting cluster ID: %w", err)
 	}
 
-	var csp, region, clusterName, stateStore string
+	var csp cloud.Cloud
+	var region, clusterName, stateStore string
 
 	if cfg := config.Get().KOPS; cfg != nil {
-		csp, region, clusterName, stateStore = cfg.CSP, cfg.Region, cfg.ClusterName, cfg.StateStore
+		csp, region, clusterName, stateStore = cloud.Cloud(cfg.CSP), cfg.Region, cfg.ClusterName, cfg.StateStore
 	} else {
-		c, r, err := p.discoveryService.GetCSPAndRegion(ctx)
+		csp, region, err = p.discoveryService.GetCSPAndRegion(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("getting csp and region: %w", err)
 		}
 
-		n, s, err := p.discoveryService.GetKOPSClusterNameAndStateStore(ctx, p.log)
+		clusterName, stateStore, err = p.discoveryService.GetKOPSClusterNameAndStateStore(ctx, p.log)
 		if err != nil {
 			return nil, fmt.Errorf("getting cluster name and state store: %w", err)
 		}
-
-		csp, region, clusterName, stateStore = *c, *r, *n, *s
 	}
 
 	p.log.Infof(
@@ -67,7 +67,7 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 
 	p.csp = csp
 
-	if p.csp == "aws" {
+	if p.csp == cloud.AWS {
 		opts := []awsclient.Opt{
 			awsclient.WithMetadata("", region, clusterName),
 			awsclient.WithEC2Client(),
@@ -88,7 +88,7 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 		ID:   *clusterID,
 		Name: clusterName,
 		KOPS: &castai.KOPSParams{
-			CSP:         csp,
+			CSP:         string(csp),
 			Region:      region,
 			ClusterName: clusterName,
 			StateStore:  stateStore,
@@ -130,7 +130,7 @@ func (p *Provider) isSpot(ctx context.Context, node *v1.Node) (bool, error) {
 		return true, nil
 	}
 
-	if p.csp == "aws" && p.awsClient != nil {
+	if p.csp == cloud.AWS && p.awsClient != nil {
 		splitProviderID := strings.Split(node.Spec.ProviderID, "/")
 		instanceID := splitProviderID[len(splitProviderID)-1]
 
@@ -146,7 +146,7 @@ func (p *Provider) isSpot(ctx context.Context, node *v1.Node) (bool, error) {
 		}
 	}
 
-	if p.csp == "gcp" {
+	if p.csp == cloud.GCP {
 		if val, ok := node.Labels[gke.LabelPreemptible]; ok && val == "true" {
 			return true, nil
 		}

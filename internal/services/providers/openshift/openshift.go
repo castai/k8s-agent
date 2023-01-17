@@ -14,6 +14,7 @@ import (
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/discovery"
 	"castai-agent/internal/services/providers/types"
+	"castai-agent/pkg/cloud"
 )
 
 const Name = "openshift"
@@ -38,34 +39,33 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 		return nil, fmt.Errorf("getting cluster id: %w", err)
 	}
 
-	var csp, region, clusterName, internalID string
+	var csp cloud.Cloud
+	var region, clusterName, internalID string
 
 	if cfg := config.Get().OpenShift; cfg != nil {
-		csp, region, clusterName, internalID = cfg.CSP, cfg.Region, cfg.ClusterName, cfg.InternalID
+		csp, region, clusterName, internalID = cloud.Cloud(cfg.CSP), cfg.Region, cfg.ClusterName, cfg.InternalID
 	} else {
-		c, r, err := p.discoveryService.GetCSPAndRegion(ctx)
+		csp, region, err = p.discoveryService.GetCSPAndRegion(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("getting csp and region: %w", err)
 		}
 
-		id, err := p.discoveryService.GetOpenshiftClusterID(ctx)
+		internalID, err = p.discoveryService.GetOpenshiftClusterID(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("getting openshift cluster id: %w", err)
 		}
 
-		cn, err := p.discoveryService.GetOpenshiftClusterName(ctx)
+		clusterName, err = p.discoveryService.GetOpenshiftClusterName(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("getting openshift cluster name: %w", err)
 		}
-
-		csp, region, clusterName, internalID = *c, *r, *cn, *id
 	}
 
 	resp, err := client.RegisterCluster(ctx, &castai.RegisterClusterRequest{
 		ID:   *clusterID,
 		Name: clusterName,
 		Openshift: &castai.OpenshiftParams{
-			CSP:         csp,
+			CSP:         string(csp),
 			Region:      region,
 			ClusterName: clusterName,
 			InternalID:  internalID,
@@ -98,6 +98,8 @@ func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node
 		}
 
 		for _, machine := range machines.Items {
+			// If the spotMarketOptions field exists, then this is a spot instance.
+			// https://docs.openshift.com/container-platform/4.10/machine_management/creating_machinesets/creating-machineset-aws.html#machineset-creating-non-guaranteed-instance_creating-machineset-aws
 			_, ok, err := unstructured.NestedFieldNoCopy(machine.Object, "spec", "providerSpec", "value", "spotMarketOptions")
 			if err != nil {
 				return nil, fmt.Errorf("getting spotMarketOptions: %w", err)
@@ -113,6 +115,7 @@ func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node
 			if !ok {
 				continue
 			}
+
 			spotInstanceIDs[instanceID] = true
 		}
 

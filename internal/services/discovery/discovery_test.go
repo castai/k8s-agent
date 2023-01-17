@@ -14,6 +14,7 @@ import (
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 
 	"castai-agent/internal/services/controller/scheme"
+	"castai-agent/pkg/cloud"
 )
 
 func TestServiceImpl_GetClusterID(t *testing.T) {
@@ -84,6 +85,6 @@ func TestServiceImpl_GetCSPAndRegion(t *testing.T) {
 	csp, region, err := s.GetCSPAndRegion(context.Background())
 
 	require.NoError(t, err)
-	require.Equal(t, "aws", *csp)
-	require.Equal(t, "us-east-1", *region)
+	require.Equal(t, cloud.AWS, csp)
+	require.Equal(t, "us-east-1", region)
 }
