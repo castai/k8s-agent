@@ -1,5 +1,5 @@
 build:
-	GOOS=linux go build -ldflags="-s -w" -o bin/castai-agent .
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w" -o bin/castai-agent-amd64 .
 	docker build -t us-docker.pkg.dev/castai-hub/library/agent:$(VERSION) .
 
 generate:

@@ -15,12 +15,13 @@ type Config struct {
 	API        API    `mapstructure:"api"`
 	Kubeconfig string `mapstructure:"kubeconfig"`
 
-	Provider string  `mapstructure:"provider"`
-	CASTAI   *CASTAI `mapstructure:"castai"`
-	EKS      *EKS    `mapstructure:"eks"`
-	GKE      *GKE    `mapstructure:"gke"`
-	KOPS     *KOPS   `mapstructure:"kops"`
-	AKS      *AKS    `mapstructure:"aks"`
+	Provider  string     `mapstructure:"provider"`
+	CASTAI    *CASTAI    `mapstructure:"castai"`
+	EKS       *EKS       `mapstructure:"eks"`
+	GKE       *GKE       `mapstructure:"gke"`
+	KOPS      *KOPS      `mapstructure:"kops"`
+	AKS       *AKS       `mapstructure:"aks"`
+	OpenShift *OpenShift `mapstructure:"openshift"`
 
 	Static      *Static     `mapstructure:"static"`
 	Controller  *Controller `mapstructure:"controller"`
@@ -68,6 +69,13 @@ type AKS struct {
 	NodeResourceGroup string `mapstructure:"node_resource_group"`
 	Location          string `mapstructure:"location"`
 	SubscriptionID    string `mapstructure:"subscription_id"`
+}
+
+type OpenShift struct {
+	CSP         string `mapstructure:"csp"`
+	Region      string `mapstructure:"region"`
+	ClusterName string `mapstructure:"cluster_name"`
+	InternalID  string `mapstructure:"internal_id"`
 }
 
 type Static struct {
@@ -184,6 +192,21 @@ func Get() Config {
 		}
 		if cfg.AKS.NodeResourceGroup == "" {
 			requiredWhenDiscoveryDisabled("AKS_NODE_RESOURCE_GROUP")
+		}
+	}
+
+	if cfg.OpenShift != nil {
+		if cfg.OpenShift.CSP == "" {
+			requiredWhenDiscoveryDisabled("OPENSHIFT_CSP")
+		}
+		if cfg.OpenShift.Region == "" {
+			requiredWhenDiscoveryDisabled("OPENSHIFT_REGION")
+		}
+		if cfg.OpenShift.ClusterName == "" {
+			requiredWhenDiscoveryDisabled("OPENSHIFT_CLUSTER_NAME")
+		}
+		if cfg.OpenShift.InternalID == "" {
+			requiredWhenDiscoveryDisabled("OPENSHIFT_INTERNAL_ID")
 		}
 	}
 

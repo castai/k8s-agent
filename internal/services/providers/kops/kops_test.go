@@ -21,9 +21,11 @@ import (
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/internal/config"
+	"castai-agent/internal/services/discovery"
 	mock_awsclient "castai-agent/internal/services/providers/eks/client/mock"
 	"castai-agent/internal/services/providers/gke"
 	"castai-agent/internal/services/providers/types"
+	"castai-agent/pkg/cloud"
 	"castai-agent/pkg/labels"
 )
 
@@ -81,8 +83,9 @@ func TestProvider_RegisterCluster(t *testing.T) {
 		})
 
 		clientset := fake.NewSimpleClientset(objects...)
+		discoveryService := discovery.New(clientset, nil)
 
-		p, err := New(logrus.New(), clientset)
+		p, err := New(logrus.New(), discoveryService)
 		require.NoError(t, err)
 
 		castaiclient := mock_castai.NewMockClient(gomock.NewController(t))
@@ -96,7 +99,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 			ID:   namespaceID,
 			Name: "test.k8s.local",
 			KOPS: &castai.KOPSParams{
-				CSP:         "aws",
+				CSP:         string(cloud.AWS),
 				Region:      "us-east-1",
 				ClusterName: "test.k8s.local",
 				StateStore:  "s3://test-kops",
@@ -134,7 +137,10 @@ func TestProvider_RegisterCluster(t *testing.T) {
 			},
 		}
 
-		p, err := New(logrus.New(), fake.NewSimpleClientset(namespace))
+		clientset := fake.NewSimpleClientset(namespace)
+		discoveryService := discovery.New(clientset, nil)
+
+		p, err := New(logrus.New(), discoveryService)
 		require.NoError(t, err)
 
 		castaiclient := mock_castai.NewMockClient(gomock.NewController(t))
@@ -148,7 +154,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 			ID:   namespaceID,
 			Name: "test.k8s.local",
 			KOPS: &castai.KOPSParams{
-				CSP:         "aws",
+				CSP:         string(cloud.AWS),
 				Region:      "us-east-1",
 				ClusterName: "test.k8s.local",
 				StateStore:  "s3://test-kops",
@@ -210,7 +216,7 @@ func TestProvider_IsSpot(t *testing.T) {
 		awsclient := mock_awsclient.NewMockClient(gomock.NewController(t))
 
 		p := &Provider{
-			csp:       "aws",
+			csp:       cloud.AWS,
 			awsClient: awsclient,
 		}
 
@@ -236,7 +242,7 @@ func TestProvider_IsSpot(t *testing.T) {
 		}
 
 		p := &Provider{
-			csp: "gcp",
+			csp: cloud.GCP,
 		}
 
 		got, err := p.isSpot(context.Background(), node)
@@ -255,7 +261,7 @@ func TestProvider_IsSpot(t *testing.T) {
 		awsclient := mock_awsclient.NewMockClient(gomock.NewController(t))
 
 		p := &Provider{
-			csp:       "aws",
+			csp:       cloud.AWS,
 			awsClient: awsclient,
 		}
 
