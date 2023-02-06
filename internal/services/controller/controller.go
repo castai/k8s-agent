@@ -46,6 +46,10 @@ type Controller struct {
 	cfg          *config.Controller
 	informers    map[reflect.Type]*custominformers.HandledInformer
 
+	discovery       discovery.DiscoveryInterface
+	metricsClient   versioned.Interface
+	informerFactory informers.SharedInformerFactory
+
 	delta   *delta.Delta
 	deltaMu sync.Mutex
 
@@ -97,15 +101,6 @@ func New(
 			f.Autoscaling().V1().HorizontalPodAutoscalers().Informer()
 	}
 
-	if isMetricsServerAPIAvailable(log, discovery) {
-		log.Infof("Cluster supports pod metrics, will collect them.")
-		metricsInformer := f.InformerFor(&v1beta1.PodMetrics{}, func(_ kubernetes.Interface, _ time.Duration) cache.SharedIndexInformer {
-			return custominformers.NewPodMetricsInformer(log, metricsClient)
-		})
-
-		typesWithDefaultInformers[reflect.TypeOf(&v1beta1.PodMetrics{})] = metricsInformer
-	}
-
 	handledInformers := map[reflect.Type]*custominformers.HandledInformer{}
 	for typ, informer := range typesWithDefaultInformers {
 		handledInformers[typ] = custominformers.NewHandledInformer(log, queue, informer, typ)
@@ -120,7 +115,7 @@ func New(
 		oomevents.Filter,
 	)
 
-	c := &Controller{
+	return &Controller{
 		log:             log,
 		clusterID:       clusterID,
 		castaiclient:    castaiclient,
@@ -131,15 +126,16 @@ func New(
 		informers:       handledInformers,
 		agentVersion:    agentVersion,
 		healthzProvider: healthzProvider,
+		metricsClient:   metricsClient,
+		discovery:       discovery,
+		informerFactory: f,
 	}
-
-	return c
 }
 
-func isMetricsServerAPIAvailable(log logrus.FieldLogger, discovery discovery.DiscoveryInterface) bool {
-	_, res, err := discovery.ServerGroupsAndResources()
+func (c *Controller) isMetricsServerAPIAvailable() bool {
+	_, res, err := c.discovery.ServerGroupsAndResources()
 	if err != nil {
-		log.Warnf("Error when calling k8s discovery API: %v", err.Error())
+		c.log.Warnf("Error when calling k8s discovery API: %v", err.Error())
 		return false
 	}
 
@@ -229,6 +225,27 @@ func (c *Controller) Run(ctx context.Context) error {
 		wait.Until(func() {
 			c.send(ctx)
 		}, c.cfg.Interval, ctx.Done())
+	}()
+
+	podMetricsType := reflect.TypeOf(&v1beta1.PodMetrics{})
+	go func() {
+		if err := wait.PollImmediateInfiniteWithContext(ctx, time.Minute*2, func(ctx context.Context) (done bool, err error) {
+			if !c.isMetricsServerAPIAvailable() {
+				return false, nil
+			}
+
+			c.log.Infof("Cluster supports pod metrics, will start collecting them.")
+			metricsInformer := c.informerFactory.InformerFor(&v1beta1.PodMetrics{}, func(_ kubernetes.Interface, _ time.Duration) cache.SharedIndexInformer {
+				return custominformers.NewPodMetricsInformer(c.log, c.metricsClient)
+			})
+
+			informer := custominformers.NewHandledInformer(c.log, c.queue, metricsInformer, podMetricsType)
+			informer.Run(ctx.Done())
+
+			return true, nil
+		}); err != nil {
+			c.log.Warnf("Error when polling resource availability: %v", err.Error())
+		}
 	}()
 
 	go func() {
