@@ -1,4 +1,4 @@
-FROM redhat/ubi9-minimal:9.1.0
+FROM redhat/ubi9-minimal:9.1
 ARG TARGETARCH=amd64
 COPY bin/castai-agent-$TARGETARCH /usr/local/bin/castai-agent
 COPY LICENCE /licenses/LICENCE
