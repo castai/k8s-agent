@@ -16,15 +16,19 @@ import (
 	"k8s.io/utils/clock"
 )
 
+const fetchInterval = 30 * time.Second
+
 type PodMetricsInformer interface {
 	Informer() cache.SharedIndexInformer
 }
 
 type metricsWatch struct {
-	resultChan  chan watch.Event
-	client      versioned.Interface
-	log         logrus.FieldLogger
-	listOptions metav1.ListOptions
+	resultChan    chan watch.Event
+	closeChan     chan struct{}
+	client        versioned.Interface
+	log           logrus.FieldLogger
+	listOptions   metav1.ListOptions
+	fetchInterval time.Duration
 }
 
 func NewMetricsWatch(
@@ -33,22 +37,31 @@ func NewMetricsWatch(
 	client versioned.Interface,
 	listOptions metav1.ListOptions,
 ) watch.Interface {
-	metrics := &metricsWatch{
-		resultChan:  make(chan watch.Event),
-		log:         log,
-		client:      client,
-		listOptions: withDefaultTimeout(listOptions),
-	}
+	metrics := newMetricsWatch(log, client, listOptions, fetchInterval)
 
 	go metrics.Start(ctx)
 
 	return metrics
 }
 
+func newMetricsWatch(log logrus.FieldLogger,
+	client versioned.Interface,
+	listOptions metav1.ListOptions,
+	fetchInterval time.Duration) *metricsWatch {
+	return &metricsWatch{
+		closeChan:     make(chan struct{}, 1),
+		resultChan:    make(chan watch.Event),
+		log:           log,
+		client:        client,
+		listOptions:   withDefaultTimeout(listOptions),
+		fetchInterval: fetchInterval,
+	}
+}
+
 func (m *metricsWatch) Start(ctx context.Context) {
 	m.log.Infof("Starting pod metrics polling")
-	const fetchInterval = 30 * time.Second
-	backoff := wait.NewExponentialBackoffManager(fetchInterval, 5*time.Minute, fetchInterval, 2, 0.2, clock.RealClock{})
+
+	backoff := wait.NewExponentialBackoffManager(m.fetchInterval, 5*time.Minute, m.fetchInterval, 2, 0.2, clock.RealClock{})
 	wait.BackoffUntil(func() {
 		result, err := m.client.MetricsV1beta1().
 			PodMetricses("").
@@ -66,17 +79,21 @@ func (m *metricsWatch) Start(ctx context.Context) {
 			select {
 			case <-ctx.Done():
 				return
-			case m.resultChan <- watch.Event{
-				Type:   watch.Modified,
-				Object: &metrics,
-			}:
+			case <-m.closeChan:
+				close(m.resultChan)
+				return
+			default:
+				m.resultChan <- watch.Event{
+					Type:   watch.Modified,
+					Object: &metrics,
+				}
 			}
 		}
-	}, backoff, true, ctx.Done())
+	}, backoff, true, m.closeChan)
 }
 
 func (m *metricsWatch) Stop() {
-	close(m.resultChan)
+	m.closeChan <- struct{}{}
 }
 
 func (m *metricsWatch) ResultChan() <-chan watch.Event {
