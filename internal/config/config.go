@@ -16,7 +16,6 @@ type Config struct {
 	Kubeconfig string `mapstructure:"kubeconfig"`
 
 	Provider  string     `mapstructure:"provider"`
-	CASTAI    *CASTAI    `mapstructure:"castai"`
 	EKS       *EKS       `mapstructure:"eks"`
 	GKE       *GKE       `mapstructure:"gke"`
 	KOPS      *KOPS      `mapstructure:"kops"`
@@ -38,11 +37,6 @@ type Log struct {
 type API struct {
 	Key string `mapstructure:"key"`
 	URL string `mapstructure:"url"`
-}
-
-type CASTAI struct {
-	ClusterID      string `mapstructure:"cluster_id"`
-	OrganizationID string `mapstructure:"organization_id"`
 }
 
 type EKS struct {
@@ -145,15 +139,6 @@ func Get() Config {
 
 	if !strings.HasPrefix(cfg.API.URL, "https://") && !strings.HasPrefix(cfg.API.URL, "http://") {
 		cfg.API.URL = fmt.Sprintf("https://%s", cfg.API.URL)
-	}
-
-	if cfg.CASTAI != nil {
-		if cfg.CASTAI.ClusterID == "" {
-			requiredWhenDiscoveryDisabled("CASTAI_CLUSTER_ID")
-		}
-		if cfg.CASTAI.OrganizationID == "" {
-			requiredWhenDiscoveryDisabled("CASTAI_ORGANIZATION_ID")
-		}
 	}
 
 	if cfg.EKS != nil {
