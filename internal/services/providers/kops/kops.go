@@ -119,11 +119,11 @@ func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node
 }
 
 func (p *Provider) isSpot(ctx context.Context, node *v1.Node) (bool, error) {
-	if val, ok := node.Labels[labels.CastaiSpot]; ok && val == "true" {
+	if val, ok := node.Labels[labels.CastaiSpot]; ok && val == labels.ValueTrue {
 		return true, nil
 	}
 
-	if val, ok := node.Labels[labels.KopsSpot]; ok && val == "true" {
+	if val, ok := node.Labels[labels.KopsSpot]; ok && val == labels.ValueTrue {
 		return true, nil
 	}
 
@@ -144,7 +144,7 @@ func (p *Provider) isSpot(ctx context.Context, node *v1.Node) (bool, error) {
 	}
 
 	if p.csp == cloud.GCP {
-		if val, ok := node.Labels[gke.LabelPreemptible]; ok && val == "true" {
+		if val, ok := node.Labels[gke.LabelPreemptible]; ok && val == labels.ValueTrue {
 			return true, nil
 		}
 	}

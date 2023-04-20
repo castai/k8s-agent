@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/sirupsen/logrus"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
@@ -96,7 +96,7 @@ func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node
 			return true
 		}
 
-		if val, ok := n.Labels[labels.CastaiSpot]; ok && val == "true" {
+		if val, ok := n.Labels[labels.CastaiSpot]; ok && val == labels.ValueTrue {
 			return true
 		}
 

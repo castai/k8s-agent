@@ -28,7 +28,7 @@ const (
 	defaultTimeout        = 10 * time.Second
 	sendDeltaReadTimeout  = 2 * time.Minute
 	totalSendDeltaTimeout = 5 * time.Minute
-	headerAPIKey          = "X-Api-Key"
+	headerAPIKey          = "X-Api-Key" // #nosec
 	headerContinuityToken = "Continuity-Token"
 	headerContentType     = "Content-Type"
 	headerContentEncoding = "Content-Encoding"

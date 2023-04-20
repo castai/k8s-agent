@@ -90,7 +90,7 @@ func TestProvider_IsSpot(t *testing.T) {
 		}
 
 		node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
-			labels.CastaiSpot: "true",
+			labels.CastaiSpot: labels.ValueTrue,
 		}}}
 
 		got, err := p.FilterSpot(context.Background(), []*v1.Node{node})

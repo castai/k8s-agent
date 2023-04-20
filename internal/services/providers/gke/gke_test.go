@@ -87,17 +87,17 @@ func TestProvider_IsSpot(t *testing.T) {
 	}{
 		{
 			name:     "castai spot node",
-			node:     &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{labels.CastaiSpot: "true"}}},
+			node:     &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{labels.CastaiSpot: labels.ValueTrue}}},
 			expected: true,
 		},
 		{
 			name:     "gke preemptible node",
-			node:     &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{LabelPreemptible: "true"}}},
+			node:     &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{LabelPreemptible: labels.ValueTrue}}},
 			expected: true,
 		},
 		{
 			name:     "gke spot node",
-			node:     &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{LabelSpot: "true"}}},
+			node:     &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{LabelSpot: labels.ValueTrue}}},
 			expected: true,
 		},
 		{

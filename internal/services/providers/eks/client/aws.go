@@ -18,11 +18,11 @@ import (
 // Client is an abstraction on the AWS SDK to enable easier mocking and manipulation of request data.
 type Client interface {
 	// GetRegion returns the AWS EC2 instance region. It can be discovered by using WithMetadataDiscovery opt, which
-	// will dynamically get the region from the instance metadata endpoint. Or, it can be overriden by setting the
+	// will dynamically get the region from the instance metadata endpoint. Or, it can be overridden by setting the
 	// environment variable EKS_REGION.
 	GetRegion(ctx context.Context) (*string, error)
 	// GetAccountID returns the AWS EC2 instance account ID. It can be discovered by using WithMetadataDiscovery opt,
-	// which will dynamically get the account ID from the instance metadata endpoint. Or, it can be overriden by setting
+	// which will dynamically get the account ID from the instance metadata endpoint. Or, it can be overridden by setting
 	// the environment variable EKS_ACCOUNT_ID.
 	GetAccountID(ctx context.Context) (*string, error)
 	// GetClusterName returns the AWS EKS cluster name. It can be discovered dynamically by using WithMetadataDiscovery

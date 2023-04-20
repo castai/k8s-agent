@@ -342,7 +342,7 @@ func (c *Controller) send(ctx context.Context) {
 		}
 
 		for _, spot := range spots {
-			nodesByName[spot.Name].Labels[labels.CastaiFakeSpot] = "true"
+			nodesByName[spot.Name].Labels[labels.CastaiFakeSpot] = labels.ValueTrue
 		}
 	}
 

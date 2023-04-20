@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	_ "net/http/pprof"
+	_ "net/http/pprof" // #nosec
 	"os"
 	"time"
 
@@ -201,7 +201,11 @@ func watchExitErrors(ctx context.Context, log *logrus.Entry, exitCh chan error, 
 
 func runPProf(cfg config.Config, log *logrus.Entry, exitCh chan error) (closeFunc func()) {
 	addr := portToServerAddr(cfg.PprofPort)
-	pprofSrv := &http.Server{Addr: addr, Handler: http.DefaultServeMux}
+	pprofSrv := &http.Server{
+		Addr:              addr,
+		ReadHeaderTimeout: 5 * time.Second,
+		Handler:           http.DefaultServeMux,
+	}
 	closeFn := func() {
 		if err := pprofSrv.Close(); err != nil {
 			log.Errorf("closing pprof server: %v", err)
@@ -217,11 +221,15 @@ func runPProf(cfg config.Config, log *logrus.Entry, exitCh chan error) (closeFun
 
 func runHealthzEndpoints(cfg config.Config, log *logrus.Entry, controllerCheck healthz.Checker, leaderCheck healthz.Checker, exitCh chan error) func() {
 	log.Infof("starting healthz on port: %d", cfg.HealthzPort)
-	healthzSrv := &http.Server{Addr: portToServerAddr(cfg.HealthzPort), Handler: &healthz.Handler{Checks: map[string]healthz.Checker{
-		"server":     healthz.Ping,
-		"controller": controllerCheck,
-		"leader":     leaderCheck,
-	}}}
+	healthzSrv := &http.Server{
+		Addr:              portToServerAddr(cfg.HealthzPort),
+		ReadHeaderTimeout: 5 * time.Second,
+		Handler: &healthz.Handler{Checks: map[string]healthz.Checker{
+			"server":     healthz.Ping,
+			"controller": controllerCheck,
+			"leader":     leaderCheck,
+		}},
+	}
 	closeFunc := func() {
 		if err := healthzSrv.Close(); err != nil {
 			log.Errorf("closing healthz server: %v", err)

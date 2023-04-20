@@ -1,0 +1,41 @@
+linters-settings:
+  goconst:
+    min-len: 2
+    min-occurrences: 2
+  goimports:
+    local-prefixes: castai-agent
+  golint:
+    min-confidence: 0
+  lll:
+    line-length: 200
+  maligned:
+    suggest-new: true
+  misspell:
+    locale: US
+
+linters:
+  enable:
+    - depguard
+    - dogsled
+    - errcheck
+    - goconst
+    - gofmt
+    - goimports
+    - revive
+    - goprintffuncname
+    - gosimple
+    - gosec
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - nakedret
+    - exportloopref
+    - staticcheck
+    - stylecheck
+    - typecheck
+    - unconvert
+    - unused
+    - whitespace
+    - errname
+    - dupword

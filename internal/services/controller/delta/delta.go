@@ -38,7 +38,6 @@ type Delta struct {
 
 // Add will add an Item to the Delta Cache. It will debounce the objects.
 func (d *Delta) Add(i *Item) {
-
 	key := keyObject(i.Obj)
 
 	if other, ok := d.Cache[key]; ok && other.event == castai.EventAdd && i.event == castai.EventUpdate {

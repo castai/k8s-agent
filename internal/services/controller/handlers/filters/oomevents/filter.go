@@ -42,5 +42,4 @@ func Filter(_ castai.EventType, obj interface{}) bool {
 	}
 
 	return strings.Contains(starvedResourcesString, ResourceMemory)
-
 }

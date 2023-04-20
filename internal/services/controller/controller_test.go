@@ -61,7 +61,7 @@ func TestController_HappyPath(t *testing.T) {
 
 	node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node1", Labels: map[string]string{}}}
 	expectedNode := node.DeepCopy()
-	expectedNode.Labels[labels.CastaiFakeSpot] = "true"
+	expectedNode.Labels[labels.CastaiFakeSpot] = labels.ValueTrue
 	nodeData, err := delta.Encode(expectedNode)
 	require.NoError(t, err)
 

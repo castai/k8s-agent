@@ -100,15 +100,15 @@ func failedAutodiscovery(err error, envVar string) error {
 }
 
 func isSpot(node *corev1.Node) bool {
-	if val, ok := node.Labels[labels.CastaiSpot]; ok && val == "true" {
+	if val, ok := node.Labels[labels.CastaiSpot]; ok && val == labels.ValueTrue {
 		return true
 	}
 
-	if val, ok := node.Labels[LabelPreemptible]; ok && val == "true" {
+	if val, ok := node.Labels[LabelPreemptible]; ok && val == labels.ValueTrue {
 		return true
 	}
 
-	if val, ok := node.Labels[LabelSpot]; ok && val == "true" {
+	if val, ok := node.Labels[LabelSpot]; ok && val == labels.ValueTrue {
 		return true
 	}
 
