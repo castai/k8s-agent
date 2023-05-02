@@ -1,4 +1,4 @@
-FROM alpine:3.17.0
-ARG TARGETARCH
+FROM gcr.io/distroless/static-debian11
+ARG TARGETARCH=amd64
 COPY bin/castai-agent-$TARGETARCH /usr/local/bin/castai-agent
-CMD ["castai-agent"]
+CMD ["/usr/local/bin/castai-agent"]
