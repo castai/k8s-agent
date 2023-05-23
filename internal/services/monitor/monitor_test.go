@@ -6,10 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/require"
+
+	mock_monitor "castai-agent/internal/services/monitor/mock"
 )
 
 func Test_monitor_waitForAgentMetadata(t *testing.T) {
@@ -38,13 +41,18 @@ func Test_monitor_waitForAgentMetadata(t *testing.T) {
 func Test_monitor_runChecks(t *testing.T) {
 	testLog, hook := test.NewNullLogger()
 	monitor := monitor{
-		log: testLog,
+		log:            testLog,
+		agentStartTime: 1,
 	}
 	monitor.metadata.ProcessID = 123
 	r := require.New(t)
 
+	ctrl := gomock.NewController(t)
+	processInfo := mock_monitor.NewMockProcessInfo(ctrl)
+	processInfo.EXPECT().GetProcessStartTime().Return(uint64(2))
+	monitor.processInfo = processInfo
+
 	r.NoError(monitor.runChecks(context.Background()))
 	r.Len(hook.Entries, 1)
-	r.Equal("crashloop detected", hook.Entries[0].Message)
-
+	r.Equal("unexpected agent restart detected", hook.Entries[0].Message)
 }

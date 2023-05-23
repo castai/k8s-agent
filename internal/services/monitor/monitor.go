@@ -40,10 +40,12 @@ func Run(ctx context.Context, log logrus.FieldLogger, clientset *kubernetes.Clie
 }
 
 type monitor struct {
-	clientset *kubernetes.Clientset
-	log       logrus.FieldLogger
-	syncFile  string
-	metadata  Metadata
+	clientset      *kubernetes.Clientset
+	log            logrus.FieldLogger
+	syncFile       string
+	metadata       Metadata
+	processInfo    ProcessInfo
+	agentStartTime uint64
 }
 
 // waitForAgentMetadata waits until main agent process registers itself with CAST AI, and shares a metadata file on a local volume
@@ -81,5 +83,11 @@ func (m *monitor) waitForAgentMetadata(ctx context.Context) (err error) {
 }
 
 func (m *monitor) runChecks(_ context.Context) error {
+	agentStartTime := m.processInfo.GetProcessStartTime()
+	if m.agentStartTime != 0 && agentStartTime > m.agentStartTime {
+		m.log.Errorf("unexpected agent restart detected")
+		// TODO: fetch and log k8s events for agent process
+	}
+	m.agentStartTime = agentStartTime
 	return nil
 }
