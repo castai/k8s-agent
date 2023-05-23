@@ -14,6 +14,7 @@ require (
 	github.com/spf13/viper v1.12.0
 	github.com/stretchr/testify v1.8.0
 	go.uber.org/goleak v1.1.12
+	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
 	k8s.io/api v0.25.4
 	k8s.io/apimachinery v0.25.4
 	k8s.io/client-go v0.25.4

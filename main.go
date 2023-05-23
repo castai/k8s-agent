@@ -40,6 +40,7 @@ var (
 )
 
 const LogExporterSendTimeout = 15 * time.Second
+const LogExporterFlushTimeout = 15 * time.Second
 
 func main() {
 	cfg := config.Get()
@@ -52,15 +53,14 @@ func main() {
 	localLog.SetLevel(logrus.DebugLevel)
 
 	loggingConfig := castailog.Config{
-		SendTimeout: LogExporterSendTimeout,
+		SendTimeout:  LogExporterSendTimeout,
+		FlushTimeout: LogExporterFlushTimeout,
 	}
 
 	castaiClient := castai.NewClient(log, castai.NewDefaultRestyClient(), castai.NewDefaultDeltaHTTPClient())
 
 	registrator := castai.NewRegistrator()
 	defer registrator.ReleaseWaiters()
-
-	castailog.SetupLogExporter(registrator, remoteLogger, localLog, castaiClient, &loggingConfig)
 
 	clusterIDHandler := func(clusterID string) {
 		loggingConfig.ClusterID = clusterID
@@ -69,8 +69,12 @@ func main() {
 	}
 
 	ctx := signals.SetupSignalHandler()
+
+	exporter := castailog.SetupLogExporter(registrator, remoteLogger, localLog, castaiClient, &loggingConfig)
+	defer exporter.Wait()
+
 	if err := run(ctx, castaiClient, log, cfg, clusterIDHandler); err != nil {
-		log.Fatalf("agent failed: %v", err)
+		log.Errorf("agent failed: %v", err)
 	}
 
 	log.Info("agent shutdown")

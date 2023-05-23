@@ -3,51 +3,46 @@ package log
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/samber/lo"
+	"golang.org/x/sync/semaphore"
 
 	"castai-agent/internal/castai"
 
 	"github.com/sirupsen/logrus"
 )
 
-type Exporter interface {
-	logrus.Hook
-	Wait()
-}
+const MaxParallelLogs int64 = 20
 
-func SetupLogExporter(registrator *castai.Registrator, logger *logrus.Logger, localLog logrus.FieldLogger, castaiclient castai.Client, cfg *Config) {
-	logExporter := newExporter(registrator, cfg, localLog, castaiclient)
-	logger.AddHook(logExporter)
-	logrus.RegisterExitHandler(logExporter.Wait)
-}
-
-func newExporter(registrator *castai.Registrator, cfg *Config, localLog logrus.FieldLogger, client castai.Client) Exporter {
-	return &exporter{
+func SetupLogExporter(registrator *castai.Registrator, logger *logrus.Logger, localLog logrus.FieldLogger, castaiclient castai.Client, cfg *Config) *Exporter {
+	logExporter := &Exporter{
 		registrator: registrator,
 		cfg:         cfg,
-		client:      client,
+		client:      castaiclient,
 		localLog:    localLog,
-		wg:          sync.WaitGroup{},
+		sem:         semaphore.NewWeighted(MaxParallelLogs),
 	}
+	logger.AddHook(logExporter)
+
+	return logExporter
 }
 
-type exporter struct {
+type Exporter struct {
 	registrator *castai.Registrator
 	localLog    logrus.FieldLogger
 	cfg         *Config
 	client      castai.Client
-	wg          sync.WaitGroup
+	sem         *semaphore.Weighted
 }
 
 type Config struct {
-	ClusterID   string
-	SendTimeout time.Duration
+	ClusterID    string
+	SendTimeout  time.Duration
+	FlushTimeout time.Duration
 }
 
-func (ex *exporter) Levels() []logrus.Level {
+func (ex *Exporter) Levels() []logrus.Level {
 	return []logrus.Level{
 		logrus.ErrorLevel,
 		logrus.FatalLevel,
@@ -57,23 +52,32 @@ func (ex *exporter) Levels() []logrus.Level {
 	}
 }
 
-func (ex *exporter) Fire(entry *logrus.Entry) error {
-	ex.wg.Add(1)
+func (ex *Exporter) Fire(entry *logrus.Entry) error {
+	if err := ex.sem.Acquire(context.Background(), 1); err != nil {
+		return err
+	}
 
 	go func(entry *logrus.Entry) {
+		defer ex.sem.Release(1)
+
 		ex.registrator.WaitUntilRegistered()
-		defer ex.wg.Done()
 		ex.sendLogEvent(ex.cfg.ClusterID, entry)
 	}(entry)
 
 	return nil
 }
 
-func (ex *exporter) Wait() {
-	ex.wg.Wait()
+func (ex *Exporter) Wait() {
+	ctx, cancel := context.WithTimeout(context.Background(), ex.cfg.FlushTimeout)
+	defer cancel()
+
+	err := ex.sem.Acquire(ctx, MaxParallelLogs)
+	if err != nil {
+		ex.localLog.Errorf("failed to flush logs: %v", err)
+	}
 }
 
-func (ex *exporter) sendLogEvent(clusterID string, e *logrus.Entry) {
+func (ex *Exporter) sendLogEvent(clusterID string, e *logrus.Entry) {
 	ctx, cancel := context.WithTimeout(context.Background(), ex.cfg.SendTimeout)
 	defer cancel()
 

@@ -8,31 +8,32 @@ import (
 )
 
 func TestConfig(t *testing.T) {
-	require.NoError(t, os.Setenv("API_KEY", "abc"))
-	require.NoError(t, os.Setenv("API_URL", "api.cast.ai"))
+	r := require.New(t)
+	r.NoError(os.Setenv("API_KEY", "abc"))
+	r.NoError(os.Setenv("API_URL", "api.cast.ai"))
 
-	require.NoError(t, os.Setenv("KUBECONFIG", "~/.kube/config"))
+	r.NoError(os.Setenv("KUBECONFIG", "~/.kube/config"))
 
-	require.NoError(t, os.Setenv("PROVIDER", "EKS"))
+	r.NoError(os.Setenv("PROVIDER", "EKS"))
 
-	require.NoError(t, os.Setenv("EKS_ACCOUNT_ID", "123"))
-	require.NoError(t, os.Setenv("EKS_REGION", "eu-central-1"))
-	require.NoError(t, os.Setenv("EKS_CLUSTER_NAME", "eks"))
+	r.NoError(os.Setenv("EKS_ACCOUNT_ID", "123"))
+	r.NoError(os.Setenv("EKS_REGION", "eu-central-1"))
+	r.NoError(os.Setenv("EKS_CLUSTER_NAME", "eks"))
 
 	cfg := Get()
 
-	require.Equal(t, cfg.HealthzPort, 9876)
-	require.Equal(t, cfg.LeaderElection.LockName, "agent-leader-election-lock")
-	require.Equal(t, cfg.LeaderElection.Namespace, "castai-agent")
-	require.Equal(t, "abc", cfg.API.Key)
-	require.Equal(t, "https://api.cast.ai", cfg.API.URL)
+	r.Equal(9876, cfg.HealthzPort)
+	r.Equal("agent-leader-election-lock", cfg.LeaderElection.LockName)
+	r.Equal("castai-agent", cfg.LeaderElection.Namespace)
+	r.Equal("abc", cfg.API.Key)
+	r.Equal("https://api.cast.ai", cfg.API.URL)
 
-	require.Equal(t, "~/.kube/config", cfg.Kubeconfig)
+	r.Equal("~/.kube/config", cfg.Kubeconfig)
 
-	require.Equal(t, "EKS", cfg.Provider)
+	r.Equal("EKS", cfg.Provider)
 
-	require.NotNil(t, cfg.EKS)
-	require.Equal(t, "123", cfg.EKS.AccountID)
-	require.Equal(t, "eu-central-1", cfg.EKS.Region)
-	require.Equal(t, "eks", cfg.EKS.ClusterName)
+	r.NotNil(cfg.EKS)
+	r.Equal("123", cfg.EKS.AccountID)
+	r.Equal("eu-central-1", cfg.EKS.Region)
+	r.Equal("eks", cfg.EKS.ClusterName)
 }
