@@ -18,7 +18,7 @@ func Run(ctx context.Context, log logrus.FieldLogger, clientset *kubernetes.Clie
 		log:       log,
 	}
 
-	if err := m.waitForClusterID(ctx); err != nil {
+	if err := m.waitForAgentMetadata(ctx); err != nil {
 		return fmt.Errorf("waiting for cluster ID: %w", err)
 	}
 
@@ -46,7 +46,8 @@ type monitor struct {
 	metadata  Metadata
 }
 
-func (m *monitor) waitForClusterID(ctx context.Context) (err error) {
+// waitForAgentMetadata waits until main agent process registers itself with CAST AI, and shares a metadata file on a local volume
+func (m *monitor) waitForAgentMetadata(ctx context.Context) (err error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal(err)
@@ -59,9 +60,11 @@ func (m *monitor) waitForClusterID(ctx context.Context) (err error) {
 
 	for {
 		// try loading the file on startup and on every file system change
-		if err := m.loadClusterIDMetadata(); err != nil {
+		metadata := Metadata{}
+		if err := metadata.Load(m.syncFile); err != nil {
 			m.log.Warnf("loading metadata failed: %v", err)
 		} else {
+			m.metadata = metadata
 			return nil
 		}
 
@@ -78,16 +81,5 @@ func (m *monitor) waitForClusterID(ctx context.Context) (err error) {
 }
 
 func (m *monitor) runChecks(_ context.Context) error {
-	m.log.Infof("running checks")
-	return nil
-}
-
-func (m *monitor) loadClusterIDMetadata() error {
-	metadata := Metadata{}
-	if err := metadata.Load(m.syncFile); err != nil {
-		return fmt.Errorf("parsing json: %w", err)
-	}
-	m.metadata = metadata
-
 	return nil
 }

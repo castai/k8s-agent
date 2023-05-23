@@ -8,10 +8,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/require"
 )
 
-func Test_monitor_waitForClusterID(t *testing.T) {
+func Test_monitor_waitForAgentMetadata(t *testing.T) {
 	monitor := monitor{
 		log: logrus.New(),
 	}
@@ -31,5 +32,19 @@ func Test_monitor_waitForClusterID(t *testing.T) {
 		}
 		require.NoError(t, meta.Save(syncFile))
 	}()
-	require.NoError(t, monitor.waitForClusterID(ctx))
+	require.NoError(t, monitor.waitForAgentMetadata(ctx))
+}
+
+func Test_monitor_runChecks(t *testing.T) {
+	testLog, hook := test.NewNullLogger()
+	monitor := monitor{
+		log: testLog,
+	}
+	monitor.metadata.ProcessID = 123
+	r := require.New(t)
+
+	r.NoError(monitor.runChecks(context.Background()))
+	r.Len(hook.Entries, 1)
+	r.Equal("crashloop detected", hook.Entries[0].Message)
+
 }
