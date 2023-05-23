@@ -13,7 +13,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const MaxParallelLogs int64 = 20
+const MaxParallelLogs int64 = 100
 
 func SetupLogExporter(registrator *castai.Registrator, logger *logrus.Logger, localLog logrus.FieldLogger, castaiclient castai.Client, cfg *Config) *Exporter {
 	logExporter := &Exporter{
