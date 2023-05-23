@@ -49,7 +49,7 @@ func Test_monitor_runChecks(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	processInfo := mock_monitor.NewMockProcessInfo(ctrl)
-	processInfo.EXPECT().GetProcessStartTime().Return(uint64(2))
+	processInfo.EXPECT().GetProcessStartTime(gomock.Any()).Return(uint64(2), nil)
 	monitor.processInfo = processInfo
 
 	r.NoError(monitor.runChecks(context.Background()))

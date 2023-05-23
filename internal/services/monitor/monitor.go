@@ -45,7 +45,7 @@ type monitor struct {
 	syncFile       string
 	metadata       Metadata
 	processInfo    ProcessInfo
-	agentStartTime uint64
+	agentStartTime int64
 }
 
 // waitForAgentMetadata waits until main agent process registers itself with CAST AI, and shares a metadata file on a local volume
@@ -82,8 +82,11 @@ func (m *monitor) waitForAgentMetadata(ctx context.Context) (err error) {
 	return nil
 }
 
-func (m *monitor) runChecks(_ context.Context) error {
-	agentStartTime := m.processInfo.GetProcessStartTime()
+func (m *monitor) runChecks(ctx context.Context) error {
+	agentStartTime, err := m.processInfo.GetProcessStartTime(ctx)
+	if err != nil {
+		m.log.Errorf("checks failed: %v", err)
+	}
 	if m.agentStartTime != 0 && agentStartTime > m.agentStartTime {
 		m.log.Errorf("unexpected agent restart detected")
 		// TODO: fetch and log k8s events for agent process

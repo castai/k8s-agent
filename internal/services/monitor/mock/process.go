@@ -5,6 +5,7 @@
 package mock_monitor
 
 import (
+	context "context"
 	reflect "reflect"
 
 	gomock "github.com/golang/mock/gomock"
@@ -34,15 +35,16 @@ func (m *MockProcessInfo) EXPECT() *MockProcessInfoMockRecorder {
 }
 
 // GetProcessStartTime mocks base method.
-func (m *MockProcessInfo) GetProcessStartTime() uint64 {
+func (m *MockProcessInfo) GetProcessStartTime(ctx context.Context) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetProcessStartTime")
-	ret0, _ := ret[0].(uint64)
-	return ret0
+	ret := m.ctrl.Call(m, "GetProcessStartTime", ctx)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // GetProcessStartTime indicates an expected call of GetProcessStartTime.
-func (mr *MockProcessInfoMockRecorder) GetProcessStartTime() *gomock.Call {
+func (mr *MockProcessInfoMockRecorder) GetProcessStartTime(ctx interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetProcessStartTime", reflect.TypeOf((*MockProcessInfo)(nil).GetProcessStartTime))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetProcessStartTime", reflect.TypeOf((*MockProcessInfo)(nil).GetProcessStartTime), ctx)
 }
