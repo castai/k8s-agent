@@ -2,15 +2,9 @@ package monitor
 
 import (
 	"context"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/kubernetes"
-)
-
-const (
-	// CheckInterval controls how often the monitor checks will be performed
-	CheckInterval = time.Second
 )
 
 func Run(ctx context.Context, log logrus.FieldLogger, clientset *kubernetes.Clientset, metadataFile string, exitCh chan error, clusterIDHandler func(clusterID string)) error {
