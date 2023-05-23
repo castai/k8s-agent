@@ -70,14 +70,19 @@ func main() {
 	}
 
 	ctx := signals.SetupSignalHandler()
+	ctx, ctxCancel := context.WithCancel(ctx)
+	defer ctxCancel()
+	// buffer will allow for all senders to push, even though we will only read first error and cancel context after it
+	exitCh := make(chan error, 10)
+	go watchExitErrors(ctx, log, exitCh, ctxCancel)
 
 	switch cfg.Mode {
 	case config.ModeMonitor:
-		if err := runMonitorMode(ctx, log, cfg, clusterIDHandler); err != nil {
+		if err := runMonitorMode(ctx, log, cfg, exitCh, clusterIDHandler); err != nil {
 			log.Errorf("monitor failed: %v", err)
 		}
 	default:
-		if err := runAgentMode(ctx, castaiClient, log, cfg, clusterIDHandler); err != nil {
+		if err := runAgentMode(ctx, castaiClient, log, cfg, exitCh, clusterIDHandler); err != nil {
 			log.Errorf("agent failed: %v", err)
 		}
 	}
@@ -85,19 +90,12 @@ func main() {
 	log.Infof("%s shutdown", cfg.Mode)
 }
 
-func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg config.Config, clusterIDChanged func(clusterID string)) error {
-	ctx, ctxCancel := context.WithCancel(ctx)
-	defer ctxCancel()
-
+func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg config.Config, exitCh chan error, clusterIDChanged func(clusterID string)) error {
 	agentVersion := &config.AgentVersion{
 		GitCommit: GitCommit,
 		GitRef:    GitRef,
 		Version:   Version,
 	}
-
-	// buffer will allow for all senders to push, even though we will only read first error and cancel context after it
-	exitCh := make(chan error, 10)
-	go watchExitErrors(ctx, log, exitCh, ctxCancel)
 
 	log.Infof("running agent version: %v", agentVersion)
 	log.Infof("platform URL: %s", cfg.API.URL)
@@ -170,9 +168,8 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 			log.Infof("clusterID: %s provided by env variable", clusterID)
 		}
 
-		metadata := monitor.Metadata{
-			ClusterID: clusterID,
-			ProcessID: uint64(os.Getpid()),
+		if err := saveMetadata(clusterID, cfg); err != nil {
+			return err
 		}
 
 		err = controller.Loop(
@@ -200,7 +197,18 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 	return nil
 }
 
-func runMonitorMode(ctx context.Context, log *logrus.Entry, cfg config.Config, clusterIDChanged func(clusterID string)) error {
+func saveMetadata(clusterID string, cfg config.Config) error {
+	metadata := monitor.Metadata{
+		ClusterID: clusterID,
+		ProcessID: uint64(os.Getpid()),
+	}
+	if err := metadata.Save(cfg.MonitorMetadata); err != nil {
+		return fmt.Errorf("saving metadata: %w", err)
+	}
+	return nil
+}
+
+func runMonitorMode(ctx context.Context, log *logrus.Entry, cfg config.Config, exitCh chan error, clusterIDChanged func(clusterID string)) error {
 	restconfig, err := retrieveKubeConfig(log, cfg)
 	if err != nil {
 		return fmt.Errorf("retrieving kubeconfig: %w", err)
@@ -210,7 +218,7 @@ func runMonitorMode(ctx context.Context, log *logrus.Entry, cfg config.Config, c
 		return fmt.Errorf("obtaining kubernetes clientset: %w", err)
 	}
 
-	return monitor.Run(ctx, log, clientset, clusterIDChanged)
+	return monitor.Run(ctx, log, clientset, cfg.MonitorMetadata, exitCh, clusterIDChanged)
 }
 
 // if any errors are observed on exitCh, context cancel is called, and all errors in the channel are logged
