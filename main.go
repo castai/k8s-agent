@@ -198,11 +198,11 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 func runMonitorMode(ctx context.Context, log *logrus.Entry, cfg config.Config) error {
 	restconfig, err := retrieveKubeConfig(log, cfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("retrieving kubeconfig: %w", err)
 	}
 	clientset, err := kubernetes.NewForConfig(restconfig)
 	if err != nil {
-		return err
+		return fmt.Errorf("obtaining kubernetes clientset: %w", err)
 	}
 
 	return monitor.Run(ctx, log, clientset)
