@@ -28,6 +28,7 @@ func Run(ctx context.Context, log logrus.FieldLogger, clientset *kubernetes.Clie
 	}
 
 	clusterIDHandler(m.metadata.ClusterID)
+	// TODO: no need to check process start time; if PID changes, process has restarted
 
 	for {
 		select {

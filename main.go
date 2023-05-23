@@ -170,6 +170,11 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 			log.Infof("clusterID: %s provided by env variable", clusterID)
 		}
 
+		metadata := monitor.Metadata{
+			ClusterID: clusterID,
+			ProcessID: uint64(os.Getpid()),
+		}
+
 		err = controller.Loop(
 			ctx,
 			log,

@@ -29,6 +29,8 @@ type Config struct {
 	HealthzPort int         `mapstructure:"healthz_port"`
 
 	LeaderElection LeaderElectionConfig `mapstructure:"leader_election"`
+
+	MonitorMetadata string `mapstructure:"monitor_metadata"`
 }
 
 type Mode string
