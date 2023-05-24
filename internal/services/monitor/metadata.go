@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/sirupsen/logrus"
@@ -36,35 +37,58 @@ func (m *Metadata) Load(file string) error {
 	return nil
 }
 
-// watchForMetadataChanges watches a local file for updates and returns changes to metadata channel; exits on context cancel
-func watchForMetadataChanges(ctx context.Context, metadataFilePath string, log logrus.FieldLogger, updates chan Metadata, exitCh chan error) {
+// watchForMetadataChanges starts a watch on a local file for updates and returns changes to metadata channel. watcher stops when context is done
+func watchForMetadataChanges(ctx context.Context, metadataFilePath string, log logrus.FieldLogger) (chan Metadata, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		exitCh <- fmt.Errorf("setting up new watcher: %w", err)
-		return
+		return nil, fmt.Errorf("setting up new watcher: %w", err)
 	}
-	defer watcher.Close()
+	updates := make(chan Metadata, 10)
 
 	if err := watcher.Add(filepath.Dir(metadataFilePath)); err != nil {
-		exitCh <- fmt.Errorf("adding watch: %w", err)
-		return
+		return nil, fmt.Errorf("adding watch: %w", err)
 	}
 
-	for {
-		// try loading the file on startup and on every file system change
+	checkMetadata := func() {
 		metadata := Metadata{}
 		if err := metadata.Load(metadataFilePath); err != nil {
-			log.Warnf("loading metadata failed: %v", err)
+			if !strings.Contains(err.Error(), "no such file or directory") {
+				log.Warnf("loading metadata failed: %v", err)
+			}
 		} else {
 			updates <- metadata
 		}
+	}
 
-		select {
-		case <-ctx.Done():
-			return
-		case _ = <-watcher.Events:
-		case err := <-watcher.Errors:
-			log.Errorf("metadata watch error: %v", err)
+	go func() {
+		defer close(updates)
+		defer watcher.Close()
+		checkMetadata()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event := <-watcher.Events:
+				if opContains(event.Op, fsnotify.Create, fsnotify.Write) && event.Name == metadataFilePath {
+					checkMetadata()
+				}
+			case err := <-watcher.Errors:
+				log.Errorf("metadata watch error: %v", err)
+			}
+		}
+	}()
+
+	return updates, nil
+}
+
+// opContains tests that op contains at least one of the values
+func opContains(op fsnotify.Op, values ...fsnotify.Op) bool {
+	for _, v := range values {
+		// event.Op is a multi-value mask, need to test this accordingly
+		if op&v == v {
+			return true
 		}
 	}
+	return false
 }

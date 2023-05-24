@@ -78,7 +78,7 @@ func main() {
 
 	switch cfg.Mode {
 	case config.ModeMonitor:
-		if err := runMonitorMode(ctx, log, cfg, exitCh, clusterIDHandler); err != nil {
+		if err := runMonitorMode(ctx, log, cfg, clusterIDHandler); err != nil {
 			log.Errorf("monitor failed: %v", err)
 		}
 	default:
@@ -208,7 +208,7 @@ func saveMetadata(clusterID string, cfg config.Config) error {
 	return nil
 }
 
-func runMonitorMode(ctx context.Context, log *logrus.Entry, cfg config.Config, exitCh chan error, clusterIDChanged func(clusterID string)) error {
+func runMonitorMode(ctx context.Context, log *logrus.Entry, cfg config.Config, clusterIDChanged func(clusterID string)) error {
 	restconfig, err := retrieveKubeConfig(log, cfg)
 	if err != nil {
 		return fmt.Errorf("retrieving kubeconfig: %w", err)
@@ -218,7 +218,7 @@ func runMonitorMode(ctx context.Context, log *logrus.Entry, cfg config.Config, e
 		return fmt.Errorf("obtaining kubernetes clientset: %w", err)
 	}
 
-	return monitor.Run(ctx, log, clientset, cfg.MonitorMetadata, exitCh, clusterIDChanged)
+	return monitor.Run(ctx, log, clientset, cfg.MonitorMetadata, clusterIDChanged)
 }
 
 // if any errors are observed on exitCh, context cancel is called, and all errors in the channel are logged

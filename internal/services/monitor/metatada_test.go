@@ -12,29 +12,29 @@ import (
 )
 
 func Test_monitor_waitForAgentMetadata(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 
-	syncFile := filepath.Join(t.TempDir(), "metadata.yaml")
+	syncFile := filepath.Join(t.TempDir(), "metadata.json")
 
-	exitCh := make(chan error)
-	updates := make(chan Metadata, 1)
+	updates, err := watchForMetadataChanges(ctx, syncFile, logrus.New())
+	require.NoError(t, err)
 
-	go func() {
-		time.Sleep(time.Second * 1)
+	// make sure that watcher does not find the file immediately and goes into watcher loop
+	time.Sleep(time.Second * 1)
 
-		meta := Metadata{
-			ClusterID: uuid.New().String(),
-			ProcessID: 123,
-		}
-		require.NoError(t, meta.Save(syncFile))
+	// create the file, expect the event to arrive at updates channel
+	meta := Metadata{
+		ClusterID: uuid.New().String(),
+		ProcessID: 123,
+	}
+	require.NoError(t, meta.Save(syncFile))
 
-		cancel()
-	}()
-
-	// run synchronously to ensure that watch exits after context cancel
-	watchForMetadataChanges(ctx, syncFile, logrus.New(), updates, exitCh)
-
-	metadata := <-updates
+	metadata, ok := <-updates
+	require.True(t, ok)
 	require.Equal(t, uint64(123), metadata.ProcessID)
+
+	cancel()
+	_, ok = <-updates
+	require.False(t, ok, "after ctx is done, updates channel should get closed as watcher exits")
 }

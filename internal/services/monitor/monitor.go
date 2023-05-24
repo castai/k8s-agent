@@ -2,19 +2,22 @@ package monitor
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/kubernetes"
 )
 
-func Run(ctx context.Context, log logrus.FieldLogger, clientset *kubernetes.Clientset, metadataFile string, exitCh chan error, clusterIDHandler func(clusterID string)) error {
+func Run(ctx context.Context, log logrus.FieldLogger, clientset *kubernetes.Clientset, metadataFile string, clusterIDHandler func(clusterID string)) error {
 	m := monitor{
 		clientset: clientset,
 		log:       log,
 	}
 
-	metadataUpdates := make(chan Metadata)
-	go watchForMetadataChanges(ctx, metadataFile, m.log, metadataUpdates, exitCh)
+	metadataUpdates, err := watchForMetadataChanges(ctx, metadataFile, m.log)
+	if err != nil {
+		return fmt.Errorf("setting up metadata watch: %w", err)
+	}
 
 	for {
 		select {
