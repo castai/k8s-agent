@@ -70,11 +70,6 @@ func main() {
 	}
 
 	ctx := signals.SetupSignalHandler()
-	ctx, ctxCancel := context.WithCancel(ctx)
-	defer ctxCancel()
-	// buffer will allow for all senders to push, even though we will only read first error and cancel context after it
-	exitCh := make(chan error, 10)
-	go watchExitErrors(ctx, log, exitCh, ctxCancel)
 
 	switch cfg.Mode {
 	case config.ModeMonitor:
@@ -82,7 +77,7 @@ func main() {
 			log.Errorf("monitor failed: %v", err)
 		}
 	default:
-		if err := runAgentMode(ctx, castaiClient, log, cfg, exitCh, clusterIDHandler); err != nil {
+		if err := runAgentMode(ctx, castaiClient, log, cfg, clusterIDHandler); err != nil {
 			log.Errorf("agent failed: %v", err)
 		}
 	}
@@ -90,12 +85,19 @@ func main() {
 	log.Infof("%s shutdown", cfg.Mode)
 }
 
-func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg config.Config, exitCh chan error, clusterIDChanged func(clusterID string)) error {
+func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg config.Config, clusterIDChanged func(clusterID string)) error {
+	ctx, ctxCancel := context.WithCancel(ctx)
+	defer ctxCancel()
+
 	agentVersion := &config.AgentVersion{
 		GitCommit: GitCommit,
 		GitRef:    GitRef,
 		Version:   Version,
 	}
+
+	// buffer will allow for all senders to push, even though we will only read first error and cancel context after it
+	exitCh := make(chan error, 10)
+	go watchExitErrors(ctx, log, exitCh, ctxCancel)
 
 	log.Infof("running agent version: %v", agentVersion)
 	log.Infof("platform URL: %s", cfg.API.URL)

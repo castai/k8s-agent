@@ -85,7 +85,7 @@ func watchForMetadataChanges(ctx context.Context, metadataFilePath string, log l
 // opContains tests that op contains at least one of the values
 func opContains(op fsnotify.Op, values ...fsnotify.Op) bool {
 	for _, v := range values {
-		// event.Op is a multi-value mask, need to test this accordingly
+		// event.Op may contain multiple values or-ed together, can't use simple equality check
 		if op&v == v {
 			return true
 		}
