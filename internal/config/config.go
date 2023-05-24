@@ -31,6 +31,7 @@ type Config struct {
 	LeaderElection LeaderElectionConfig `mapstructure:"leader_election"`
 
 	MonitorMetadata string `mapstructure:"monitor_metadata"`
+	SelfPod         Pod    `mapstructure:"self_pod"`
 }
 
 type Mode string
@@ -42,6 +43,11 @@ const (
 
 type Log struct {
 	Level int `mapstructure:"level"`
+}
+
+type Pod struct {
+	Namespace string `mapstructure:"namespace"`
+	Name      string `mapstructure:"name"`
 }
 
 type API struct {

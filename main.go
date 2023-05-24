@@ -220,7 +220,7 @@ func runMonitorMode(ctx context.Context, log *logrus.Entry, cfg config.Config, c
 		return fmt.Errorf("obtaining kubernetes clientset: %w", err)
 	}
 
-	return monitor.Run(ctx, log, clientset, cfg.MonitorMetadata, clusterIDChanged)
+	return monitor.Run(ctx, log, clientset, cfg.MonitorMetadata, cfg.SelfPod, clusterIDChanged)
 }
 
 // if any errors are observed on exitCh, context cancel is called, and all errors in the channel are logged
