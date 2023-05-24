@@ -31,13 +31,12 @@ func Run(ctx context.Context, log logrus.FieldLogger, clientset *kubernetes.Clie
 }
 
 type monitor struct {
-	clientset      *kubernetes.Clientset
-	log            logrus.FieldLogger
-	metadata       Metadata
-	agentStartTime int64
+	clientset *kubernetes.Clientset
+	log       logrus.FieldLogger
+	metadata  Metadata
 }
 
-func (m *monitor) metadataUpdated(ctx context.Context, metadata Metadata) {
+func (m *monitor) metadataUpdated(_ context.Context, metadata Metadata) {
 	if m.metadata.ProcessID != 0 && m.metadata.ProcessID != metadata.ProcessID {
 		m.log.Errorf("unexpected agent restart detected")
 		// TODO: fetch and log k8s events for agent process
