@@ -69,6 +69,24 @@ import (
 )
 ```
 
+### Test agent in a containerized/packaged environment
+
+* Prepare a repository to work with your cluster, e.g. Google Artifact Repository if working with a GKE cluster
+* Create and push agent image with `TAG=path/to/repository/k8s-agent:1.1-your-test-tag make build`. This will build the multi-architecture agent docker image and push it to the repository of your choice. `TAG` in this case should refer to the full image path and will be used for `docker push` command as-is. Increment the version when building more test versions.
+* Clone [castai/helm-charts](https://github.com/castai/helm-charts) repo;
+* Add necessary changes to the chart (if needed)
+* Clone values.yaml and tweak these chart values:
+  * `image.repository`: for image build above, set this to `path/to/repository/k8s-agent`
+  * `image.tag`: for above example, this would be `1.1-your-test-tag`
+  * `clusterVPA.enabled`: turn off for testing setups
+  * `apiURL`: override if using non-production CAST AI environment (CAST AI developers only)
+  * `apiKey`: API key to use for the agent
+* Deploy the chart:
+  ```
+  helm template castai-agent . -n castai-agent -f values.ignore.yaml | kubectl apply -f -
+  ```
+  
+
 ### Release procedure (with automatic release notes)
 
 Head to the [GitHub new release page](https://github.com/castai/k8s-agent/releases/new), create a new tag at the top, and click `Generate Release Notes` at the middle-right.

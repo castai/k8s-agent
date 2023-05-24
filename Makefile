@@ -1,15 +1,10 @@
 build:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w" -o bin/castai-agent-amd64 .
-	docker build -t us-docker.pkg.dev/castai-hub/library/agent:$(VERSION) .
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-s -w" -o bin/castai-agent-arm64 .
+	docker buildx build --push --platform=linux/amd64,linux/arm64 -t  $(TAG) .
 
 generate:
 	go generate ./...
-
-push:
-	docker push us-docker.pkg.dev/castai-hub/library/agent:$(VERSION)
-
-deploy:
-	cat deployment.yaml | envsubst | kubectl apply -f -
 
 SHELL := /bin/bash
 run:
