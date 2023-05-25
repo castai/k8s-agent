@@ -36,7 +36,7 @@ func Test_monitor_waitForAgentMetadata(t *testing.T) {
 
 	cancel()
 
-	for _ = range updates {
+	for range updates {
 		// exhaust other events
 	}
 	_, ok = <-updates
