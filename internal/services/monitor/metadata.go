@@ -13,8 +13,8 @@ import (
 )
 
 type Metadata struct {
-	ClusterID string
-	ProcessID uint64
+	ClusterID string `json:"clusterId"`
+	ProcessID uint64 `json:"processId"`
 }
 
 func (m *Metadata) Save(file string) error {
