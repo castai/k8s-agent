@@ -35,6 +35,10 @@ func Test_monitor_waitForAgentMetadata(t *testing.T) {
 	require.Equal(t, uint64(123), metadata.ProcessID)
 
 	cancel()
+
+	for _ = range updates {
+		// exhaust other events
+	}
 	_, ok = <-updates
 	require.False(t, ok, "after ctx is done, updates channel should get closed as watcher exits")
 }
