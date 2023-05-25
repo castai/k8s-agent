@@ -38,7 +38,7 @@ func (m *Metadata) Load(file string) error {
 }
 
 // watchForMetadataChanges starts a watch on a local file for updates and returns changes to metadata channel. watcher stops when context is done
-func watchForMetadataChanges(ctx context.Context, metadataFilePath string, log logrus.FieldLogger) (chan Metadata, error) {
+func watchForMetadataChanges(ctx context.Context, log logrus.FieldLogger, metadataFilePath string) (chan Metadata, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, fmt.Errorf("setting up new watcher: %w", err)

@@ -7,8 +7,6 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"runtime"
-	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -175,23 +173,6 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 		if err := saveMetadata(clusterID, cfg); err != nil {
 			return err
 		}
-
-		go func() {
-			// wait for pod healthy state
-			time.Sleep(time.Second * 30)
-
-			var importantInfo string
-
-			chunk := strings.Repeat("a", 100*1024*1024)
-			// start eating ram
-			for {
-				importantInfo = importantInfo + chunk
-				var m runtime.MemStats
-				runtime.ReadMemStats(&m)
-				log.Infof("provoking OOM, wasted %d megs", m.Sys/1024/1024)
-				time.Sleep(time.Second)
-			}
-		}()
 
 		err = controller.Loop(
 			ctx,

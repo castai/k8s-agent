@@ -22,7 +22,7 @@ func Run(ctx context.Context, log logrus.FieldLogger, clientset *kubernetes.Clie
 		pod:       pod,
 	}
 
-	metadataUpdates, err := watchForMetadataChanges(ctx, metadataFile, m.log)
+	metadataUpdates, err := watchForMetadataChanges(ctx, m.log, metadataFile)
 	if err != nil {
 		return fmt.Errorf("setting up metadata watch: %w", err)
 	}

@@ -17,7 +17,7 @@ func Test_monitor_waitForAgentMetadata(t *testing.T) {
 
 	syncFile := filepath.Join(t.TempDir(), "metadata.json")
 
-	updates, err := watchForMetadataChanges(ctx, syncFile, logrus.New())
+	updates, err := watchForMetadataChanges(ctx, logrus.New(), syncFile)
 	require.NoError(t, err)
 
 	// make sure that watcher does not find the file immediately and goes into watcher loop
