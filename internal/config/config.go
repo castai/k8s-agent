@@ -48,6 +48,7 @@ type Log struct {
 type Pod struct {
 	Namespace string `mapstructure:"namespace"`
 	Name      string `mapstructure:"name"`
+	Node      string `mapstructure:"node"`
 }
 
 type API struct {

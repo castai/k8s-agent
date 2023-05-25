@@ -3,9 +3,12 @@ package monitor
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
@@ -51,26 +54,50 @@ func (m *monitor) metadataUpdated(ctx context.Context, metadata Metadata) {
 		return
 	}
 
-	m.reportPodDiagnostics(ctx)
+	m.reportPodDiagnostics(ctx, prevMetadata.ProcessID)
 }
 
-func (m *monitor) reportPodDiagnostics(ctx context.Context) {
+func (m *monitor) reportPodDiagnostics(ctx context.Context, prevProcessPID uint64) {
 	m.log.Errorf("unexpected agent restart detected, fetching k8s events for %s/%s", m.pod.Namespace, m.pod.Name)
 
-	events, err := m.clientset.CoreV1().Events(m.pod.Namespace).List(ctx, metav1.ListOptions{
+	m.logEvents(ctx, m.log.WithField("events_group", fmt.Sprintf("%s/%s", m.pod.Namespace, m.pod.Name)), &metav1.ListOptions{
 		FieldSelector: "involvedObject.name=" + m.pod.Name,
 		TypeMeta: metav1.TypeMeta{
 			Kind: "Pod",
 		},
+	}, func(event *v1.Event) bool {
+		return true
 	})
+	m.logEvents(ctx, m.log.WithFields(logrus.Fields{
+		"events_group": fmt.Sprintf("node/%s", m.pod.Node),
+		"pid":          prevProcessPID,
+	}), &metav1.ListOptions{
+		FieldSelector: "involvedObject.name=" + m.pod.Node,
+		TypeMeta: metav1.TypeMeta{
+			Kind: "Node",
+		},
+	}, func(event *v1.Event) bool {
+		// OOM events are reported on the node, but the only relation to the pod is the killed process PID.
+		return strings.Contains(event.Message, fmt.Sprintf("%d", prevProcessPID))
+	})
+}
+
+func (m *monitor) logEvents(ctx context.Context, log logrus.FieldLogger, listOptions *metav1.ListOptions, filter func(event *v1.Event) bool) {
+	events, err := m.clientset.CoreV1().Events(m.pod.Namespace).List(ctx, *listOptions)
 	if err != nil {
-		m.log.Errorf("failed fetching k8s events after agent restart: %v", err)
-	} else {
-		if len(events.Items) == 0 {
-			m.log.Warnf("no k8s events detected for %s/%s", m.pod.Namespace, m.pod.Name)
-		}
-		for _, e := range events.Items {
-			m.log.Errorf("k8s events detected: TYPE:%s REASON:%s TIMESTAMP:%s MESSAGE:%s", e.Type, e.Reason, e.LastTimestamp.UTC().Format(time.RFC3339), e.Message)
-		}
+		log.Errorf("failed fetching k8s events after agent restart: %v", err)
+		return
+	}
+	relevantEvents := lo.Filter(events.Items, func(e v1.Event, _ int) bool {
+		return e.Type == v1.EventTypeNormal || !filter(&e)
+	})
+
+	if len(relevantEvents) == 0 {
+		log.Warnf("no relevant k8s events detected out of %d retrieved", len(events.Items))
+		return
+	}
+
+	for _, e := range relevantEvents {
+		log.Errorf("k8s events detected: TYPE:%s REASON:%s TIMESTAMP:%s MESSAGE:%s", e.Type, e.Reason, e.LastTimestamp.UTC().Format(time.RFC3339), e.Message)
 	}
 }
