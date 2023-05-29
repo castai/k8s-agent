@@ -27,6 +27,7 @@ import (
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller"
 	"castai-agent/internal/services/discovery"
+	"castai-agent/internal/services/monitor"
 	"castai-agent/internal/services/providers"
 	"castai-agent/internal/services/replicas"
 	castailog "castai-agent/pkg/log"
@@ -69,14 +70,22 @@ func main() {
 	}
 
 	ctx := signals.SetupSignalHandler()
-	if err := run(ctx, castaiClient, log, cfg, clusterIDHandler); err != nil {
-		log.Fatalf("agent failed: %v", err)
+
+	switch cfg.Mode {
+	case config.ModeMonitor:
+		if err := runMonitorMode(ctx, log, cfg, clusterIDHandler); err != nil {
+			log.Errorf("monitor failed: %v", err)
+		}
+	default:
+		if err := runAgentMode(ctx, castaiClient, log, cfg, clusterIDHandler); err != nil {
+			log.Errorf("agent failed: %v", err)
+		}
 	}
 
-	log.Info("agent shutdown")
+	log.Infof("%s shutdown", cfg.Mode)
 }
 
-func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg config.Config, clusterIDChanged func(clusterID string)) error {
+func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg config.Config, clusterIDChanged func(clusterID string)) error {
 	ctx, ctxCancel := context.WithCancel(ctx)
 	defer ctxCancel()
 
@@ -161,6 +170,10 @@ func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg
 			log.Infof("clusterID: %s provided by env variable", clusterID)
 		}
 
+		if err := saveMetadata(clusterID, cfg); err != nil {
+			return err
+		}
+
 		err = controller.Loop(
 			ctx,
 			log,
@@ -184,6 +197,30 @@ func run(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg
 		exitCh <- leaderFunc(ctx)
 	})
 	return nil
+}
+
+func saveMetadata(clusterID string, cfg config.Config) error {
+	metadata := monitor.Metadata{
+		ClusterID: clusterID,
+		ProcessID: uint64(os.Getpid()),
+	}
+	if err := metadata.Save(cfg.MonitorMetadata); err != nil {
+		return fmt.Errorf("saving metadata: %w", err)
+	}
+	return nil
+}
+
+func runMonitorMode(ctx context.Context, log *logrus.Entry, cfg config.Config, clusterIDChanged func(clusterID string)) error {
+	restconfig, err := retrieveKubeConfig(log, cfg)
+	if err != nil {
+		return fmt.Errorf("retrieving kubeconfig: %w", err)
+	}
+	clientset, err := kubernetes.NewForConfig(restconfig)
+	if err != nil {
+		return fmt.Errorf("obtaining kubernetes clientset: %w", err)
+	}
+
+	return monitor.Run(ctx, log, clientset, cfg.MonitorMetadata, cfg.SelfPod, clusterIDChanged)
 }
 
 // if any errors are observed on exitCh, context cancel is called, and all errors in the channel are logged

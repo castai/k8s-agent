@@ -12,6 +12,7 @@ import (
 
 type Config struct {
 	Log        Log    `mapstructure:"log"`
+	Mode       Mode   `mapstructure:"mode"`
 	API        API    `mapstructure:"api"`
 	Kubeconfig string `mapstructure:"kubeconfig"`
 
@@ -28,10 +29,26 @@ type Config struct {
 	HealthzPort int         `mapstructure:"healthz_port"`
 
 	LeaderElection LeaderElectionConfig `mapstructure:"leader_election"`
+
+	MonitorMetadata string `mapstructure:"monitor_metadata"`
+	SelfPod         Pod    `mapstructure:"self_pod"`
 }
+
+type Mode string
+
+const (
+	ModeAgent   Mode = "agent"
+	ModeMonitor Mode = "monitor"
+)
 
 type Log struct {
 	Level int `mapstructure:"level"`
+}
+
+type Pod struct {
+	Namespace string `mapstructure:"namespace"`
+	Name      string `mapstructure:"name"`
+	Node      string `mapstructure:"node"`
 }
 
 type API struct {
@@ -105,6 +122,8 @@ func Get() Config {
 	if cfg != nil {
 		return *cfg
 	}
+
+	viper.SetDefault("mode", ModeAgent)
 
 	viper.SetDefault("controller.interval", 15*time.Second)
 	viper.SetDefault("controller.prep_timeout", 10*time.Minute)
