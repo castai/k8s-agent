@@ -57,10 +57,8 @@ func TestSaveMetadata(t *testing.T) {
 			} else {
 				r.Regexp(*tt.expectedError, err.Error())
 			}
-
 		})
 	}
-
 }
 
 func Test_monitor_waitForAgentMetadata(t *testing.T) {
