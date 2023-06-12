@@ -200,12 +200,6 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 }
 
 func saveMetadata(clusterID string, cfg config.Config) error {
-	if cfg.MonitorMetadata == "" {
-		// if monitor is running standalone or with an old chart version, and saving of
-		// metadata is not configured, we don't need to do anything here
-		return nil
-	}
-
 	metadata := monitor.Metadata{
 		ClusterID: clusterID,
 		ProcessID: uint64(os.Getpid()),

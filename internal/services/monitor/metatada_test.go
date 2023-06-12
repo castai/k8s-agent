@@ -2,14 +2,66 @@ package monitor
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 )
+
+func TestSaveMetadata(t *testing.T) {
+
+	tests := map[string]struct {
+		createDir     string
+		file          string
+		expectedError *string
+	}{
+		"not configured": {
+			file:          "",
+			expectedError: nil,
+		},
+		"invalid file dir": {
+			file:          "no_such_dir/abc",
+			expectedError: lo.ToPtr("open.*no such file or directory"),
+		},
+		"valid dir": {
+			createDir: "metadata",
+			file:      "metadata/info",
+		},
+	}
+
+	for testName, tt := range tests {
+		tt := tt
+		t.Run(testName, func(t *testing.T) {
+			r := require.New(t)
+			baseDir := t.TempDir()
+			if tt.createDir != "" {
+				r.NoError(os.MkdirAll(filepath.Join(baseDir, tt.createDir), 0700))
+			}
+			m := Metadata{
+				ClusterID: uuid.New().String(),
+				ProcessID: 123,
+			}
+			saveTo := tt.file
+			if tt.file != "" {
+				saveTo = filepath.Join(baseDir, tt.file)
+			}
+
+			err := m.Save(saveTo)
+			if tt.expectedError == nil {
+				r.NoError(err)
+			} else {
+				r.Regexp(*tt.expectedError, err.Error())
+			}
+
+		})
+	}
+
+}
 
 func Test_monitor_waitForAgentMetadata(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
