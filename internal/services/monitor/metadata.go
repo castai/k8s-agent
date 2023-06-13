@@ -18,6 +18,11 @@ type Metadata struct {
 }
 
 func (m *Metadata) Save(file string) error {
+	if file == "" {
+		// if monitor is running standalone or with an old chart version, and saving of
+		// metadata is not configured, we don't need to do anything here
+		return nil
+	}
 	contents, err := json.Marshal(m)
 	if err != nil {
 		return fmt.Errorf("marshaling: %w", err)
