@@ -29,7 +29,7 @@ func NewHandledInformer(
 	queue workqueue.Interface,
 	informer cache.SharedInformer,
 	handledType reflect.Type,
-	filters ...filters.Filter,
+	filters filters.Filters,
 ) *HandledInformer {
 	log = log.WithField("informer", handledType.String())
 	handler := handlers.NewHandler(log, queue, handledType, filters, defaultTransformers)
