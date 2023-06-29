@@ -105,7 +105,7 @@ func New(
 
 	handledInformers := map[reflect.Type]*custominformers.HandledInformer{}
 	for typ, informer := range typesWithDefaultInformers {
-		handledInformers[typ] = custominformers.NewHandledInformer(log, queue, informer, typ, nil)
+		handledInformers[typ] = custominformers.NewHandledInformer(log, queue, informer, typ, filters.Filters{{}})
 	}
 
 	eventType := reflect.TypeOf(&corev1.Event{})
@@ -248,7 +248,7 @@ func (c *Controller) Run(ctx context.Context) error {
 				return custominformers.NewPodMetricsInformer(c.log, c.metricsClient)
 			})
 
-			informer := custominformers.NewHandledInformer(c.log, c.queue, metricsInformer, podMetricsType, nil)
+			informer := custominformers.NewHandledInformer(c.log, c.queue, metricsInformer, podMetricsType, filters.Filters{{}})
 			informer.Run(ctx.Done())
 
 			return true, nil
