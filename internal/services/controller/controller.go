@@ -2,6 +2,9 @@
 package controller
 
 import (
+	"castai-agent/internal/services/controller/handlers/filters"
+	"castai-agent/internal/services/controller/handlers/filters/autoscalerevents"
+	"castai-agent/internal/services/controller/handlers/filters/oomevents"
 	"context"
 	"encoding/json"
 	"errors"
@@ -30,7 +33,6 @@ import (
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller/delta"
-	"castai-agent/internal/services/controller/handlers/filters/oomevents"
 	custominformers "castai-agent/internal/services/controller/informers"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/internal/services/version"
@@ -103,7 +105,7 @@ func New(
 
 	handledInformers := map[reflect.Type]*custominformers.HandledInformer{}
 	for typ, informer := range typesWithDefaultInformers {
-		handledInformers[typ] = custominformers.NewHandledInformer(log, queue, informer, typ)
+		handledInformers[typ] = custominformers.NewHandledInformer(log, queue, informer, typ, nil)
 	}
 
 	eventType := reflect.TypeOf(&corev1.Event{})
@@ -112,7 +114,14 @@ func New(
 		queue,
 		f.Core().V1().Events().Informer(),
 		eventType,
-		oomevents.Filter,
+		filters.Filters{
+			{
+				autoscalerevents.Filter,
+			},
+			{
+				oomevents.Filter,
+			},
+		},
 	)
 
 	return &Controller{
@@ -239,7 +248,7 @@ func (c *Controller) Run(ctx context.Context) error {
 				return custominformers.NewPodMetricsInformer(c.log, c.metricsClient)
 			})
 
-			informer := custominformers.NewHandledInformer(c.log, c.queue, metricsInformer, podMetricsType)
+			informer := custominformers.NewHandledInformer(c.log, c.queue, metricsInformer, podMetricsType, nil)
 			informer.Run(ctx.Done())
 
 			return true, nil
