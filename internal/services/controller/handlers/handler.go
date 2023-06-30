@@ -53,7 +53,7 @@ func (h *handler) OnDelete(obj interface{}) {
 }
 
 func (h *handler) handle(e castai.EventType, obj interface{}) {
-	if !h.filters.Apply(e, obj) {
+	if len(h.filters) > 0 && !h.filters.Apply(e, obj) {
 		return
 	}
 
