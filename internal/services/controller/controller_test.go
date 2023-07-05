@@ -72,8 +72,8 @@ func TestController_HappyPath(t *testing.T) {
 	clientset := fake.NewSimpleClientset(node, pod)
 	metricsClient := metrics_fake.NewSimpleClientset()
 
-	version.EXPECT().MinorInt().Return(19).MaxTimes(2)
-	version.EXPECT().Full().Return("1.19+").MaxTimes(2)
+	version.EXPECT().MinorInt().Return(21).MaxTimes(3)
+	version.EXPECT().Full().Return("1.21+").MaxTimes(2)
 
 	clusterID := uuid.New()
 
@@ -85,7 +85,7 @@ func TestController_HappyPath(t *testing.T) {
 			defer atomic.AddInt64(&invocations, 1)
 
 			require.Equal(t, clusterID, d.ClusterID)
-			require.Equal(t, "1.19+", d.ClusterVersion)
+			require.Equal(t, "1.21+", d.ClusterVersion)
 			require.True(t, d.FullSnapshot)
 			require.Len(t, d.Items, 2)
 
@@ -146,8 +146,8 @@ func TestNew(t *testing.T) {
 				})
 		metricsClient := metrics_fake.NewSimpleClientset()
 
-		version.EXPECT().MinorInt().Return(19).MaxTimes(2)
-		version.EXPECT().Full().Return("1.19+").MaxTimes(2)
+		version.EXPECT().MinorInt().Return(21).MaxTimes(3)
+		version.EXPECT().Full().Return("1.21+").MaxTimes(2)
 
 		clusterID := uuid.New()
 		agentVersion := &config.AgentVersion{Version: "1.2.3"}

@@ -5,6 +5,7 @@ import (
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -19,6 +20,7 @@ var builder = runtime.SchemeBuilder{
 	batchv1.AddToScheme,
 	autoscalingv1.AddToScheme,
 	v1beta1.AddToScheme,
+	policyv1.AddToScheme,
 }
 
 func init() {

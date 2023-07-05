@@ -46,8 +46,8 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 	metricsClient := metrics_fake.NewSimpleClientset()
 	f := informers.NewSharedInformerFactory(clientset, 0)
 
-	version.EXPECT().MinorInt().Return(19).MaxTimes(2)
-	version.EXPECT().Full().Return("1.19+").MaxTimes(2)
+	version.EXPECT().MinorInt().Return(21).MaxTimes(3)
+	version.EXPECT().Full().Return("1.21+").MaxTimes(2)
 
 	clusterID := uuid.New()
 	log := logrus.New()
@@ -61,7 +61,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 			defer atomic.AddInt64(&invocations, 1)
 
 			require.Equal(t, clusterID, d.ClusterID)
-			require.Equal(t, "1.19+", d.ClusterVersion)
+			require.Equal(t, "1.21+", d.ClusterVersion)
 			require.True(t, d.FullSnapshot)
 			require.Len(t, d.Items, 0)
 
@@ -78,7 +78,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 			defer atomic.AddInt64(&invocations, 1)
 
 			require.Equal(t, clusterID, d.ClusterID)
-			require.Equal(t, "1.19+", d.ClusterVersion)
+			require.Equal(t, "1.21+", d.ClusterVersion)
 			require.False(t, d.FullSnapshot)
 			require.Len(t, d.Items, 1)
 
@@ -102,7 +102,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 			defer atomic.AddInt64(&invocations, 1)
 
 			require.Equal(t, clusterID, d.ClusterID)
-			require.Equal(t, "1.19+", d.ClusterVersion)
+			require.Equal(t, "1.21+", d.ClusterVersion)
 			require.False(t, d.FullSnapshot)
 			require.Len(t, d.Items, 1)
 

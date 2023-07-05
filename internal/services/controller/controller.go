@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	policyv1 "k8s.io/api/policy/v1"
 	"reflect"
 	"sync"
 	"time"
@@ -101,6 +102,11 @@ func New(
 	if v.MinorInt() >= 18 {
 		typesWithDefaultInformers[reflect.TypeOf(&autoscalingv1.HorizontalPodAutoscaler{})] =
 			f.Autoscaling().V1().HorizontalPodAutoscalers().Informer()
+	}
+
+	if v.MinorInt() >= 21 {
+		typesWithDefaultInformers[reflect.TypeOf(&policyv1.PodDisruptionBudget{})] =
+			f.Policy().V1().PodDisruptionBudgets().Informer()
 	}
 
 	handledInformers := map[reflect.Type]*custominformers.HandledInformer{}

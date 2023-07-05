@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	policyv1 "k8s.io/api/policy/v1"
 	"reflect"
 	"testing"
 
@@ -72,7 +73,14 @@ func Test_handler(t *testing.T) {
 		},
 	}
 
-	items := []delta.Object{pod, node, pv, pvc, rc, ns, service, hpa}
+	pdb := &policyv1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "poddisruptionbudget",
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+
+	items := []delta.Object{pod, node, pv, pvc, rc, ns, service, hpa, pdb}
 
 	for _, item := range items {
 		item := item
