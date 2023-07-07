@@ -1,6 +1,15 @@
 linters:
+  disable-all: true
   enable:
-    - goimports
+    - gci
 
-goimports:
-  enabled: true
+linters-settings:
+  gci:
+    sections:
+      - standard
+      - default
+      - prefix(castai-agent)
+
+run:
+  skip-dirs:
+    - mock
