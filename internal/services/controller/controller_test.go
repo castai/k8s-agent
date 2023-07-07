@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	"reflect"
 	"sync/atomic"
 	"testing"
@@ -69,10 +72,69 @@ func TestController_HappyPath(t *testing.T) {
 	podData, err := delta.Encode(pod)
 	require.NoError(t, err)
 
-	clientset := fake.NewSimpleClientset(node, pod)
+	pdb := &policyv1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "poddisruptionbudget",
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+	pdbData, err := delta.Encode(pdb)
+	require.NoError(t, err)
+
+	hpa := &autoscalingv1.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "horizontalpodautoscaler",
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+	hpaData, err := delta.Encode(hpa)
+	require.NoError(t, err)
+
+	csi := &storagev1.CSINode{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "csinode",
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+	csiData, err := delta.Encode(csi)
+	require.NoError(t, err)
+
+	clientset := fake.NewSimpleClientset(node, pod, pdb)
+	clientset.Fake.Resources = []*metav1.APIResourceList{
+		{
+			GroupVersion: policyv1.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Name:       "poddisruptionbudgets",
+					Namespaced: true,
+					Kind:       "PodDisruptionBudget",
+				},
+			},
+		},
+		{
+			GroupVersion: autoscalingv1.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Name:       "horizontalpodautoscalers",
+					Namespaced: true,
+					Kind:       "HorizontalPodAutoscaler",
+				},
+			},
+		},
+		{
+			GroupVersion: storagev1.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Name:       "csinodes",
+					Namespaced: true,
+					Kind:       "CSINode",
+				},
+			},
+		},
+	}
+
 	metricsClient := metrics_fake.NewSimpleClientset()
 
-	version.EXPECT().MinorInt().Return(21).MaxTimes(3)
 	version.EXPECT().Full().Return("1.21+").MaxTimes(2)
 
 	clusterID := uuid.New()
@@ -87,7 +149,7 @@ func TestController_HappyPath(t *testing.T) {
 			require.Equal(t, clusterID, d.ClusterID)
 			require.Equal(t, "1.21+", d.ClusterVersion)
 			require.True(t, d.FullSnapshot)
-			require.Len(t, d.Items, 2)
+			require.Len(t, d.Items, 3)
 
 			var actualValues []string
 			for _, item := range d.Items {
@@ -96,6 +158,9 @@ func TestController_HappyPath(t *testing.T) {
 
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Node", nodeData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Pod", podData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "PodDisruptionBudget", pdbData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "HorizontalPodAutoscaler", hpaData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "CSINode", csiData))
 
 			return nil
 		})
@@ -146,7 +211,6 @@ func TestNew(t *testing.T) {
 				})
 		metricsClient := metrics_fake.NewSimpleClientset()
 
-		version.EXPECT().MinorInt().Return(21).MaxTimes(3)
 		version.EXPECT().Full().Return("1.21+").MaxTimes(2)
 
 		clusterID := uuid.New()

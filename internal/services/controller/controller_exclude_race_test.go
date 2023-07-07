@@ -46,7 +46,6 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 	metricsClient := metrics_fake.NewSimpleClientset()
 	f := informers.NewSharedInformerFactory(clientset, 0)
 
-	version.EXPECT().MinorInt().Return(21).MaxTimes(3)
 	version.EXPECT().Full().Return("1.21+").MaxTimes(2)
 
 	clusterID := uuid.New()

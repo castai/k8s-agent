@@ -11,6 +11,7 @@ import (
 	"fmt"
 	policyv1 "k8s.io/api/policy/v1"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -62,6 +63,15 @@ type Controller struct {
 	healthzProvider *HealthzProvider
 }
 
+type conditionalInformer struct {
+	// groupVersion is the group and version of the API type, ex.: "policy/v1"
+	groupVersion string
+	// apiType is the type of the API object, ex.: "*v1.PodDisruptionBudget"
+	apiType reflect.Type
+	// informer is the informer for the API type
+	informer cache.SharedInformer
+}
+
 func New(
 	log logrus.FieldLogger,
 	f informers.SharedInformerFactory,
@@ -95,19 +105,22 @@ func New(
 		reflect.TypeOf(&batchv1.Job{}):                  f.Batch().V1().Jobs().Informer(),
 	}
 
-	if v.MinorInt() >= 17 {
-		typesWithDefaultInformers[reflect.TypeOf(&storagev1.CSINode{})] = f.Storage().V1().CSINodes().Informer()
-	}
-
-	if v.MinorInt() >= 18 {
-		typesWithDefaultInformers[reflect.TypeOf(&autoscalingv1.HorizontalPodAutoscaler{})] =
-			f.Autoscaling().V1().HorizontalPodAutoscalers().Informer()
-	}
-
-	if v.MinorInt() >= 21 {
-		typesWithDefaultInformers[reflect.TypeOf(&policyv1.PodDisruptionBudget{})] =
-			f.Policy().V1().PodDisruptionBudgets().Informer()
-	}
+	typesWithDefaultInformers = applyInformersIfAvailable(discovery, log, typesWithDefaultInformers,
+		conditionalInformer{
+			groupVersion: policyv1.SchemeGroupVersion.String(),
+			apiType:      reflect.TypeOf(&policyv1.PodDisruptionBudget{}),
+			informer:     f.Policy().V1().PodDisruptionBudgets().Informer(),
+		},
+		conditionalInformer{
+			groupVersion: storagev1.SchemeGroupVersion.String(),
+			apiType:      reflect.TypeOf(&storagev1.CSINode{}),
+			informer:     f.Storage().V1().CSINodes().Informer(),
+		},
+		conditionalInformer{
+			groupVersion: autoscalingv1.SchemeGroupVersion.String(),
+			apiType:      reflect.TypeOf(&autoscalingv1.HorizontalPodAutoscaler{}),
+			informer:     f.Autoscaling().V1().HorizontalPodAutoscalers().Informer(),
+		})
 
 	handledInformers := map[reflect.Type]*custominformers.HandledInformer{}
 	for typ, informer := range typesWithDefaultInformers {
@@ -399,4 +412,30 @@ func (c *Controller) debugQueueContent(maxItems int) string {
 	}
 
 	return content
+}
+
+func applyInformersIfAvailable(client discovery.DiscoveryInterface, log logrus.FieldLogger, defaultInformers map[reflect.Type]cache.SharedInformer, additionalInformers ...conditionalInformer) map[reflect.Type]cache.SharedInformer {
+	informersMap := defaultInformers
+
+	for _, additionalInformer := range additionalInformers {
+		if isResourceAvailable(client, log, additionalInformer.groupVersion, additionalInformer.apiType) {
+			informersMap[additionalInformer.apiType] = additionalInformer.informer
+		}
+	}
+	return informersMap
+}
+
+func isResourceAvailable(client discovery.DiscoveryInterface, log logrus.FieldLogger, groupVersion string, kind reflect.Type) bool {
+	apiResourceList, err := client.ServerResourcesForGroupVersion(groupVersion)
+	if err != nil {
+		log.Warnf("Error when getting server resources for group version %s: %v", groupVersion, err.Error())
+		return false
+	}
+	for _, apiResource := range apiResourceList.APIResources {
+		// apiResource.Kind is, ex.: "PodMetrics", while kind.String() is, ex.: "*v1.PodMetrics"
+		if apiResource.Kind == strings.TrimPrefix(kind.String(), "*v1.") {
+			return true
+		}
+	}
+	return false
 }
