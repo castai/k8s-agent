@@ -1,6 +1,9 @@
 lint:
 	golangci-lint run ./...
 
+fix-lint:
+	golangci-lint run ./... --fix
+
 build:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w" -o bin/castai-agent-amd64 .
 	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-s -w" -o bin/castai-agent-arm64 .
