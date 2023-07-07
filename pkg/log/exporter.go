@@ -7,10 +7,9 @@ import (
 	"time"
 
 	"github.com/samber/lo"
+	"github.com/sirupsen/logrus"
 
 	"castai-agent/internal/castai"
-
-	"github.com/sirupsen/logrus"
 )
 
 type Exporter interface {

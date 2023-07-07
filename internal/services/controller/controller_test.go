@@ -4,9 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	autoscalingv1 "k8s.io/api/autoscaling/v1"
-	policyv1 "k8s.io/api/policy/v1"
-	storagev1 "k8s.io/api/storage/v1"
 	"reflect"
 	"sync/atomic"
 	"testing"
@@ -17,7 +14,10 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	v1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -74,7 +74,7 @@ func TestController_HappyPath(t *testing.T) {
 
 	pdb := &policyv1.PodDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "poddisruptionbudget",
+			Name:      "poddisruptionbudgets",
 			Namespace: v1.NamespaceDefault,
 		},
 	}
@@ -83,7 +83,7 @@ func TestController_HappyPath(t *testing.T) {
 
 	hpa := &autoscalingv1.HorizontalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "horizontalpodautoscaler",
+			Name:      "horizontalpodautoscalers",
 			Namespace: v1.NamespaceDefault,
 		},
 	}
@@ -92,14 +92,14 @@ func TestController_HappyPath(t *testing.T) {
 
 	csi := &storagev1.CSINode{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "csinode",
+			Name:      "csinodes",
 			Namespace: v1.NamespaceDefault,
 		},
 	}
 	csiData, err := delta.Encode(csi)
 	require.NoError(t, err)
 
-	clientset := fake.NewSimpleClientset(node, pod, pdb)
+	clientset := fake.NewSimpleClientset(node, pod, pdb, hpa, csi)
 	clientset.Fake.Resources = []*metav1.APIResourceList{
 		{
 			GroupVersion: policyv1.SchemeGroupVersion.String(),
@@ -149,7 +149,7 @@ func TestController_HappyPath(t *testing.T) {
 			require.Equal(t, clusterID, d.ClusterID)
 			require.Equal(t, "1.21+", d.ClusterVersion)
 			require.True(t, d.FullSnapshot)
-			require.Len(t, d.Items, 3)
+			require.Len(t, d.Items, 5)
 
 			var actualValues []string
 			for _, item := range d.Items {

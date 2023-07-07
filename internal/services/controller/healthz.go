@@ -2,9 +2,10 @@ package controller
 
 import (
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"net/http"
 	"time"
+
+	"github.com/sirupsen/logrus"
 
 	"castai-agent/internal/config"
 )

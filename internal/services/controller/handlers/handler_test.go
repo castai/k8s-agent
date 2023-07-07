@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	policyv1 "k8s.io/api/policy/v1"
 	"reflect"
 	"testing"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	v1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"castai-agent/internal/castai"

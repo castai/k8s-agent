@@ -1,9 +1,11 @@
 package filters
 
 import (
-	"castai-agent/internal/castai"
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"castai-agent/internal/castai"
 )
 
 func TestFilters_Apply(t *testing.T) {

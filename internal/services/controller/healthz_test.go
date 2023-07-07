@@ -1,10 +1,10 @@
 package controller
 
 import (
-	"github.com/sirupsen/logrus"
 	"testing"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
 	"castai-agent/internal/config"

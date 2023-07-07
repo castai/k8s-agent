@@ -1,8 +1,9 @@
 package autoscalerevents
 
 import (
-	"castai-agent/internal/castai"
 	corev1 "k8s.io/api/core/v1"
+
+	"castai-agent/internal/castai"
 )
 
 const (

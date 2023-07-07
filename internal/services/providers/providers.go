@@ -4,18 +4,16 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/dynamic"
 
+	"castai-agent/internal/config"
 	"castai-agent/internal/services/discovery"
 	"castai-agent/internal/services/providers/aks"
-	"castai-agent/internal/services/providers/openshift"
-
-	"github.com/sirupsen/logrus"
-
-	"castai-agent/internal/config"
 	"castai-agent/internal/services/providers/eks"
 	"castai-agent/internal/services/providers/gke"
 	"castai-agent/internal/services/providers/kops"
+	"castai-agent/internal/services/providers/openshift"
 	"castai-agent/internal/services/providers/types"
 )
 

@@ -1,15 +1,17 @@
 package replicas
 
 import (
-	"castai-agent/internal/config"
 	"context"
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
-	"time"
+
+	"castai-agent/internal/config"
 )
 
 type Replica func(ctx context.Context)

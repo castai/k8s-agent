@@ -2,14 +2,10 @@
 package controller
 
 import (
-	"castai-agent/internal/services/controller/handlers/filters"
-	"castai-agent/internal/services/controller/handlers/filters/autoscalerevents"
-	"castai-agent/internal/services/controller/handlers/filters/oomevents"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	policyv1 "k8s.io/api/policy/v1"
 	"reflect"
 	"strings"
 	"sync"
@@ -21,6 +17,7 @@ import (
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -35,6 +32,9 @@ import (
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller/delta"
+	"castai-agent/internal/services/controller/handlers/filters"
+	"castai-agent/internal/services/controller/handlers/filters/autoscalerevents"
+	"castai-agent/internal/services/controller/handlers/filters/oomevents"
 	custominformers "castai-agent/internal/services/controller/informers"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/internal/services/version"
@@ -414,12 +414,11 @@ func (c *Controller) debugQueueContent(maxItems int) string {
 	return content
 }
 
-func applyInformersIfAvailable(client discovery.DiscoveryInterface, log logrus.FieldLogger, defaultInformers map[reflect.Type]cache.SharedInformer, additionalInformers ...conditionalInformer) map[reflect.Type]cache.SharedInformer {
+func applyInformersIfAvailable(client discovery.DiscoveryInterface, log logrus.FieldLogger, defaultInformers map[reflect.Type]cache.SharedInformer, conditionalInformers ...conditionalInformer) map[reflect.Type]cache.SharedInformer {
 	informersMap := defaultInformers
-
-	for _, additionalInformer := range additionalInformers {
-		if isResourceAvailable(client, log, additionalInformer.groupVersion, additionalInformer.apiType) {
-			informersMap[additionalInformer.apiType] = additionalInformer.informer
+	for _, informer := range conditionalInformers {
+		if isResourceAvailable(client, log, informer.groupVersion, informer.apiType) {
+			informersMap[informer.apiType] = informer.informer
 		}
 	}
 	return informersMap
