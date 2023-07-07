@@ -1,0 +1,6 @@
+linters:
+  enable:
+    - goimports
+
+goimports:
+  enabled: true
