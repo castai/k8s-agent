@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	v1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"castai-agent/internal/castai"
@@ -72,7 +73,14 @@ func Test_handler(t *testing.T) {
 		},
 	}
 
-	items := []delta.Object{pod, node, pv, pvc, rc, ns, service, hpa}
+	pdb := &policyv1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "poddisruptionbudget",
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+
+	items := []delta.Object{pod, node, pv, pvc, rc, ns, service, hpa, pdb}
 
 	for _, item := range items {
 		item := item

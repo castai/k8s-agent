@@ -14,7 +14,10 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	v1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -69,11 +72,58 @@ func TestController_HappyPath(t *testing.T) {
 	podData, err := delta.Encode(pod)
 	require.NoError(t, err)
 
-	clientset := fake.NewSimpleClientset(node, pod)
+	pdb := &policyv1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "poddisruptionbudgets",
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+	pdbData, err := delta.Encode(pdb)
+	require.NoError(t, err)
+
+	hpa := &autoscalingv1.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "horizontalpodautoscalers",
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+	hpaData, err := delta.Encode(hpa)
+	require.NoError(t, err)
+
+	csi := &storagev1.CSINode{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "csinodes",
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+	csiData, err := delta.Encode(csi)
+	require.NoError(t, err)
+
+	clientset := fake.NewSimpleClientset(node, pod, pdb, hpa, csi)
+	clientset.Fake.Resources = []*metav1.APIResourceList{
+		{
+			GroupVersion: autoscalingv1.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Name: "horizontalpodautoscalers",
+					Kind: "HorizontalPodAutoscaler",
+				},
+			},
+		},
+		{
+			GroupVersion: storagev1.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Name: "csinodes",
+					Kind: "CSINode",
+				},
+			},
+		},
+	}
+
 	metricsClient := metrics_fake.NewSimpleClientset()
 
-	version.EXPECT().MinorInt().Return(19).MaxTimes(2)
-	version.EXPECT().Full().Return("1.19+").MaxTimes(2)
+	version.EXPECT().Full().Return("1.21+").MaxTimes(2)
 
 	clusterID := uuid.New()
 
@@ -85,9 +135,9 @@ func TestController_HappyPath(t *testing.T) {
 			defer atomic.AddInt64(&invocations, 1)
 
 			require.Equal(t, clusterID, d.ClusterID)
-			require.Equal(t, "1.19+", d.ClusterVersion)
+			require.Equal(t, "1.21+", d.ClusterVersion)
 			require.True(t, d.FullSnapshot)
-			require.Len(t, d.Items, 2)
+			require.Len(t, d.Items, 5)
 
 			var actualValues []string
 			for _, item := range d.Items {
@@ -96,6 +146,9 @@ func TestController_HappyPath(t *testing.T) {
 
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Node", nodeData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Pod", podData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "PodDisruptionBudget", pdbData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "HorizontalPodAutoscaler", hpaData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "CSINode", csiData))
 
 			return nil
 		})
@@ -123,6 +176,17 @@ func TestController_HappyPath(t *testing.T) {
 		require.NoError(t, ctrl.Run(ctx))
 	}()
 
+	// This adds the PDB resource to the discovery API, so that watcher can pick it up.
+	clientset.Fake.Resources = append(clientset.Fake.Resources, &metav1.APIResourceList{
+		GroupVersion: policyv1.SchemeGroupVersion.String(),
+		APIResources: []metav1.APIResource{
+			{
+				Name: "poddisruptionbudgets",
+				Kind: "PodDisruptionBudget",
+			},
+		},
+	})
+
 	wait.Until(func() {
 		if atomic.LoadInt64(&invocations) >= 1 {
 			cancel()
@@ -146,8 +210,7 @@ func TestNew(t *testing.T) {
 				})
 		metricsClient := metrics_fake.NewSimpleClientset()
 
-		version.EXPECT().MinorInt().Return(19).MaxTimes(2)
-		version.EXPECT().Full().Return("1.19+").MaxTimes(2)
+		version.EXPECT().Full().Return("1.21+").MaxTimes(2)
 
 		clusterID := uuid.New()
 		agentVersion := &config.AgentVersion{Version: "1.2.3"}

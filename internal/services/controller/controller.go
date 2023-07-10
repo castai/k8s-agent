@@ -2,23 +2,21 @@
 package controller
 
 import (
-	"castai-agent/internal/services/controller/handlers/filters"
-	"castai-agent/internal/services/controller/handlers/filters/autoscalerevents"
-	"castai-agent/internal/services/controller/handlers/filters/oomevents"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -33,6 +31,9 @@ import (
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller/delta"
+	"castai-agent/internal/services/controller/handlers/filters"
+	"castai-agent/internal/services/controller/handlers/filters/autoscalerevents"
+	"castai-agent/internal/services/controller/handlers/filters/oomevents"
 	custominformers "castai-agent/internal/services/controller/informers"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/internal/services/version"
@@ -59,6 +60,17 @@ type Controller struct {
 
 	agentVersion    *config.AgentVersion
 	healthzProvider *HealthzProvider
+
+	conditionalInformers []conditionalInformer
+}
+
+type conditionalInformer struct {
+	// groupVersion is the group and version of the API type, ex.: "policy/v1"
+	groupVersion string
+	// apiType is the type of the API object, ex.: "*v1.PodDisruptionBudget"
+	apiType reflect.Type
+	// informer is the informer for the API type
+	informer cache.SharedInformer
 }
 
 func New(
@@ -78,7 +90,7 @@ func New(
 
 	queue := workqueue.NewNamed("castai-agent")
 
-	typesWithDefaultInformers := map[reflect.Type]cache.SharedInformer{
+	defaultInformers := map[reflect.Type]cache.SharedInformer{
 		reflect.TypeOf(&corev1.Node{}):                  f.Core().V1().Nodes().Informer(),
 		reflect.TypeOf(&corev1.Pod{}):                   f.Core().V1().Pods().Informer(),
 		reflect.TypeOf(&corev1.PersistentVolume{}):      f.Core().V1().PersistentVolumes().Informer(),
@@ -94,17 +106,29 @@ func New(
 		reflect.TypeOf(&batchv1.Job{}):                  f.Batch().V1().Jobs().Informer(),
 	}
 
-	if v.MinorInt() >= 17 {
-		typesWithDefaultInformers[reflect.TypeOf(&storagev1.CSINode{})] = f.Storage().V1().CSINodes().Informer()
+	conditionalInformers := []conditionalInformer{
+		{
+			groupVersion: policyv1.SchemeGroupVersion.String(),
+			apiType:      reflect.TypeOf(&policyv1.PodDisruptionBudget{}),
+			informer:     f.Policy().V1().PodDisruptionBudgets().Informer(),
+		},
+		{
+			groupVersion: storagev1.SchemeGroupVersion.String(),
+			apiType:      reflect.TypeOf(&storagev1.CSINode{}),
+			informer:     f.Storage().V1().CSINodes().Informer(),
+		},
+		{
+			groupVersion: autoscalingv1.SchemeGroupVersion.String(),
+			apiType:      reflect.TypeOf(&autoscalingv1.HorizontalPodAutoscaler{}),
+			informer:     f.Autoscaling().V1().HorizontalPodAutoscalers().Informer(),
+		},
 	}
 
-	if v.MinorInt() >= 18 {
-		typesWithDefaultInformers[reflect.TypeOf(&autoscalingv1.HorizontalPodAutoscaler{})] =
-			f.Autoscaling().V1().HorizontalPodAutoscalers().Informer()
-	}
+	//Applies conditional informers if the API type is available in the cluster
+	defaultInformers = applyConditionalInformers(discovery, log, defaultInformers, conditionalInformers)
 
 	handledInformers := map[reflect.Type]*custominformers.HandledInformer{}
-	for typ, informer := range typesWithDefaultInformers {
+	for typ, informer := range defaultInformers {
 		handledInformers[typ] = custominformers.NewHandledInformer(log, queue, informer, typ, nil)
 	}
 
@@ -125,40 +149,21 @@ func New(
 	)
 
 	return &Controller{
-		log:             log,
-		clusterID:       clusterID,
-		castaiclient:    castaiclient,
-		provider:        provider,
-		cfg:             cfg,
-		delta:           delta.New(log, clusterID, v.Full()),
-		queue:           queue,
-		informers:       handledInformers,
-		agentVersion:    agentVersion,
-		healthzProvider: healthzProvider,
-		metricsClient:   metricsClient,
-		discovery:       discovery,
-		informerFactory: f,
+		log:                  log,
+		clusterID:            clusterID,
+		castaiclient:         castaiclient,
+		provider:             provider,
+		cfg:                  cfg,
+		delta:                delta.New(log, clusterID, v.Full()),
+		queue:                queue,
+		informers:            handledInformers,
+		agentVersion:         agentVersion,
+		healthzProvider:      healthzProvider,
+		metricsClient:        metricsClient,
+		discovery:            discovery,
+		informerFactory:      f,
+		conditionalInformers: conditionalInformers,
 	}
-}
-
-func (c *Controller) isMetricsServerAPIAvailable() bool {
-	_, res, err := c.discovery.ServerGroupsAndResources()
-	if err != nil {
-		c.log.Warnf("Error when calling k8s discovery API: %v", err.Error())
-		return false
-	}
-
-	metricsAPIAvailable := lo.SomeBy(res, func(resourceList *metav1.APIResourceList) bool {
-		if resourceList.GroupVersion != "metrics.k8s.io/v1beta1" {
-			return false
-		}
-
-		return lo.SomeBy(resourceList.APIResources, func(resource metav1.APIResource) bool {
-			return resource.Kind == "PodMetrics"
-		})
-	})
-
-	return metricsAPIAvailable
 }
 
 func (c *Controller) Run(ctx context.Context) error {
@@ -236,26 +241,12 @@ func (c *Controller) Run(ctx context.Context) error {
 		}, c.cfg.Interval, ctx.Done())
 	}()
 
+	if missingInformers := c.getMissingConditionalInformers(); len(missingInformers) > 0 {
+		go c.startConditionalInformersWithWatcher(ctx, missingInformers)
+	}
+
 	podMetricsType := reflect.TypeOf(&v1beta1.PodMetrics{})
-	go func() {
-		if err := wait.PollImmediateInfiniteWithContext(ctx, time.Minute*2, func(ctx context.Context) (done bool, err error) {
-			if !c.isMetricsServerAPIAvailable() {
-				return false, nil
-			}
-
-			c.log.Infof("Cluster supports pod metrics, will start collecting them.")
-			metricsInformer := c.informerFactory.InformerFor(&v1beta1.PodMetrics{}, func(_ kubernetes.Interface, _ time.Duration) cache.SharedIndexInformer {
-				return custominformers.NewPodMetricsInformer(c.log, c.metricsClient)
-			})
-
-			informer := custominformers.NewHandledInformer(c.log, c.queue, metricsInformer, podMetricsType, nil)
-			informer.Run(ctx.Done())
-
-			return true, nil
-		}); err != nil {
-			c.log.Warnf("Error when polling resource availability: %v", err.Error())
-		}
-	}()
+	go c.startPodMetricsInformersWithWatcher(ctx, podMetricsType)
 
 	go func() {
 		<-ctx.Done()
@@ -265,6 +256,52 @@ func (c *Controller) Run(ctx context.Context) error {
 	c.pollQueueUntilShutdown()
 
 	return nil
+}
+
+func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, conditionalInformers []conditionalInformer) {
+	if err := wait.PollImmediateInfiniteWithContext(ctx, time.Minute*2, func(ctx context.Context) (done bool, err error) {
+		apiResourceLists := fetchApiResourceLists(c.discovery, c.log)
+		if apiResourceLists == nil {
+			return false, nil
+		}
+
+		c.log.Infof("Cluster API server is available, starting conditional informers")
+		for _, informer := range conditionalInformers {
+			apiResourceListForGroupVersion := getApiResourceListByGroupVersion(informer.groupVersion, apiResourceLists)
+			if isResourceAvailable(informer.apiType, apiResourceListForGroupVersion) {
+				custominformers.NewHandledInformer(c.log, c.queue, informer.informer, informer.apiType, nil)
+			}
+		}
+		return true, nil
+	}); err != nil {
+		c.log.Warnf("Error when waiting for server resources: %v", err.Error())
+	}
+}
+
+func (c *Controller) startPodMetricsInformersWithWatcher(ctx context.Context, podMetricsType reflect.Type) {
+	if err := wait.PollImmediateInfiniteWithContext(ctx, time.Minute*2, func(ctx context.Context) (done bool, err error) {
+		apiResourceLists := fetchApiResourceLists(c.discovery, c.log)
+		if apiResourceLists == nil {
+			return false, nil
+		}
+
+		apiResourceListForGroupVersion := getApiResourceListByGroupVersion(v1beta1.SchemeGroupVersion.String(), apiResourceLists)
+		if !isResourceAvailable(podMetricsType, apiResourceListForGroupVersion) {
+			return false, nil
+		}
+
+		c.log.Infof("Cluster supports pod metrics, will start collecting them.")
+		metricsInformer := c.informerFactory.InformerFor(&v1beta1.PodMetrics{}, func(_ kubernetes.Interface, _ time.Duration) cache.SharedIndexInformer {
+			return custominformers.NewPodMetricsInformer(c.log, c.metricsClient)
+		})
+
+		informer := custominformers.NewHandledInformer(c.log, c.queue, metricsInformer, podMetricsType, nil)
+		informer.Run(ctx.Done())
+
+		return true, nil
+	}); err != nil {
+		c.log.Warnf("Error when polling resource availability: %v", err.Error())
+	}
 }
 
 // collectInitialSnapshot is used to add a time buffer to collect the initial snapshot which is larger than periodic
@@ -393,4 +430,59 @@ func (c *Controller) debugQueueContent(maxItems int) string {
 	}
 
 	return content
+}
+
+func (c *Controller) getMissingConditionalInformers() []conditionalInformer {
+	var missingInformers []conditionalInformer
+	for _, informer := range c.conditionalInformers {
+		if _, ok := c.informers[informer.apiType]; !ok {
+			missingInformers = append(missingInformers, informer)
+		}
+	}
+	return missingInformers
+}
+
+func applyConditionalInformers(client discovery.DiscoveryInterface, log logrus.FieldLogger, defaultInformers map[reflect.Type]cache.SharedInformer, conditionalInformers []conditionalInformer) map[reflect.Type]cache.SharedInformer {
+	apiResourceLists := fetchApiResourceLists(client, log)
+	if apiResourceLists == nil {
+		return defaultInformers
+	}
+
+	informersMap := defaultInformers
+	for _, informer := range conditionalInformers {
+		apiResourceList := getApiResourceListByGroupVersion(informer.groupVersion, apiResourceLists)
+		if isResourceAvailable(informer.apiType, apiResourceList) {
+			informersMap[informer.apiType] = informer.informer
+		}
+	}
+	return informersMap
+}
+
+func fetchApiResourceLists(client discovery.DiscoveryInterface, log logrus.FieldLogger) []*metav1.APIResourceList {
+	_, apiResourceLists, err := client.ServerGroupsAndResources()
+	if err != nil {
+		log.Warnf("Error when getting server resources: %v", err.Error())
+		return nil
+	}
+	return apiResourceLists
+}
+
+func getApiResourceListByGroupVersion(groupVersion string, apiResourceLists []*metav1.APIResourceList) *metav1.APIResourceList {
+	for _, apiResourceList := range apiResourceLists {
+		if apiResourceList.GroupVersion == groupVersion {
+			return apiResourceList
+		}
+	}
+	// return empty list if not found
+	return &metav1.APIResourceList{}
+}
+
+func isResourceAvailable(kind reflect.Type, apiResourceList *metav1.APIResourceList) bool {
+	for _, apiResource := range apiResourceList.APIResources {
+		// apiResource.Kind is, ex.: "PodMetrics", while kind.String() is, ex.: "*v1.PodMetrics"
+		if strings.Contains(kind.String(), apiResource.Kind) {
+			return true
+		}
+	}
+	return false
 }

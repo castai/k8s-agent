@@ -15,10 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/util/wait"
-
 	"github.com/go-resty/resty/v2"
 	"github.com/sirupsen/logrus"
+	"k8s.io/apimachinery/pkg/util/wait"
 
 	"castai-agent/internal/config"
 )

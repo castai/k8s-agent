@@ -1,11 +1,13 @@
 package oomevents
 
 import (
-	"castai-agent/internal/castai"
+	"testing"
+
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"testing"
+
+	"castai-agent/internal/castai"
 )
 
 func TestFilter(t *testing.T) {

@@ -6,8 +6,6 @@ import (
 	"os"
 	"testing"
 
-	mock_client "castai-agent/internal/services/providers/gke/client/mock"
-
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -17,6 +15,7 @@ import (
 
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
+	mock_client "castai-agent/internal/services/providers/gke/client/mock"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/pkg/labels"
 )
