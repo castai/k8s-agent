@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"reflect"
 	"sync/atomic"
 	"testing"
@@ -20,7 +21,6 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
@@ -102,15 +102,6 @@ func TestController_HappyPath(t *testing.T) {
 	clientset := fake.NewSimpleClientset(node, pod, pdb, hpa, csi)
 	clientset.Fake.Resources = []*metav1.APIResourceList{
 		{
-			GroupVersion: policyv1.SchemeGroupVersion.String(),
-			APIResources: []metav1.APIResource{
-				{
-					Name: "poddisruptionbudgets",
-					Kind: "PodDisruptionBudget",
-				},
-			},
-		},
-		{
 			GroupVersion: autoscalingv1.SchemeGroupVersion.String(),
 			APIResources: []metav1.APIResource{
 				{
@@ -183,6 +174,19 @@ func TestController_HappyPath(t *testing.T) {
 
 	go func() {
 		require.NoError(t, ctrl.Run(ctx))
+	}()
+
+	// This adds the PDB resource async to the discovery API
+	go func() {
+		clientset.Fake.Resources = append(clientset.Fake.Resources, &metav1.APIResourceList{
+			GroupVersion: policyv1.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Name: "poddisruptionbudgets",
+					Kind: "PodDisruptionBudget",
+				},
+			},
+		})
 	}()
 
 	wait.Until(func() {

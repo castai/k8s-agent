@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"reflect"
 	"strings"
 	"sync"
@@ -259,13 +260,15 @@ func (c *Controller) Run(ctx context.Context) error {
 
 func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, conditionalInformers []conditionalInformer) {
 	if err := wait.PollImmediateInfiniteWithContext(ctx, time.Minute*2, func(ctx context.Context) (done bool, err error) {
-		if !isClusterAPIAvailable(c.discovery, c.log) {
+		apiResourceLists := fetchApiResourceLists(c.discovery, c.log)
+		if apiResourceLists == nil {
 			return false, nil
 		}
 
 		c.log.Infof("Cluster API server is available, starting conditional informers")
 		for _, informer := range conditionalInformers {
-			if isResourceAvailable(c.discovery, c.log, informer.groupVersion, informer.apiType) {
+			apiResourceListForGroupVersion := getApiResourceListByGroupVersion(informer.groupVersion, apiResourceLists)
+			if isResourceAvailable(informer.apiType, apiResourceListForGroupVersion) {
 				custominformers.NewHandledInformer(c.log, c.queue, informer.informer, informer.apiType, nil)
 			}
 		}
@@ -277,7 +280,13 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 
 func (c *Controller) startPodMetricsInformersWithWatcher(ctx context.Context, podMetricsType reflect.Type) {
 	if err := wait.PollImmediateInfiniteWithContext(ctx, time.Minute*2, func(ctx context.Context) (done bool, err error) {
-		if !isClusterAPIAvailable(c.discovery, c.log) || !isResourceAvailable(c.discovery, c.log, v1beta1.SchemeGroupVersion.String(), podMetricsType) {
+		apiResourceLists := fetchApiResourceLists(c.discovery, c.log)
+		if apiResourceLists == nil {
+			return false, nil
+		}
+
+		apiResourceListForGroupVersion := getApiResourceListByGroupVersion(v1beta1.SchemeGroupVersion.String(), apiResourceLists)
+		if !isResourceAvailable(podMetricsType, apiResourceListForGroupVersion) {
 			return false, nil
 		}
 
@@ -433,31 +442,42 @@ func (c *Controller) getMissingConditionalInformers() []conditionalInformer {
 	return missingInformers
 }
 
-func isClusterAPIAvailable(client discovery.DiscoveryInterface, log logrus.FieldLogger) bool {
-	_, err := client.ServerGroups()
-	if err != nil {
-		log.Warnf("Error when calling k8s discovery API: %v", err.Error())
-		return false
-	}
-	return true
-}
-
 func applyConditionalInformers(client discovery.DiscoveryInterface, log logrus.FieldLogger, defaultInformers map[reflect.Type]cache.SharedInformer, conditionalInformers []conditionalInformer) map[reflect.Type]cache.SharedInformer {
+	apiResourceLists := fetchApiResourceLists(client, log)
+	if apiResourceLists == nil {
+		return defaultInformers
+	}
+
 	informersMap := defaultInformers
 	for _, informer := range conditionalInformers {
-		if isResourceAvailable(client, log, informer.groupVersion, informer.apiType) {
+		apiResourceList := getApiResourceListByGroupVersion(informer.groupVersion, apiResourceLists)
+		if isResourceAvailable(informer.apiType, apiResourceList) {
 			informersMap[informer.apiType] = informer.informer
 		}
 	}
 	return informersMap
 }
 
-func isResourceAvailable(client discovery.DiscoveryInterface, log logrus.FieldLogger, groupVersion string, kind reflect.Type) bool {
-	apiResourceList, err := client.ServerResourcesForGroupVersion(groupVersion)
+func fetchApiResourceLists(client discovery.DiscoveryInterface, log logrus.FieldLogger) []*metav1.APIResourceList {
+	_, apiResourceLists, err := client.ServerGroupsAndResources()
 	if err != nil {
-		log.Warnf("Error when getting server resources for group version %s: %v", groupVersion, err.Error())
-		return false
+		log.Warnf("Error when getting server resources: %v", err.Error())
+		return nil
 	}
+	return apiResourceLists
+}
+
+func getApiResourceListByGroupVersion(groupVersion string, apiResourceLists []*metav1.APIResourceList) *metav1.APIResourceList {
+	for _, apiResourceList := range apiResourceLists {
+		if apiResourceList.GroupVersion == groupVersion {
+			return apiResourceList
+		}
+	}
+	// return empty list if not found
+	return &metav1.APIResourceList{}
+}
+
+func isResourceAvailable(kind reflect.Type, apiResourceList *metav1.APIResourceList) bool {
 	for _, apiResource := range apiResourceList.APIResources {
 		// apiResource.Kind is, ex.: "PodMetrics", while kind.String() is, ex.: "*v1.PodMetrics"
 		if strings.Contains(kind.String(), apiResource.Kind) {
