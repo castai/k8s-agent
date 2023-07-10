@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -62,6 +63,8 @@ func TestController_HappyPath(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	var resourcesMutex sync.Mutex
+
 	node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node1", Labels: map[string]string{}}}
 	expectedNode := node.DeepCopy()
 	expectedNode.Labels[labels.CastaiFakeSpot] = "true"
@@ -101,15 +104,6 @@ func TestController_HappyPath(t *testing.T) {
 
 	clientset := fake.NewSimpleClientset(node, pod, pdb, hpa, csi)
 	clientset.Fake.Resources = []*metav1.APIResourceList{
-		{
-			GroupVersion: policyv1.SchemeGroupVersion.String(),
-			APIResources: []metav1.APIResource{
-				{
-					Name: "poddisruptionbudgets",
-					Kind: "PodDisruptionBudget",
-				},
-			},
-		},
 		{
 			GroupVersion: autoscalingv1.SchemeGroupVersion.String(),
 			APIResources: []metav1.APIResource{
@@ -183,6 +177,22 @@ func TestController_HappyPath(t *testing.T) {
 
 	go func() {
 		require.NoError(t, ctrl.Run(ctx))
+	}()
+
+	// This adds the PDB resource async to the discovery API
+	go func() {
+		resourcesMutex.Lock()
+		defer resourcesMutex.Unlock()
+
+		clientset.Fake.Resources = append(clientset.Fake.Resources, &metav1.APIResourceList{
+			GroupVersion: policyv1.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Name: "poddisruptionbudgets",
+					Kind: "PodDisruptionBudget",
+				},
+			},
+		})
 	}()
 
 	wait.Until(func() {
