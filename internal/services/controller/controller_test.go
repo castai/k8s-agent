@@ -102,6 +102,15 @@ func TestController_HappyPath(t *testing.T) {
 	clientset := fake.NewSimpleClientset(node, pod, pdb, hpa, csi)
 	clientset.Fake.Resources = []*metav1.APIResourceList{
 		{
+			GroupVersion: policyv1.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Name: "poddisruptionbudgets",
+					Kind: "PodDisruptionBudget",
+				},
+			},
+		},
+		{
 			GroupVersion: autoscalingv1.SchemeGroupVersion.String(),
 			APIResources: []metav1.APIResource{
 				{
@@ -174,19 +183,6 @@ func TestController_HappyPath(t *testing.T) {
 
 	go func() {
 		require.NoError(t, ctrl.Run(ctx))
-	}()
-
-	// This adds the PDB resource async to the discovery API
-	go func() {
-		clientset.Fake.Resources = append(clientset.Fake.Resources, &metav1.APIResourceList{
-			GroupVersion: policyv1.SchemeGroupVersion.String(),
-			APIResources: []metav1.APIResource{
-				{
-					Name: "poddisruptionbudgets",
-					Kind: "PodDisruptionBudget",
-				},
-			},
-		})
 	}()
 
 	wait.Until(func() {
