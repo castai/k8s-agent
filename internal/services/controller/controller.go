@@ -25,7 +25,6 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	rbacclientv1 "k8s.io/client-go/kubernetes/typed/rbac/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
@@ -65,7 +64,6 @@ type Controller struct {
 	healthzProvider *HealthzProvider
 
 	conditionalInformers []conditionalInformer
-	rbacV1               rbacclientv1.RbacV1Interface
 }
 
 type conditionalInformer struct {
