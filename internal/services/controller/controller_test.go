@@ -14,6 +14,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+	authorizationv1 "k8s.io/api/authorization/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	v1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -24,6 +25,7 @@ import (
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
+	fake2 "k8s.io/client-go/kubernetes/typed/authorization/v1/fake"
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	metrics_fake "k8s.io/metrics/pkg/client/clientset/versioned/fake"
@@ -99,14 +101,39 @@ func TestController_HappyPath(t *testing.T) {
 	csiData, err := delta.Encode(csi)
 	require.NoError(t, err)
 
+	fakeSubjectAccessReviewsClient := &fake2.FakeSubjectAccessReviews{
+		Fake: &fake2.FakeAuthorizationV1{
+			Fake: &k8stesting.Fake{},
+		},
+	}
+
+	// returns true for all requests to fakeSubjectAccessReviewsClient
+	fakeSubjectAccessReviewsClient.Fake.PrependReactor("create", "subjectaccessreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		return true, &authorizationv1.SubjectAccessReview{
+			Status: authorizationv1.SubjectAccessReviewStatus{
+				Allowed: true,
+			},
+		}, nil
+	})
+
+	// returns true for all requests to fakeSubjectAccessReviewsClient
+	fakeSubjectAccessReviewsClient.Fake.PrependReactor("create", "subjectaccessreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		return true, &authorizationv1.SubjectAccessReview{
+			Status: authorizationv1.SubjectAccessReviewStatus{
+				Allowed: true,
+			},
+		}, nil
+	})
+
 	clientset := fake.NewSimpleClientset(node, pod, pdb, hpa, csi)
 	clientset.Fake.Resources = []*metav1.APIResourceList{
 		{
 			GroupVersion: autoscalingv1.SchemeGroupVersion.String(),
 			APIResources: []metav1.APIResource{
 				{
-					Name: "horizontalpodautoscalers",
-					Kind: "HorizontalPodAutoscaler",
+					Group: "autoscaling",
+					Name:  "horizontalpodautoscalers",
+					Kind:  "HorizontalPodAutoscaler",
 					Verbs: []string{
 						"list",
 						"watch",
@@ -119,8 +146,9 @@ func TestController_HappyPath(t *testing.T) {
 			GroupVersion: storagev1.SchemeGroupVersion.String(),
 			APIResources: []metav1.APIResource{
 				{
-					Name: "csinodes",
-					Kind: "CSINode",
+					Group: "storage.k8s.io",
+					Name:  "csinodes",
+					Kind:  "CSINode",
 					Verbs: []string{
 						"list",
 						"watch",
@@ -179,7 +207,12 @@ func TestController_HappyPath(t *testing.T) {
 		Interval:             15 * time.Second,
 		PrepTimeout:          2 * time.Second,
 		InitialSleepDuration: 10 * time.Millisecond,
-	}, version, agentVersion, NewHealthzProvider(defaultHealthzCfg, log))
+	},
+		version,
+		agentVersion,
+		NewHealthzProvider(defaultHealthzCfg, log),
+		fakeSubjectAccessReviewsClient,
+	)
 	f.Start(ctx.Done())
 
 	go func() {
@@ -191,9 +224,10 @@ func TestController_HappyPath(t *testing.T) {
 		GroupVersion: policyv1.SchemeGroupVersion.String(),
 		APIResources: []metav1.APIResource{
 			{
+				Group: "policy",
 				Name:  "poddisruptionbudgets",
 				Kind:  "PodDisruptionBudget",
-				Verbs: []string{"list", "get"},
+				Verbs: []string{"get", "list"},
 			},
 		},
 	})
@@ -229,23 +263,11 @@ func TestNew(t *testing.T) {
 		f := informers.NewSharedInformerFactory(clientset, 0)
 		log := logrus.New()
 		log.SetLevel(logrus.DebugLevel)
-		ctrl := New(
-			log,
-			f,
-			clientset.Discovery(),
-			castaiclient,
-			metricsClient,
-			provider,
-			clusterID.String(),
-			&config.Controller{
-				Interval:             15 * time.Second,
-				PrepTimeout:          2 * time.Second,
-				InitialSleepDuration: 10 * time.Millisecond,
-			},
-			version,
-			agentVersion,
-			NewHealthzProvider(defaultHealthzCfg, log),
-		)
+		ctrl := New(log, f, clientset.Discovery(), castaiclient, metricsClient, provider, clusterID.String(), &config.Controller{
+			Interval:             15 * time.Second,
+			PrepTimeout:          2 * time.Second,
+			InitialSleepDuration: 10 * time.Millisecond,
+		}, version, agentVersion, NewHealthzProvider(defaultHealthzCfg, log), clientset.AuthorizationV1().SubjectAccessReviews())
 
 		r.NotNil(ctrl)
 

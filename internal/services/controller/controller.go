@@ -11,10 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/exp/slices"
 	appsv1 "k8s.io/api/apps/v1"
+	v1 "k8s.io/api/authorization/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -25,6 +24,7 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	authorizationtypev1 "k8s.io/client-go/kubernetes/typed/authorization/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
@@ -64,6 +64,7 @@ type Controller struct {
 	healthzProvider *HealthzProvider
 
 	conditionalInformers []conditionalInformer
+	subjectAccessReview  authorizationtypev1.SubjectAccessReviewInterface
 }
 
 type conditionalInformer struct {
@@ -71,7 +72,7 @@ type conditionalInformer struct {
 	name string
 	// groupVersion is the group and version of the API type, ex.: "policy/authorizationv1"
 	groupVersion string
-	// apiType is the type of the API object, ex.: "*authorizationv1.PodDisruptionBudget"
+	// apiType is the type of the API object, ex.: "*v1.PodDisruptionBudget"
 	apiType reflect.Type
 	// informer is the informer for the API type
 	informer cache.SharedInformer
@@ -91,6 +92,7 @@ func New(
 	v version.Interface,
 	agentVersion *config.AgentVersion,
 	healthzProvider *HealthzProvider,
+	subjectAccessReview authorizationtypev1.SubjectAccessReviewInterface,
 ) *Controller {
 	healthzProvider.Initializing()
 
@@ -172,6 +174,7 @@ func New(
 		discovery:            discovery,
 		informerFactory:      f,
 		conditionalInformers: conditionalInformers,
+		subjectAccessReview:  subjectAccessReview,
 	}
 }
 
@@ -267,26 +270,26 @@ func (c *Controller) Run(ctx context.Context) error {
 
 func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, conditionalInformers []conditionalInformer) {
 	if err := wait.PollImmediateInfiniteWithContext(ctx, time.Minute*2, func(ctx context.Context) (done bool, err error) {
-		apiResourceLists := fetchApiResourceLists(c.discovery, c.log)
+		apiResourceLists := fetchAPIResourceLists(c.discovery, c.log)
 		if apiResourceLists == nil {
 			return false, nil
 		}
 		c.log.Infof("Cluster API server is available, trying to start conditional informers")
 
 		for _, informer := range conditionalInformers {
-			apiResourceListForGroupVersion := getApiResourceListByGroupVersion(informer.groupVersion, apiResourceLists)
+			apiResourceListForGroupVersion := getAPIResourceListByGroupVersion(informer.groupVersion, apiResourceLists)
 
 			resourceAvailable := isResourceAvailable(informer.apiType, apiResourceListForGroupVersion)
-			informerHaveAccess := c.informerHaveAccess(apiResourceListForGroupVersion, informer)
+			informerHasAccess := c.informerHasAccess(ctx, informer)
 
-			if resourceAvailable && informerHaveAccess {
+			if resourceAvailable && informerHasAccess {
 				c.log.Infof("Starting conditional informer for %v", informer.name)
 				custominformers.NewHandledInformer(c.log, c.queue, informer.informer, informer.apiType, nil)
 			} else {
 				c.log.Warnf("Skipping conditional informer name: %v, API resource available: %t, has required access: %t",
 					informer.name,
 					resourceAvailable,
-					informerHaveAccess,
+					informerHasAccess,
 				)
 			}
 		}
@@ -298,12 +301,12 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 
 func (c *Controller) startPodMetricsInformersWithWatcher(ctx context.Context, podMetricsType reflect.Type) {
 	if err := wait.PollImmediateInfiniteWithContext(ctx, time.Minute*2, func(ctx context.Context) (done bool, err error) {
-		apiResourceLists := fetchApiResourceLists(c.discovery, c.log)
+		apiResourceLists := fetchAPIResourceLists(c.discovery, c.log)
 		if apiResourceLists == nil {
 			return false, nil
 		}
 
-		apiResourceListForGroupVersion := getApiResourceListByGroupVersion(v1beta1.SchemeGroupVersion.String(), apiResourceLists)
+		apiResourceListForGroupVersion := getAPIResourceListByGroupVersion(v1beta1.SchemeGroupVersion.String(), apiResourceLists)
 		if !isResourceAvailable(podMetricsType, apiResourceListForGroupVersion) {
 			return false, nil
 		}
@@ -450,18 +453,44 @@ func (c *Controller) debugQueueContent(maxItems int) string {
 	return content
 }
 
-func (c *Controller) informerHaveAccess(apiResourceList *metav1.APIResourceList, informer conditionalInformer) bool {
-	_, ok := lo.Find(apiResourceList.APIResources, func(apiResource metav1.APIResource) bool {
-		if informer.name != apiResource.Name {
+func (c *Controller) informerHasAccess(ctx context.Context, informer conditionalInformer) bool {
+	//Cuts the groupName from the groupVersion, example: "apps/v1" -> "apps"
+	groupName, _ := strings.CutSuffix(informer.groupVersion, "/v1")
+
+	// Check if allowed to access all resources with the wildcard "*" verb
+	if access := c.informerIsAllowedToAccessResource(ctx, "*", informer, groupName); access.Status.Allowed {
+		return true
+	}
+
+	for _, verb := range informer.permissionVerbs {
+		access := c.informerIsAllowedToAccessResource(ctx, verb, informer, groupName)
+		if !access.Status.Allowed {
 			return false
 		}
-		intersect := lo.Intersect(apiResource.Verbs, informer.permissionVerbs)
-		return len(intersect) == len(informer.permissionVerbs) || slices.Contains(apiResource.Verbs, "*")
-	})
-	return ok
+	}
+	return true
 }
 
-func fetchApiResourceLists(client discovery.DiscoveryInterface, log logrus.FieldLogger) []*metav1.APIResourceList {
+func (c *Controller) informerIsAllowedToAccessResource(ctx context.Context, verb string, informer conditionalInformer, groupName string) *v1.SubjectAccessReview {
+	access, err := c.subjectAccessReview.Create(ctx, &v1.SubjectAccessReview{
+		Spec: v1.SubjectAccessReviewSpec{
+			User: "system:serviceaccount:castai-agent:castai-agent",
+			ResourceAttributes: &v1.ResourceAttributes{
+				Verb:     verb,
+				Resource: informer.name,
+				Group:    groupName,
+			},
+		},
+	}, metav1.CreateOptions{})
+
+	if err != nil {
+		c.log.Warnf("Error when getting server resources: %v", err.Error())
+		return &v1.SubjectAccessReview{}
+	}
+	return access
+}
+
+func fetchAPIResourceLists(client discovery.DiscoveryInterface, log logrus.FieldLogger) []*metav1.APIResourceList {
 	_, apiResourceLists, err := client.ServerGroupsAndResources()
 	if err != nil {
 		log.Warnf("Error when getting server resources: %v", err.Error())
@@ -470,7 +499,7 @@ func fetchApiResourceLists(client discovery.DiscoveryInterface, log logrus.Field
 	return apiResourceLists
 }
 
-func getApiResourceListByGroupVersion(groupVersion string, apiResourceLists []*metav1.APIResourceList) *metav1.APIResourceList {
+func getAPIResourceListByGroupVersion(groupVersion string, apiResourceLists []*metav1.APIResourceList) *metav1.APIResourceList {
 	for _, apiResourceList := range apiResourceLists {
 		if apiResourceList.GroupVersion == groupVersion {
 			return apiResourceList
@@ -482,7 +511,7 @@ func getApiResourceListByGroupVersion(groupVersion string, apiResourceLists []*m
 
 func isResourceAvailable(kind reflect.Type, apiResourceList *metav1.APIResourceList) bool {
 	for _, apiResource := range apiResourceList.APIResources {
-		// apiResource.Kind is, ex.: "PodMetrics", while kind.String() is, ex.: "*authorizationv1.PodMetrics"
+		// apiResource.Kind is, ex.: "PodMetrics", while kind.String() is, ex.: "*v1.PodMetrics"
 		if strings.Contains(kind.String(), apiResource.Kind) {
 			return true
 		}
