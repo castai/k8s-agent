@@ -107,6 +107,11 @@ func TestController_HappyPath(t *testing.T) {
 				{
 					Name: "horizontalpodautoscalers",
 					Kind: "HorizontalPodAutoscaler",
+					Verbs: []string{
+						"list",
+						"watch",
+						"get",
+					},
 				},
 			},
 		},
@@ -116,6 +121,11 @@ func TestController_HappyPath(t *testing.T) {
 				{
 					Name: "csinodes",
 					Kind: "CSINode",
+					Verbs: []string{
+						"list",
+						"watch",
+						"get",
+					},
 				},
 			},
 		},
@@ -181,8 +191,9 @@ func TestController_HappyPath(t *testing.T) {
 		GroupVersion: policyv1.SchemeGroupVersion.String(),
 		APIResources: []metav1.APIResource{
 			{
-				Name: "poddisruptionbudgets",
-				Kind: "PodDisruptionBudget",
+				Name:  "poddisruptionbudgets",
+				Kind:  "PodDisruptionBudget",
+				Verbs: []string{"list", "get"},
 			},
 		},
 	})

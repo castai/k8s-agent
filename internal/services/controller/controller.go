@@ -11,7 +11,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/exp/slices"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -23,6 +25,7 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	rbacclientv1 "k8s.io/client-go/kubernetes/typed/rbac/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
@@ -62,15 +65,20 @@ type Controller struct {
 	healthzProvider *HealthzProvider
 
 	conditionalInformers []conditionalInformer
+	rbacV1               rbacclientv1.RbacV1Interface
 }
 
 type conditionalInformer struct {
-	// groupVersion is the group and version of the API type, ex.: "policy/v1"
+	// name is the name of the API resource, ex.: "poddisruptionbudgets"
+	name string
+	// groupVersion is the group and version of the API type, ex.: "policy/authorizationv1"
 	groupVersion string
-	// apiType is the type of the API object, ex.: "*v1.PodDisruptionBudget"
+	// apiType is the type of the API object, ex.: "*authorizationv1.PodDisruptionBudget"
 	apiType reflect.Type
 	// informer is the informer for the API type
 	informer cache.SharedInformer
+	// permissionVerbs is the list of verbs required to watch the API type
+	permissionVerbs []string
 }
 
 func New(
@@ -108,24 +116,27 @@ func New(
 
 	conditionalInformers := []conditionalInformer{
 		{
-			groupVersion: policyv1.SchemeGroupVersion.String(),
-			apiType:      reflect.TypeOf(&policyv1.PodDisruptionBudget{}),
-			informer:     f.Policy().V1().PodDisruptionBudgets().Informer(),
+			name:            "poddisruptionbudgets",
+			groupVersion:    policyv1.SchemeGroupVersion.String(),
+			apiType:         reflect.TypeOf(&policyv1.PodDisruptionBudget{}),
+			informer:        f.Policy().V1().PodDisruptionBudgets().Informer(),
+			permissionVerbs: []string{"list", "watch"},
 		},
 		{
-			groupVersion: storagev1.SchemeGroupVersion.String(),
-			apiType:      reflect.TypeOf(&storagev1.CSINode{}),
-			informer:     f.Storage().V1().CSINodes().Informer(),
+			name:            "csinodes",
+			groupVersion:    storagev1.SchemeGroupVersion.String(),
+			apiType:         reflect.TypeOf(&storagev1.CSINode{}),
+			informer:        f.Storage().V1().CSINodes().Informer(),
+			permissionVerbs: []string{"get", "list", "watch"},
 		},
 		{
-			groupVersion: autoscalingv1.SchemeGroupVersion.String(),
-			apiType:      reflect.TypeOf(&autoscalingv1.HorizontalPodAutoscaler{}),
-			informer:     f.Autoscaling().V1().HorizontalPodAutoscalers().Informer(),
+			name:            "horizontalpodautoscalers",
+			groupVersion:    autoscalingv1.SchemeGroupVersion.String(),
+			apiType:         reflect.TypeOf(&autoscalingv1.HorizontalPodAutoscaler{}),
+			informer:        f.Autoscaling().V1().HorizontalPodAutoscalers().Informer(),
+			permissionVerbs: []string{"get", "list", "watch"},
 		},
 	}
-
-	//Applies conditional informers if the API type is available in the cluster
-	defaultInformers = applyConditionalInformers(discovery, log, defaultInformers, conditionalInformers)
 
 	handledInformers := map[reflect.Type]*custominformers.HandledInformer{}
 	for typ, informer := range defaultInformers {
@@ -241,9 +252,7 @@ func (c *Controller) Run(ctx context.Context) error {
 		}, c.cfg.Interval, ctx.Done())
 	}()
 
-	if missingInformers := c.getMissingConditionalInformers(); len(missingInformers) > 0 {
-		go c.startConditionalInformersWithWatcher(ctx, missingInformers)
-	}
+	go c.startConditionalInformersWithWatcher(ctx, c.conditionalInformers)
 
 	podMetricsType := reflect.TypeOf(&v1beta1.PodMetrics{})
 	go c.startPodMetricsInformersWithWatcher(ctx, podMetricsType)
@@ -259,19 +268,46 @@ func (c *Controller) Run(ctx context.Context) error {
 }
 
 func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, conditionalInformers []conditionalInformer) {
+	//missingConditionInformers := make(map[string]conditionalInformer)
 	if err := wait.PollImmediateInfiniteWithContext(ctx, time.Minute*2, func(ctx context.Context) (done bool, err error) {
 		apiResourceLists := fetchApiResourceLists(c.discovery, c.log)
 		if apiResourceLists == nil {
 			return false, nil
 		}
+		c.log.Infof("Cluster API server is available, trying to start conditional informers")
+		//if len(missingConditionInformers) > 0 {
+		//	conditionalInformers = lo.Map(conditionalInformers, func(informer conditionalInformer, _ int) conditionalInformer {
+		//		if _, ok := missingConditionInformers[informer.name]; ok {
+		//			return informer
+		//		}
+		//		return conditionalInformer{}
+		//	})
+		//}
 
-		c.log.Infof("Cluster API server is available, starting conditional informers")
 		for _, informer := range conditionalInformers {
 			apiResourceListForGroupVersion := getApiResourceListByGroupVersion(informer.groupVersion, apiResourceLists)
-			if isResourceAvailable(informer.apiType, apiResourceListForGroupVersion) {
+
+			resourceAvailable := isResourceAvailable(informer.apiType, apiResourceListForGroupVersion)
+			informerHaveAccess := c.informerHaveAccess(apiResourceListForGroupVersion, informer)
+
+			if resourceAvailable && informerHaveAccess {
+				c.log.Infof("Starting conditional informer for %v", informer.name)
 				custominformers.NewHandledInformer(c.log, c.queue, informer.informer, informer.apiType, nil)
+				//delete(missingConditionInformers, informer.name)
+			} else {
+				//missingConditionInformers[informer.name] = informer
+				c.log.Infof("Skipping conditional informer name: %v, API resource available: %t, has required access: %t",
+					informer.name,
+					resourceAvailable,
+					informerHaveAccess,
+				)
 			}
 		}
+
+		//if len(missingConditionInformers) > 0 {
+		//	return false, nil
+		//}
+
 		return true, nil
 	}); err != nil {
 		c.log.Warnf("Error when waiting for server resources: %v", err.Error())
@@ -432,6 +468,14 @@ func (c *Controller) debugQueueContent(maxItems int) string {
 	return content
 }
 
+func (c *Controller) informerHaveAccess(apiResourceList *metav1.APIResourceList, informer conditionalInformer) bool {
+	_, ok := lo.Find(apiResourceList.APIResources, func(apiResource metav1.APIResource) bool {
+		intersect := lo.Intersect(apiResource.Verbs, informer.permissionVerbs)
+		return len(intersect) == len(informer.permissionVerbs) || slices.Contains(apiResource.Verbs, "*")
+	})
+	return ok
+}
+
 func (c *Controller) getMissingConditionalInformers() []conditionalInformer {
 	var missingInformers []conditionalInformer
 	for _, informer := range c.conditionalInformers {
@@ -440,22 +484,6 @@ func (c *Controller) getMissingConditionalInformers() []conditionalInformer {
 		}
 	}
 	return missingInformers
-}
-
-func applyConditionalInformers(client discovery.DiscoveryInterface, log logrus.FieldLogger, defaultInformers map[reflect.Type]cache.SharedInformer, conditionalInformers []conditionalInformer) map[reflect.Type]cache.SharedInformer {
-	apiResourceLists := fetchApiResourceLists(client, log)
-	if apiResourceLists == nil {
-		return defaultInformers
-	}
-
-	informersMap := defaultInformers
-	for _, informer := range conditionalInformers {
-		apiResourceList := getApiResourceListByGroupVersion(informer.groupVersion, apiResourceLists)
-		if isResourceAvailable(informer.apiType, apiResourceList) {
-			informersMap[informer.apiType] = informer.informer
-		}
-	}
-	return informersMap
 }
 
 func fetchApiResourceLists(client discovery.DiscoveryInterface, log logrus.FieldLogger) []*metav1.APIResourceList {
@@ -479,7 +507,7 @@ func getApiResourceListByGroupVersion(groupVersion string, apiResourceLists []*m
 
 func isResourceAvailable(kind reflect.Type, apiResourceList *metav1.APIResourceList) bool {
 	for _, apiResource := range apiResourceList.APIResources {
-		// apiResource.Kind is, ex.: "PodMetrics", while kind.String() is, ex.: "*v1.PodMetrics"
+		// apiResource.Kind is, ex.: "PodMetrics", while kind.String() is, ex.: "*authorizationv1.PodMetrics"
 		if strings.Contains(kind.String(), apiResource.Kind) {
 			return true
 		}
