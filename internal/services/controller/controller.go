@@ -268,21 +268,12 @@ func (c *Controller) Run(ctx context.Context) error {
 }
 
 func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, conditionalInformers []conditionalInformer) {
-	//missingConditionInformers := make(map[string]conditionalInformer)
 	if err := wait.PollImmediateInfiniteWithContext(ctx, time.Minute*2, func(ctx context.Context) (done bool, err error) {
 		apiResourceLists := fetchApiResourceLists(c.discovery, c.log)
 		if apiResourceLists == nil {
 			return false, nil
 		}
 		c.log.Infof("Cluster API server is available, trying to start conditional informers")
-		//if len(missingConditionInformers) > 0 {
-		//	conditionalInformers = lo.Map(conditionalInformers, func(informer conditionalInformer, _ int) conditionalInformer {
-		//		if _, ok := missingConditionInformers[informer.name]; ok {
-		//			return informer
-		//		}
-		//		return conditionalInformer{}
-		//	})
-		//}
 
 		for _, informer := range conditionalInformers {
 			apiResourceListForGroupVersion := getApiResourceListByGroupVersion(informer.groupVersion, apiResourceLists)
@@ -293,9 +284,7 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 			if resourceAvailable && informerHaveAccess {
 				c.log.Infof("Starting conditional informer for %v", informer.name)
 				custominformers.NewHandledInformer(c.log, c.queue, informer.informer, informer.apiType, nil)
-				//delete(missingConditionInformers, informer.name)
 			} else {
-				//missingConditionInformers[informer.name] = informer
 				c.log.Infof("Skipping conditional informer name: %v, API resource available: %t, has required access: %t",
 					informer.name,
 					resourceAvailable,
@@ -303,11 +292,6 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 				)
 			}
 		}
-
-		//if len(missingConditionInformers) > 0 {
-		//	return false, nil
-		//}
-
 		return true, nil
 	}); err != nil {
 		c.log.Warnf("Error when waiting for server resources: %v", err.Error())
