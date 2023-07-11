@@ -116,15 +116,6 @@ func TestController_HappyPath(t *testing.T) {
 		}, nil
 	})
 
-	// returns true for all requests to fakeSubjectAccessReviewsClient
-	fakeSubjectAccessReviewsClient.Fake.PrependReactor("create", "subjectaccessreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
-		return true, &authorizationv1.SubjectAccessReview{
-			Status: authorizationv1.SubjectAccessReviewStatus{
-				Allowed: true,
-			},
-		}, nil
-	})
-
 	clientset := fake.NewSimpleClientset(node, pod, pdb, hpa, csi)
 	clientset.Fake.Resources = []*metav1.APIResourceList{
 		{
