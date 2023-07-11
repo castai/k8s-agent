@@ -70,13 +70,13 @@ type Controller struct {
 type conditionalInformer struct {
 	// name is the name of the API resource, ex.: "poddisruptionbudgets"
 	name string
-	// groupVersion is the group and version of the API type, ex.: "policy/authorizationv1"
+	// groupVersion is the group and version of the API type, ex.: "policy/v1"
 	groupVersion string
 	// apiType is the type of the API object, ex.: "*v1.PodDisruptionBudget"
 	apiType reflect.Type
 	// informer is the informer for the API type
 	informer cache.SharedInformer
-	// permissionVerbs is the list of verbs required to watch the API type
+	// permissionVerbs is list of verbs to check for the API type
 	permissionVerbs []string
 }
 
