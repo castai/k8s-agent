@@ -13,7 +13,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
-	v1 "k8s.io/api/authorization/v1"
+	authorizationv1 "k8s.io/api/authorization/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -471,11 +471,11 @@ func (c *Controller) informerHasAccess(ctx context.Context, informer conditional
 	return true
 }
 
-func (c *Controller) informerIsAllowedToAccessResource(ctx context.Context, verb string, informer conditionalInformer, groupName string) *v1.SubjectAccessReview {
-	access, err := c.subjectAccessReview.Create(ctx, &v1.SubjectAccessReview{
-		Spec: v1.SubjectAccessReviewSpec{
+func (c *Controller) informerIsAllowedToAccessResource(ctx context.Context, verb string, informer conditionalInformer, groupName string) *authorizationv1.SubjectAccessReview {
+	access, err := c.subjectAccessReview.Create(ctx, &authorizationv1.SubjectAccessReview{
+		Spec: authorizationv1.SubjectAccessReviewSpec{
 			User: "system:serviceaccount:castai-agent:castai-agent",
-			ResourceAttributes: &v1.ResourceAttributes{
+			ResourceAttributes: &authorizationv1.ResourceAttributes{
 				Verb:     verb,
 				Resource: informer.name,
 				Group:    groupName,
@@ -485,7 +485,7 @@ func (c *Controller) informerIsAllowedToAccessResource(ctx context.Context, verb
 
 	if err != nil {
 		c.log.Warnf("Error when getting server resources: %v", err.Error())
-		return &v1.SubjectAccessReview{}
+		return &authorizationv1.SubjectAccessReview{}
 	}
 	return access
 }

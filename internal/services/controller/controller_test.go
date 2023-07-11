@@ -25,7 +25,7 @@ import (
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
-	fake2 "k8s.io/client-go/kubernetes/typed/authorization/v1/fake"
+	authfakev1 "k8s.io/client-go/kubernetes/typed/authorization/v1/fake"
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	metrics_fake "k8s.io/metrics/pkg/client/clientset/versioned/fake"
@@ -101,8 +101,8 @@ func TestController_HappyPath(t *testing.T) {
 	csiData, err := delta.Encode(csi)
 	require.NoError(t, err)
 
-	fakeSubjectAccessReviewsClient := &fake2.FakeSubjectAccessReviews{
-		Fake: &fake2.FakeAuthorizationV1{
+	fakeSubjectAccessReviewsClient := &authfakev1.FakeSubjectAccessReviews{
+		Fake: &authfakev1.FakeAuthorizationV1{
 			Fake: &k8stesting.Fake{},
 		},
 	}
