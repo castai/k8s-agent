@@ -118,7 +118,7 @@ func New(
 			groupVersion:    policyv1.SchemeGroupVersion.String(),
 			apiType:         reflect.TypeOf(&policyv1.PodDisruptionBudget{}),
 			informer:        f.Policy().V1().PodDisruptionBudgets().Informer(),
-			permissionVerbs: []string{"list", "get"},
+			permissionVerbs: []string{"get", "list"},
 		},
 		{
 			name:            "csinodes",
@@ -451,16 +451,13 @@ func (c *Controller) debugQueueContent(maxItems int) string {
 }
 
 func (c *Controller) informerHaveAccess(apiResourceList *metav1.APIResourceList, informer conditionalInformer) bool {
-	me, ok := lo.Find(apiResourceList.APIResources, func(apiResource metav1.APIResource) bool {
+	_, ok := lo.Find(apiResourceList.APIResources, func(apiResource metav1.APIResource) bool {
 		if informer.name != apiResource.Name {
 			return false
 		}
 		intersect := lo.Intersect(apiResource.Verbs, informer.permissionVerbs)
 		return len(intersect) == len(informer.permissionVerbs) || slices.Contains(apiResource.Verbs, "*")
 	})
-
-	c.log.Infof("Checking access for %s: %v", me.Name, ok)
-
 	return ok
 }
 
