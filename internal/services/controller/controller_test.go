@@ -218,7 +218,7 @@ func TestController_HappyPath(t *testing.T) {
 				Group: "policy",
 				Name:  "poddisruptionbudgets",
 				Kind:  "PodDisruptionBudget",
-				Verbs: []string{"get", "list"},
+				Verbs: []string{"get", "list", "watch"},
 			},
 		},
 	})

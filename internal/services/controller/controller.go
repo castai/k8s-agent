@@ -76,7 +76,7 @@ type conditionalInformer struct {
 	apiType reflect.Type
 	// informer is the informer for the API type
 	informer cache.SharedInformer
-	// permissionVerbs is list of verbs to check for the API type
+	// permissionVerbs is list of verbs which represent the permissions
 	permissionVerbs []string
 }
 
@@ -120,7 +120,7 @@ func New(
 			groupVersion:    policyv1.SchemeGroupVersion.String(),
 			apiType:         reflect.TypeOf(&policyv1.PodDisruptionBudget{}),
 			informer:        f.Policy().V1().PodDisruptionBudgets().Informer(),
-			permissionVerbs: []string{"get", "list"},
+			permissionVerbs: []string{"get", "list", "watch"},
 		},
 		{
 			name:            "csinodes",
