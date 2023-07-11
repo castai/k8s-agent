@@ -120,7 +120,7 @@ func New(
 			groupVersion:    policyv1.SchemeGroupVersion.String(),
 			apiType:         reflect.TypeOf(&policyv1.PodDisruptionBudget{}),
 			informer:        f.Policy().V1().PodDisruptionBudgets().Informer(),
-			permissionVerbs: []string{"list", "watch"},
+			permissionVerbs: []string{"list", "get"},
 		},
 		{
 			name:            "csinodes",
@@ -285,7 +285,7 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 				c.log.Infof("Starting conditional informer for %v", informer.name)
 				custominformers.NewHandledInformer(c.log, c.queue, informer.informer, informer.apiType, nil)
 			} else {
-				c.log.Infof("Skipping conditional informer name: %v, API resource available: %t, has required access: %t",
+				c.log.Warnf("Skipping conditional informer name: %v, API resource available: %t, has required access: %t",
 					informer.name,
 					resourceAvailable,
 					informerHaveAccess,
@@ -453,21 +453,17 @@ func (c *Controller) debugQueueContent(maxItems int) string {
 }
 
 func (c *Controller) informerHaveAccess(apiResourceList *metav1.APIResourceList, informer conditionalInformer) bool {
-	_, ok := lo.Find(apiResourceList.APIResources, func(apiResource metav1.APIResource) bool {
+	me, ok := lo.Find(apiResourceList.APIResources, func(apiResource metav1.APIResource) bool {
+		if informer.name != apiResource.Name {
+			return false
+		}
 		intersect := lo.Intersect(apiResource.Verbs, informer.permissionVerbs)
 		return len(intersect) == len(informer.permissionVerbs) || slices.Contains(apiResource.Verbs, "*")
 	})
-	return ok
-}
 
-func (c *Controller) getMissingConditionalInformers() []conditionalInformer {
-	var missingInformers []conditionalInformer
-	for _, informer := range c.conditionalInformers {
-		if _, ok := c.informers[informer.apiType]; !ok {
-			missingInformers = append(missingInformers, informer)
-		}
-	}
-	return missingInformers
+	c.log.Infof("Checking access for %s: %v", me.Name, ok)
+
+	return ok
 }
 
 func fetchApiResourceLists(client discovery.DiscoveryInterface, log logrus.FieldLogger) []*metav1.APIResourceList {
