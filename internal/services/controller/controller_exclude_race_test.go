@@ -127,7 +127,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 		Interval:             2 * time.Second,
 		PrepTimeout:          2 * time.Second,
 		InitialSleepDuration: 10 * time.Millisecond,
-	}, version, agentVersion, NewHealthzProvider(defaultHealthzCfg, log), clientset.AuthorizationV1().SubjectAccessReviews())
+	}, version, agentVersion, NewHealthzProvider(defaultHealthzCfg, log), clientset.AuthorizationV1().SelfSubjectAccessReviews())
 
 	f.Start(ctx.Done())
 

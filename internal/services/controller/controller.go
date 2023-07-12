@@ -63,8 +63,8 @@ type Controller struct {
 	agentVersion    *config.AgentVersion
 	healthzProvider *HealthzProvider
 
-	conditionalInformers []conditionalInformer
-	subjectAccessReview  authorizationtypev1.SubjectAccessReviewInterface
+	conditionalInformers    []conditionalInformer
+	selfSubjectAccessReview authorizationtypev1.SelfSubjectAccessReviewInterface
 }
 
 type conditionalInformer struct {
@@ -92,7 +92,7 @@ func New(
 	v version.Interface,
 	agentVersion *config.AgentVersion,
 	healthzProvider *HealthzProvider,
-	subjectAccessReview authorizationtypev1.SubjectAccessReviewInterface,
+	selfSubjectAccessReview authorizationtypev1.SelfSubjectAccessReviewInterface,
 ) *Controller {
 	healthzProvider.Initializing()
 
@@ -160,21 +160,21 @@ func New(
 	)
 
 	return &Controller{
-		log:                  log,
-		clusterID:            clusterID,
-		castaiclient:         castaiclient,
-		provider:             provider,
-		cfg:                  cfg,
-		delta:                delta.New(log, clusterID, v.Full()),
-		queue:                queue,
-		informers:            handledInformers,
-		agentVersion:         agentVersion,
-		healthzProvider:      healthzProvider,
-		metricsClient:        metricsClient,
-		discovery:            discovery,
-		informerFactory:      f,
-		conditionalInformers: conditionalInformers,
-		subjectAccessReview:  subjectAccessReview,
+		log:                     log,
+		clusterID:               clusterID,
+		castaiclient:            castaiclient,
+		provider:                provider,
+		cfg:                     cfg,
+		delta:                   delta.New(log, clusterID, v.Full()),
+		queue:                   queue,
+		informers:               handledInformers,
+		agentVersion:            agentVersion,
+		healthzProvider:         healthzProvider,
+		metricsClient:           metricsClient,
+		discovery:               discovery,
+		informerFactory:         f,
+		conditionalInformers:    conditionalInformers,
+		selfSubjectAccessReview: selfSubjectAccessReview,
 	}
 }
 
@@ -471,21 +471,20 @@ func (c *Controller) informerHasAccess(ctx context.Context, informer conditional
 	return true
 }
 
-func (c *Controller) informerIsAllowedToAccessResource(ctx context.Context, verb string, informer conditionalInformer, groupName string) *authorizationv1.SubjectAccessReview {
-	access, err := c.subjectAccessReview.Create(ctx, &authorizationv1.SubjectAccessReview{
-		Spec: authorizationv1.SubjectAccessReviewSpec{
-			User: "system:serviceaccount:castai-agent:castai-agent",
+func (c *Controller) informerIsAllowedToAccessResource(ctx context.Context, verb string, informer conditionalInformer, groupName string) *authorizationv1.SelfSubjectAccessReview {
+	access, err := c.selfSubjectAccessReview.Create(ctx, &authorizationv1.SelfSubjectAccessReview{
+		Spec: authorizationv1.SelfSubjectAccessReviewSpec{
 			ResourceAttributes: &authorizationv1.ResourceAttributes{
 				Verb:     verb,
-				Resource: informer.name,
 				Group:    groupName,
+				Resource: informer.name,
 			},
 		},
 	}, metav1.CreateOptions{})
 
 	if err != nil {
 		c.log.Warnf("Error when getting server resources: %v", err.Error())
-		return &authorizationv1.SubjectAccessReview{}
+		return &authorizationv1.SelfSubjectAccessReview{}
 	}
 	return access
 }

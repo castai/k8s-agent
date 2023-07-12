@@ -101,15 +101,15 @@ func TestController_HappyPath(t *testing.T) {
 	csiData, err := delta.Encode(csi)
 	require.NoError(t, err)
 
-	fakeSubjectAccessReviewsClient := &authfakev1.FakeSubjectAccessReviews{
+	fakeSelfSubjectAccessReviewsClient := &authfakev1.FakeSelfSubjectAccessReviews{
 		Fake: &authfakev1.FakeAuthorizationV1{
 			Fake: &k8stesting.Fake{},
 		},
 	}
 
-	// returns true for all requests to fakeSubjectAccessReviewsClient
-	fakeSubjectAccessReviewsClient.Fake.PrependReactor("create", "subjectaccessreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
-		return true, &authorizationv1.SubjectAccessReview{
+	// returns true for all requests to fakeSelfSubjectAccessReviewsClient
+	fakeSelfSubjectAccessReviewsClient.Fake.PrependReactor("create", "selfsubjectaccessreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		return true, &authorizationv1.SelfSubjectAccessReview{
 			Status: authorizationv1.SubjectAccessReviewStatus{
 				Allowed: true,
 			},
@@ -202,7 +202,7 @@ func TestController_HappyPath(t *testing.T) {
 		version,
 		agentVersion,
 		NewHealthzProvider(defaultHealthzCfg, log),
-		fakeSubjectAccessReviewsClient,
+		fakeSelfSubjectAccessReviewsClient,
 	)
 	f.Start(ctx.Done())
 
@@ -258,7 +258,7 @@ func TestNew(t *testing.T) {
 			Interval:             15 * time.Second,
 			PrepTimeout:          2 * time.Second,
 			InitialSleepDuration: 10 * time.Millisecond,
-		}, version, agentVersion, NewHealthzProvider(defaultHealthzCfg, log), clientset.AuthorizationV1().SubjectAccessReviews())
+		}, version, agentVersion, NewHealthzProvider(defaultHealthzCfg, log), clientset.AuthorizationV1().SelfSubjectAccessReviews())
 
 		r.NotNil(ctrl)
 
