@@ -119,21 +119,18 @@ func New(
 			name:            "poddisruptionbudgets",
 			groupVersion:    policyv1.SchemeGroupVersion.String(),
 			apiType:         reflect.TypeOf(&policyv1.PodDisruptionBudget{}),
-			informer:        f.Policy().V1().PodDisruptionBudgets().Informer(),
 			permissionVerbs: []string{"get", "list", "watch"},
 		},
 		{
 			name:            "csinodes",
 			groupVersion:    storagev1.SchemeGroupVersion.String(),
 			apiType:         reflect.TypeOf(&storagev1.CSINode{}),
-			informer:        f.Storage().V1().CSINodes().Informer(),
 			permissionVerbs: []string{"get", "list", "watch"},
 		},
 		{
 			name:            "horizontalpodautoscalers",
 			groupVersion:    autoscalingv1.SchemeGroupVersion.String(),
 			apiType:         reflect.TypeOf(&autoscalingv1.HorizontalPodAutoscaler{}),
-			informer:        f.Autoscaling().V1().HorizontalPodAutoscalers().Informer(),
 			permissionVerbs: []string{"get", "list", "watch"},
 		},
 	}
@@ -284,7 +281,10 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 
 			if resourceAvailable && informerHasAccess {
 				c.log.Infof("Starting conditional informer for %v", informer.name)
-				custominformers.NewHandledInformer(c.log, c.queue, informer.informer, informer.apiType, nil)
+
+				informer.informer = applyInformer(informer.groupVersion, c.informerFactory)
+				handledInformer := custominformers.NewHandledInformer(c.log, c.queue, informer.informer, informer.apiType, nil)
+				go handledInformer.Run(ctx.Done())
 			} else {
 				c.log.Warnf("Skipping conditional informer name: %v, API resource available: %t, has required access: %t",
 					informer.name,
@@ -293,6 +293,7 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 				)
 			}
 		}
+		<-ctx.Done()
 		return true, nil
 	}); err != nil {
 		c.log.Warnf("Error when waiting for server resources: %v", err.Error())
@@ -516,4 +517,16 @@ func isResourceAvailable(kind reflect.Type, apiResourceList *metav1.APIResourceL
 		}
 	}
 	return false
+}
+
+func applyInformer(groupVersion string, informerFactory informers.SharedInformerFactory) cache.SharedIndexInformer {
+	switch groupVersion {
+	case "storage.k8s.io/v1":
+		return informerFactory.Storage().V1().CSINodes().Informer()
+	case "autoscaling/v1":
+		return informerFactory.Autoscaling().V1().HorizontalPodAutoscalers().Informer()
+	case "policy/v1":
+		return informerFactory.Policy().V1().PodDisruptionBudgets().Informer()
+	}
+	return nil
 }
