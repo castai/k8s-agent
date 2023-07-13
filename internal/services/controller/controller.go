@@ -473,7 +473,7 @@ func (c *Controller) debugQueueContent(maxItems int) string {
 }
 
 func (c *Controller) informerHasAccess(ctx context.Context, informer conditionalInformer) bool {
-	// Cut the groupName from the groupVersion from /v1, example: "policy/v1beta1" -> "policy" or "policy/v1" -> "policy"
+	// Cut the groupName from the groupVersion from "/", example: "policy/v1beta1" -> "policy" or "policy/v1" -> "policy"
 	groupName := strings.Split(informer.groupVersion, "/")[0]
 
 	// Check if allowed to access all resources with the wildcard "*" verb
