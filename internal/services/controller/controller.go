@@ -75,7 +75,7 @@ type conditionalInformer struct {
 	groupVersion string
 	// apiType is the type of the API object, ex.: "*v1.PodDisruptionBudget"
 	apiType reflect.Type
-	// informer is the informer for the API type
+	// informerFactory is the informer for the API type
 	informerFactory func() cache.SharedIndexInformer
 	// permissionVerbs is list of verbs which represent the permissions
 	permissionVerbs []string
