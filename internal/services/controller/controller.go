@@ -285,7 +285,6 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 	if err := wait.PollImmediateInfiniteWithContext(ctx, time.Minute*2, func(ctx context.Context) (done bool, err error) {
 		apiResourceLists := fetchAPIResourceLists(c.discovery, c.log)
 		if apiResourceLists == nil {
-			c.log.Warnf("Failed to fetch API resource lists, will try again")
 			return false, nil
 		}
 		c.log.Infof("Cluster API server is available, trying to start conditional informers")
