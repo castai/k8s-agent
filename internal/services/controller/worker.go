@@ -60,6 +60,7 @@ func Loop(
 			v,
 			agentVersion,
 			healthzProvider,
+			clientset.AuthorizationV1().SelfSubjectAccessReviews(),
 		)
 
 		f.Start(ctrlCtx.Done())
