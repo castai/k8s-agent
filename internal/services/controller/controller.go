@@ -123,18 +123,21 @@ func New(
 			groupVersion:    policyv1.SchemeGroupVersion.String(),
 			apiType:         reflect.TypeOf(&policyv1.PodDisruptionBudget{}),
 			permissionVerbs: []string{"get", "list", "watch"},
+			isApplied:       false,
 		},
 		{
 			name:            "csinodes",
 			groupVersion:    storagev1.SchemeGroupVersion.String(),
 			apiType:         reflect.TypeOf(&storagev1.CSINode{}),
 			permissionVerbs: []string{"get", "list", "watch"},
+			isApplied:       false,
 		},
 		{
 			name:            "horizontalpodautoscalers",
 			groupVersion:    autoscalingv1.SchemeGroupVersion.String(),
 			apiType:         reflect.TypeOf(&autoscalingv1.HorizontalPodAutoscaler{}),
 			permissionVerbs: []string{"get", "list", "watch"},
+			isApplied:       false,
 		},
 	}
 
