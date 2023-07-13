@@ -76,7 +76,7 @@ type conditionalInformer struct {
 	// apiType is the type of the API object, ex.: "*v1.PodDisruptionBudget"
 	apiType reflect.Type
 	// informer is the informer for the API type
-	informer cache.SharedInformer
+	informerFactory func() cache.SharedIndexInformer
 	// permissionVerbs is list of verbs which represent the permissions
 	permissionVerbs []string
 	// isApplied is true if the permission is applied
@@ -124,6 +124,9 @@ func New(
 			apiType:         reflect.TypeOf(&policyv1.PodDisruptionBudget{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			isApplied:       false,
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Policy().V1().PodDisruptionBudgets().Informer()
+			},
 		},
 		{
 			name:            "csinodes",
@@ -131,6 +134,9 @@ func New(
 			apiType:         reflect.TypeOf(&storagev1.CSINode{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			isApplied:       false,
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Storage().V1().CSINodes().Informer()
+			},
 		},
 		{
 			name:            "horizontalpodautoscalers",
@@ -138,6 +144,9 @@ func New(
 			apiType:         reflect.TypeOf(&autoscalingv1.HorizontalPodAutoscaler{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			isApplied:       false,
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Autoscaling().V1().HorizontalPodAutoscalers().Informer()
+			},
 		},
 	}
 
@@ -276,35 +285,35 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 	if err := wait.PollImmediateInfiniteWithContext(ctx, time.Minute*2, func(ctx context.Context) (done bool, err error) {
 		apiResourceLists := fetchAPIResourceLists(c.discovery, c.log)
 		if apiResourceLists == nil {
+			c.log.Warnf("Failed to fetch API resource lists, will try again")
 			return false, nil
 		}
 		c.log.Infof("Cluster API server is available, trying to start conditional informers")
 
-		for _, informer := range tryConditionalInformers {
+		for i, informer := range tryConditionalInformers {
 			if informer.isApplied {
 				continue
 			}
 			apiResourceListForGroupVersion := getAPIResourceListByGroupVersion(informer.groupVersion, apiResourceLists)
-
-			resourceAvailable := isResourceAvailable(informer.apiType, apiResourceListForGroupVersion)
-			informerHasAccess := c.informerHasAccess(ctx, informer)
-
-			if resourceAvailable && informerHasAccess {
-				c.log.Infof("Starting conditional informer for %v", informer.name)
-
-				informer.informer = applyInformer(informer.groupVersion, c.informerFactory)
-				handledInformer := custominformers.NewHandledInformer(c.log, c.queue, informer.informer, informer.apiType, nil)
-
-				informer.isApplied = true
-
-				go handledInformer.Run(ctx.Done())
-			} else {
-				c.log.Warnf("Skipping conditional informer name: %v, API resource available: %t, has required access: %t",
+			if !isResourceAvailable(informer.apiType, apiResourceListForGroupVersion) {
+				c.log.Warnf("Skipping conditional informer name: %v, because API resource is not available",
 					informer.name,
-					resourceAvailable,
-					informerHasAccess,
 				)
+				continue
 			}
+
+			if !c.informerHasAccess(ctx, informer) {
+				c.log.Warnf("Skipping conditional informer name: %v, because required access is not available",
+					informer.name,
+				)
+				continue
+			}
+
+			c.log.Infof("Starting conditional informer for %v", informer.name)
+			tryConditionalInformers[i].isApplied = true
+
+			handledInformer := custominformers.NewHandledInformer(c.log, c.queue, informer.informerFactory(), informer.apiType, nil)
+			go handledInformer.Run(ctx.Done())
 		}
 
 		filterNotAppliedConditionInformers := lo.Filter(tryConditionalInformers, func(informer conditionalInformer, _ int) bool {
@@ -313,8 +322,6 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 		if len(filterNotAppliedConditionInformers) > 0 {
 			return false, nil
 		}
-
-		<-ctx.Done()
 		return true, nil
 	}); err != nil {
 		c.log.Warnf("Error when waiting for server resources: %v", err.Error())
@@ -538,16 +545,4 @@ func isResourceAvailable(kind reflect.Type, apiResourceList *metav1.APIResourceL
 		}
 	}
 	return false
-}
-
-func applyInformer(groupVersion string, informerFactory informers.SharedInformerFactory) cache.SharedIndexInformer {
-	switch groupVersion {
-	case "storage.k8s.io/v1":
-		return informerFactory.Storage().V1().CSINodes().Informer()
-	case "autoscaling/v1":
-		return informerFactory.Autoscaling().V1().HorizontalPodAutoscalers().Informer()
-	case "policy/v1":
-		return informerFactory.Policy().V1().PodDisruptionBudgets().Informer()
-	}
-	return nil
 }
