@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
 	authorizationv1 "k8s.io/api/authorization/v1"
@@ -78,6 +79,8 @@ type conditionalInformer struct {
 	informer cache.SharedInformer
 	// permissionVerbs is list of verbs which represent the permissions
 	permissionVerbs []string
+	// isApplied is true if the permission is applied
+	isApplied bool
 }
 
 func New(
@@ -266,6 +269,7 @@ func (c *Controller) Run(ctx context.Context) error {
 }
 
 func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, conditionalInformers []conditionalInformer) {
+	tryConditionalInformers := conditionalInformers
 	if err := wait.PollImmediateInfiniteWithContext(ctx, time.Minute*2, func(ctx context.Context) (done bool, err error) {
 		apiResourceLists := fetchAPIResourceLists(c.discovery, c.log)
 		if apiResourceLists == nil {
@@ -273,7 +277,10 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 		}
 		c.log.Infof("Cluster API server is available, trying to start conditional informers")
 
-		for _, informer := range conditionalInformers {
+		for _, informer := range tryConditionalInformers {
+			if informer.isApplied {
+				continue
+			}
 			apiResourceListForGroupVersion := getAPIResourceListByGroupVersion(informer.groupVersion, apiResourceLists)
 
 			resourceAvailable := isResourceAvailable(informer.apiType, apiResourceListForGroupVersion)
@@ -284,6 +291,9 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 
 				informer.informer = applyInformer(informer.groupVersion, c.informerFactory)
 				handledInformer := custominformers.NewHandledInformer(c.log, c.queue, informer.informer, informer.apiType, nil)
+
+				informer.isApplied = true
+
 				go handledInformer.Run(ctx.Done())
 			} else {
 				c.log.Warnf("Skipping conditional informer name: %v, API resource available: %t, has required access: %t",
@@ -293,6 +303,14 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 				)
 			}
 		}
+
+		filterNotAppliedConditionInformers := lo.Filter(tryConditionalInformers, func(informer conditionalInformer, _ int) bool {
+			return !informer.isApplied
+		})
+		if len(filterNotAppliedConditionInformers) > 0 {
+			return false, nil
+		}
+
 		<-ctx.Done()
 		return true, nil
 	}); err != nil {
@@ -455,8 +473,8 @@ func (c *Controller) debugQueueContent(maxItems int) string {
 }
 
 func (c *Controller) informerHasAccess(ctx context.Context, informer conditionalInformer) bool {
-	//Cuts the groupName from the groupVersion, example: "apps/v1" -> "apps"
-	groupName, _ := strings.CutSuffix(informer.groupVersion, "/v1")
+	// Cut the groupName from the groupVersion from /v1, example: "policy/v1beta1" -> "policy" or "policy/v1" -> "policy"
+	groupName := strings.Split(informer.groupVersion, "/")[0]
 
 	// Check if allowed to access all resources with the wildcard "*" verb
 	if access := c.informerIsAllowedToAccessResource(ctx, "*", informer, groupName); access.Status.Allowed {
