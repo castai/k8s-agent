@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/dynamic"
@@ -111,8 +112,14 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 
 	// if pod is holding invalid leader lease, this health check will ensure to kill it by failing pod health check
 	leaderWatchDog := leaderelection.NewLeaderHealthzAdaptor(time.Minute * 2)
+	checks := map[string]healthz.Checker{
+		"controller": ctrlHealthz.Check,
+	}
+	if cfg.LeaderElection.Enabled {
+		checks["leader"] = leaderWatchDog.Check
+	}
 
-	closeHealthz := runHealthzEndpoints(cfg, log, ctrlHealthz.Check, leaderWatchDog.Check, exitCh)
+	closeHealthz := runHealthzEndpoints(cfg, log, checks, exitCh)
 	defer closeHealthz()
 
 	restconfig, err := retrieveKubeConfig(log, cfg)
@@ -151,7 +158,7 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 	log.Data["provider"] = provider.Name()
 	log.Infof("using provider %q", provider.Name())
 
-	leaderFunc := func(ctx context.Context) error {
+	agentLoopFunc := func(ctx context.Context) error {
 		clusterID := ""
 		if cfg.Static != nil {
 			clusterID = cfg.Static.ClusterID
@@ -193,9 +200,14 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 		return nil
 	}
 
-	replicas.Run(ctx, log, cfg.LeaderElection, clientset, leaderWatchDog, func(ctx context.Context) {
-		exitCh <- leaderFunc(ctx)
-	})
+	if cfg.LeaderElection.Enabled {
+		replicas.Run(ctx, log, cfg.LeaderElection, clientset, leaderWatchDog, func(ctx context.Context) {
+			exitCh <- agentLoopFunc(ctx)
+		})
+	} else {
+		exitCh <- agentLoopFunc(ctx)
+	}
+
 	return nil
 }
 
@@ -252,13 +264,13 @@ func runPProf(cfg config.Config, log *logrus.Entry, exitCh chan error) (closeFun
 	return closeFn
 }
 
-func runHealthzEndpoints(cfg config.Config, log *logrus.Entry, controllerCheck healthz.Checker, leaderCheck healthz.Checker, exitCh chan error) func() {
+func runHealthzEndpoints(cfg config.Config, log *logrus.Entry, checks map[string]healthz.Checker, exitCh chan error) func() {
 	log.Infof("starting healthz on port: %d", cfg.HealthzPort)
-	healthzSrv := &http.Server{Addr: portToServerAddr(cfg.HealthzPort), Handler: &healthz.Handler{Checks: map[string]healthz.Checker{
-		"server":     healthz.Ping,
-		"controller": controllerCheck,
-		"leader":     leaderCheck,
-	}}}
+	allChecks := lo.Assign(map[string]healthz.Checker{
+		"server": healthz.Ping,
+	}, checks)
+
+	healthzSrv := &http.Server{Addr: portToServerAddr(cfg.HealthzPort), Handler: &healthz.Handler{Checks: allChecks}}
 	closeFunc := func() {
 		if err := healthzSrv.Close(); err != nil {
 			log.Errorf("closing healthz server: %v", err)

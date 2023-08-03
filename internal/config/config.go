@@ -104,6 +104,7 @@ type Controller struct {
 }
 
 type LeaderElectionConfig struct {
+	Enabled   bool   `mapstructure:"enabled"`
 	LockName  string `mapstructure:"lock_name"`
 	Namespace string `mapstructure:"namespace"`
 }
@@ -132,6 +133,7 @@ func Get() Config {
 	viper.SetDefault("controller.initialization_timeout_extension", 5*time.Minute)
 
 	viper.SetDefault("healthz_port", 9876)
+	viper.SetDefault("leader_election.enabled", true)
 	viper.SetDefault("leader_election.lock_name", "agent-leader-election-lock")
 	viper.SetDefault("leader_election.namespace", "castai-agent")
 
