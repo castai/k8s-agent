@@ -74,6 +74,13 @@ func TestController_HappyPath(t *testing.T) {
 	podData, err := delta.Encode(pod)
 	require.NoError(t, err)
 
+	cfgMap := &v1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "cfg1"},
+		Data:       map[string]string{"field1": "value1"},
+	}
+	cfgMapData, err := delta.Encode(cfgMap)
+	require.NoError(t, err)
+
 	pdb := &policyv1.PodDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "poddisruptionbudgets",
@@ -116,7 +123,7 @@ func TestController_HappyPath(t *testing.T) {
 		}, nil
 	})
 
-	clientset := fake.NewSimpleClientset(node, pod, pdb, hpa, csi)
+	clientset := fake.NewSimpleClientset(node, pod, cfgMap, pdb, hpa, csi)
 	clientset.Fake.Resources = []*metav1.APIResourceList{
 		{
 			GroupVersion: autoscalingv1.SchemeGroupVersion.String(),
@@ -148,6 +155,17 @@ func TestController_HappyPath(t *testing.T) {
 				},
 			},
 		},
+		{
+			GroupVersion: v1.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group: "",
+					Name:  "configmap",
+					Kind:  "ConfigMap",
+					Verbs: []string{"get", "list", "watch"},
+				},
+			},
+		},
 	}
 
 	metricsClient := metrics_fake.NewSimpleClientset()
@@ -166,7 +184,7 @@ func TestController_HappyPath(t *testing.T) {
 			require.Equal(t, clusterID, d.ClusterID)
 			require.Equal(t, "1.21+", d.ClusterVersion)
 			require.True(t, d.FullSnapshot)
-			require.Len(t, d.Items, 5)
+			require.Len(t, d.Items, 6)
 
 			var actualValues []string
 			for _, item := range d.Items {
@@ -175,6 +193,7 @@ func TestController_HappyPath(t *testing.T) {
 
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Node", nodeData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Pod", podData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "ConfigMap", cfgMapData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "PodDisruptionBudget", pdbData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "HorizontalPodAutoscaler", hpaData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "CSINode", csiData))

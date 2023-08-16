@@ -119,6 +119,16 @@ func New(
 
 	conditionalInformers := []conditionalInformer{
 		{
+			name:            "configmap",
+			groupVersion:    corev1.SchemeGroupVersion.String(),
+			apiType:         reflect.TypeOf(&corev1.ConfigMap{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			isApplied:       false,
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Core().V1().ConfigMaps().Informer()
+			},
+		},
+		{
 			name:            "poddisruptionbudgets",
 			groupVersion:    policyv1.SchemeGroupVersion.String(),
 			apiType:         reflect.TypeOf(&policyv1.PodDisruptionBudget{}),
