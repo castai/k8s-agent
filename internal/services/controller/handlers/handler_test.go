@@ -79,8 +79,12 @@ func Test_handler(t *testing.T) {
 			Namespace: v1.NamespaceDefault,
 		},
 	}
+	cfgmap := &v1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "cfg1"},
+		Data:       map[string]string{"field1": "value1"},
+	}
 
-	items := []delta.Object{pod, node, pv, pvc, rc, ns, service, hpa, pdb}
+	items := []delta.Object{pod, node, pv, pvc, rc, ns, service, hpa, pdb, cfgmap}
 
 	for _, item := range items {
 		item := item
