@@ -160,7 +160,7 @@ func TestController_HappyPath(t *testing.T) {
 			APIResources: []metav1.APIResource{
 				{
 					Group: "",
-					Name:  "configmap",
+					Name:  "configmaps",
 					Kind:  "ConfigMap",
 					Verbs: []string{"get", "list", "watch"},
 				},

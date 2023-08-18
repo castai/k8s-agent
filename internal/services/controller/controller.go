@@ -119,7 +119,7 @@ func New(
 
 	conditionalInformers := []conditionalInformer{
 		{
-			name:            "configmap",
+			name:            "configmaps",
 			groupVersion:    corev1.SchemeGroupVersion.String(),
 			apiType:         reflect.TypeOf(&corev1.ConfigMap{}),
 			permissionVerbs: []string{"get", "list", "watch"},
