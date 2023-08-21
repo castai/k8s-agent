@@ -21,6 +21,7 @@ import (
 	policyv1 "k8s.io/api/policy/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/informers"
@@ -72,7 +73,7 @@ type conditionalInformer struct {
 	// name is the name of the API resource, ex.: "poddisruptionbudgets"
 	name string
 	// groupVersion is the group and version of the API type, ex.: "policy/v1"
-	groupVersion string
+	groupVersion schema.GroupVersion
 	// apiType is the type of the API object, ex.: "*v1.PodDisruptionBudget"
 	apiType reflect.Type
 	// informerFactory is the informer for the API type
@@ -120,7 +121,7 @@ func New(
 	conditionalInformers := []conditionalInformer{
 		{
 			name:            "configmaps",
-			groupVersion:    corev1.SchemeGroupVersion.String(),
+			groupVersion:    corev1.SchemeGroupVersion,
 			apiType:         reflect.TypeOf(&corev1.ConfigMap{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			isApplied:       false,
@@ -130,7 +131,7 @@ func New(
 		},
 		{
 			name:            "poddisruptionbudgets",
-			groupVersion:    policyv1.SchemeGroupVersion.String(),
+			groupVersion:    policyv1.SchemeGroupVersion,
 			apiType:         reflect.TypeOf(&policyv1.PodDisruptionBudget{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			isApplied:       false,
@@ -140,7 +141,7 @@ func New(
 		},
 		{
 			name:            "csinodes",
-			groupVersion:    storagev1.SchemeGroupVersion.String(),
+			groupVersion:    storagev1.SchemeGroupVersion,
 			apiType:         reflect.TypeOf(&storagev1.CSINode{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			isApplied:       false,
@@ -150,7 +151,7 @@ func New(
 		},
 		{
 			name:            "horizontalpodautoscalers",
-			groupVersion:    autoscalingv1.SchemeGroupVersion.String(),
+			groupVersion:    autoscalingv1.SchemeGroupVersion,
 			apiType:         reflect.TypeOf(&autoscalingv1.HorizontalPodAutoscaler{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			isApplied:       false,
@@ -303,7 +304,7 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 			if informer.isApplied {
 				continue
 			}
-			apiResourceListForGroupVersion := getAPIResourceListByGroupVersion(informer.groupVersion, apiResourceLists)
+			apiResourceListForGroupVersion := getAPIResourceListByGroupVersion(informer.groupVersion.String(), apiResourceLists)
 			if !isResourceAvailable(informer.apiType, apiResourceListForGroupVersion) {
 				c.log.Warnf("Skipping conditional informer name: %v, because API resource is not available",
 					informer.name,
@@ -492,16 +493,13 @@ func (c *Controller) debugQueueContent(maxItems int) string {
 }
 
 func (c *Controller) informerHasAccess(ctx context.Context, informer conditionalInformer) bool {
-	// Cut the groupName from the groupVersion from "/", example: "policy/v1beta1" -> "policy" or "policy/v1" -> "policy"
-	groupName := strings.Split(informer.groupVersion, "/")[0]
-
 	// Check if allowed to access all resources with the wildcard "*" verb
-	if access := c.informerIsAllowedToAccessResource(ctx, "*", informer, groupName); access.Status.Allowed {
+	if access := c.informerIsAllowedToAccessResource(ctx, "*", informer, informer.groupVersion.Group); access.Status.Allowed {
 		return true
 	}
 
 	for _, verb := range informer.permissionVerbs {
-		access := c.informerIsAllowedToAccessResource(ctx, verb, informer, groupName)
+		access := c.informerIsAllowedToAccessResource(ctx, verb, informer, informer.groupVersion.Group)
 		if !access.Status.Allowed {
 			return false
 		}
