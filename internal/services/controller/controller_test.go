@@ -166,6 +166,17 @@ func TestController_HappyPath(t *testing.T) {
 				},
 			},
 		},
+		{
+			GroupVersion: policyv1.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group: "policy",
+					Name:  "poddisruptionbudgets",
+					Kind:  "PodDisruptionBudget",
+					Verbs: []string{"get", "list", "watch"},
+				},
+			},
+		},
 	}
 
 	metricsClient := metrics_fake.NewSimpleClientset()
@@ -228,19 +239,6 @@ func TestController_HappyPath(t *testing.T) {
 	go func() {
 		require.NoError(t, ctrl.Run(ctx))
 	}()
-
-	// This adds the PDB resource to the discovery API, so that watcher can pick it up.
-	clientset.Fake.Resources = append(clientset.Fake.Resources, &metav1.APIResourceList{
-		GroupVersion: policyv1.SchemeGroupVersion.String(),
-		APIResources: []metav1.APIResource{
-			{
-				Group: "policy",
-				Name:  "poddisruptionbudgets",
-				Kind:  "PodDisruptionBudget",
-				Verbs: []string{"get", "list", "watch"},
-			},
-		},
-	})
 
 	wait.Until(func() {
 		if atomic.LoadInt64(&invocations) >= 1 {
