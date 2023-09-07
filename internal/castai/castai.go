@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -61,12 +63,12 @@ func NewClient(log logrus.FieldLogger, rest *resty.Client, deltaHTTPClient *http
 }
 
 // NewDefaultRestyClient configures a default instance of the resty.Client used to do HTTP requests.
-func NewDefaultRestyClient() *resty.Client {
+func NewDefaultRestyClient(log logrus.FieldLogger) *resty.Client {
 	cfg := config.Get().API
 
 	restyClient := resty.NewWithClient(&http.Client{
 		Timeout:   defaultTimeout,
-		Transport: createHTTPTransport(),
+		Transport: createHTTPTransport(log),
 	})
 
 	restyClient.SetBaseURL(cfg.URL)
@@ -78,14 +80,14 @@ func NewDefaultRestyClient() *resty.Client {
 
 // NewDefaultDeltaHTTPClient configures a default http client used for sending delta requests. Delta requests use a
 // different client due to the need to access various low-level features of the http.Client.
-func NewDefaultDeltaHTTPClient() *http.Client {
+func NewDefaultDeltaHTTPClient(log logrus.FieldLogger) *http.Client {
 	return &http.Client{
 		Timeout:   sendDeltaReadTimeout,
-		Transport: createHTTPTransport(),
+		Transport: createHTTPTransport(log),
 	}
 }
 
-func createHTTPTransport() *http.Transport {
+func createHTTPTransport(log logrus.FieldLogger) *http.Transport {
 	return &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
@@ -96,7 +98,23 @@ func createHTTPTransport() *http.Transport {
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   5 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
+		TLSClientConfig:       setTLSConfig(log),
 	}
+}
+
+func setTLSConfig(log logrus.FieldLogger) *tls.Config {
+	if cert := config.Get().TLS.CACertFile; cert != "" {
+		certPool := x509.NewCertPool()
+		ok := certPool.AppendCertsFromPEM([]byte(cert))
+		if !ok {
+			log.Errorf("failed to add root certificate to CA pool")
+			return nil
+		}
+		return &tls.Config{
+			RootCAs: certPool,
+		}
+	}
+	return nil
 }
 
 type client struct {
