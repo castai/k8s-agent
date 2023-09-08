@@ -1,7 +1,6 @@
 package castai
 
 import (
-	"castai-agent/internal/config"
 	"compress/gzip"
 	"context"
 	"encoding/json"
@@ -16,6 +15,8 @@ import (
 	"github.com/jarcoal/httpmock"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
+
+	"castai-agent/internal/config"
 )
 
 func TestClient_RegisterCluster(t *testing.T) {
