@@ -88,6 +88,10 @@ func NewDefaultDeltaHTTPClient(log logrus.FieldLogger) *http.Client {
 }
 
 func createHTTPTransport(log logrus.FieldLogger) *http.Transport {
+	tlsConfig, err := createTLSConfig()
+	if err != nil {
+		log.Errorf("creating TLS config: %v", err)
+	}
 	return &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
@@ -98,23 +102,22 @@ func createHTTPTransport(log logrus.FieldLogger) *http.Transport {
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   5 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
-		TLSClientConfig:       setTLSConfig(log),
+		TLSClientConfig:       tlsConfig,
 	}
 }
 
-func setTLSConfig(log logrus.FieldLogger) *tls.Config {
-	if cert := config.Get().TLS.CACertFile; cert != "" {
+func createTLSConfig() (*tls.Config, error) {
+	if cert := config.Get().TLS; cert != nil {
 		certPool := x509.NewCertPool()
-		ok := certPool.AppendCertsFromPEM([]byte(cert))
+		ok := certPool.AppendCertsFromPEM([]byte(cert.CACertFile))
 		if !ok {
-			log.Errorf("failed to add root certificate to CA pool")
-			return nil
+			return nil, fmt.Errorf("failed to add root certificate to CA pool")
 		}
 		return &tls.Config{
 			RootCAs: certPool,
-		}
+		}, nil
 	}
-	return nil
+	return nil, nil
 }
 
 type client struct {
