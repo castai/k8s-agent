@@ -43,6 +43,9 @@ func TestClient_RegisterCluster(t *testing.T) {
 }
 
 func TestClient_SendDelta(t *testing.T) {
+	t.Cleanup(config.Reset)
+	t.Cleanup(os.Clearenv)
+
 	httpClient := &http.Client{}
 	httpmock.ActivateNonDefault(httpClient)
 	defer httpmock.Reset()
