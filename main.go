@@ -57,7 +57,7 @@ func main() {
 		SendTimeout: LogExporterSendTimeout,
 	}
 
-	castaiClient := castai.NewClient(log, castai.NewDefaultRestyClient(log), castai.NewDefaultDeltaHTTPClient(log))
+	castaiClient := castai.NewClient(log, castai.NewDefaultRestyClient(), castai.NewDefaultDeltaHTTPClient())
 
 	registrator := castai.NewRegistrator()
 	defer registrator.ReleaseWaiters()

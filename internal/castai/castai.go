@@ -63,12 +63,12 @@ func NewClient(log logrus.FieldLogger, rest *resty.Client, deltaHTTPClient *http
 }
 
 // NewDefaultRestyClient configures a default instance of the resty.Client used to do HTTP requests.
-func NewDefaultRestyClient(log logrus.FieldLogger) *resty.Client {
+func NewDefaultRestyClient() *resty.Client {
 	cfg := config.Get().API
 
 	restyClient := resty.NewWithClient(&http.Client{
 		Timeout:   defaultTimeout,
-		Transport: createHTTPTransport(log),
+		Transport: createHTTPTransport(),
 	})
 
 	restyClient.SetBaseURL(cfg.URL)
@@ -80,17 +80,17 @@ func NewDefaultRestyClient(log logrus.FieldLogger) *resty.Client {
 
 // NewDefaultDeltaHTTPClient configures a default http client used for sending delta requests. Delta requests use a
 // different client due to the need to access various low-level features of the http.Client.
-func NewDefaultDeltaHTTPClient(log logrus.FieldLogger) *http.Client {
+func NewDefaultDeltaHTTPClient() *http.Client {
 	return &http.Client{
 		Timeout:   sendDeltaReadTimeout,
-		Transport: createHTTPTransport(log),
+		Transport: createHTTPTransport(),
 	}
 }
 
-func createHTTPTransport(log logrus.FieldLogger) *http.Transport {
+func createHTTPTransport() *http.Transport {
 	tlsConfig, err := createTLSConfig()
 	if err != nil {
-		log.Errorf("creating TLS config: %v", err)
+		panic(fmt.Errorf("creating TLS config: %v", err))
 	}
 	return &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
