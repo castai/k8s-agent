@@ -15,6 +15,8 @@ import (
 	"github.com/jarcoal/httpmock"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
+
+	"castai-agent/internal/config"
 )
 
 func TestClient_RegisterCluster(t *testing.T) {
@@ -41,6 +43,9 @@ func TestClient_RegisterCluster(t *testing.T) {
 }
 
 func TestClient_SendDelta(t *testing.T) {
+	t.Cleanup(config.Reset)
+	t.Cleanup(os.Clearenv)
+
 	httpClient := &http.Client{}
 	httpmock.ActivateNonDefault(httpClient)
 	defer httpmock.Reset()
@@ -88,4 +93,71 @@ func TestClient_SendDelta(t *testing.T) {
 	err := c.SendDelta(context.Background(), delta.ClusterID, delta)
 
 	require.NoError(t, err)
+}
+
+func TestCreateTLSConfig(t *testing.T) {
+	t.Run("should populate tls.Config RootCAs when valid certificate presented", func(t *testing.T) {
+		r := require.New(t)
+
+		t.Cleanup(config.Reset)
+		t.Cleanup(os.Clearenv)
+
+		r.NoError(os.Setenv("TLS_CA_CERT_FILE", string(`
+-----BEGIN CERTIFICATE-----
+MIIDATCCAemgAwIBAgIUPUS4krHP49SF+yYMLHe4nCllKmEwDQYJKoZIhvcNAQEL
+BQAwDzENMAsGA1UECgwEVGVzdDAgFw0yMzA5MTMwODM5MzhaGA8yMjE1MDUxMDA4
+MzkzOFowDzENMAsGA1UECgwEVGVzdDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCC
+AQoCggEBAOVZbDa4/tf3N3VP4Ezvt18d++xrQ+bzjhuE7MWX36NWZ4wUzgmqQXd0
+OQWoxYqRGKyI847v29j2BWG17ZmbqarwZHjR98rn9gNtRJgeURlEyAh1pAprhFwb
+IBS9vyyCNJtfFFF+lvWvJcU+VKIqWH/9413xDx+OE8tRWNRkS/1CVJg1Nnm3H/IF
+lhWAKOYbeKY9q8RtIhb4xNqIc8nmUjDFIjRTarIuf+jDwfFQAPK5pNci+o9KCDgd
+Y4lvnGfvPp9XAHnWzTRWNGJQyefZb/SdJjXlic10njfttzKBXi0x8IuV2x98AEPE
+2jLXIvC+UBpvMhscdzPfahp5xkYJWx0CAwEAAaNTMFEwHQYDVR0OBBYEFFE48b+V
+4E5PWqjpLcUnqWvDDgsuMB8GA1UdIwQYMBaAFFE48b+V4E5PWqjpLcUnqWvDDgsu
+MA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAIe82ddHX61WHmyp
+zeSiF25aXBqeOUA0ScArTL0fBGi9xZ/8gVU79BvJMyfkaeBKvV06ka6g9OnleWYB
+zhBmHBvCL6PsgwLxgzt/dj5ES0K3Ml+7jGmhCKKryzYj/ZvhSMyLlxZqP/nRccBG
+y6G3KK4bjzqY4TcEPNs8H4Akc+0SGcPl+AAe65mXPIQhtMkANFLoRuWxMf5JmJke
+dYT1GoOjRJpEWCATM+KCXa3UEpRBcXNLeOHZivuqf7n0e1CUD6+0oK4TLxVsTqti
+q276VYI/vYmMLRI/iE7Qjn9uGEeR1LWpVngE9jSzSdzByvzw3DwO4sL5B+rv7O1T
+9Qgi/No=
+-----END CERTIFICATE-----
+		`)))
+		r.NoError(os.Setenv("API_KEY", "key"))
+		r.NoError(os.Setenv("API_URL", "example.com"))
+
+		got, err := createTLSConfig()
+		r.NoError(err)
+		r.NotNil(got)
+		r.NotEmpty(got.RootCAs)
+	})
+
+	t.Run("should return error and nil for tls.Config when invalid certificate is given", func(t *testing.T) {
+		r := require.New(t)
+
+		t.Cleanup(config.Reset)
+		t.Cleanup(os.Clearenv)
+
+		r.NoError(os.Setenv("TLS_CA_CERT_FILE", "certificate"))
+		r.NoError(os.Setenv("API_KEY", "key"))
+		r.NoError(os.Setenv("API_URL", "example.com"))
+
+		got, err := createTLSConfig()
+		r.Error(err)
+		r.Nil(got)
+	})
+
+	t.Run("should return nil if no certificate is set", func(t *testing.T) {
+		r := require.New(t)
+
+		t.Cleanup(config.Reset)
+		t.Cleanup(os.Clearenv)
+
+		r.NoError(os.Setenv("API_KEY", "key"))
+		r.NoError(os.Setenv("API_URL", "example.com"))
+
+		got, err := createTLSConfig()
+		r.NoError(err)
+		r.Nil(got)
+	})
 }

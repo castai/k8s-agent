@@ -16,6 +16,8 @@ type Config struct {
 	API        API    `mapstructure:"api"`
 	Kubeconfig string `mapstructure:"kubeconfig"`
 
+	TLS *TLS `mapstructure:"tls"`
+
 	Provider  string     `mapstructure:"provider"`
 	EKS       *EKS       `mapstructure:"eks"`
 	GKE       *GKE       `mapstructure:"gke"`
@@ -40,6 +42,10 @@ const (
 	ModeAgent   Mode = "agent"
 	ModeMonitor Mode = "monitor"
 )
+
+type TLS struct {
+	CACertFile string `mapstructure:"ca_cert_file"`
+}
 
 type Log struct {
 	Level int `mapstructure:"level"`

@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -61,31 +63,46 @@ func NewClient(log logrus.FieldLogger, rest *resty.Client, deltaHTTPClient *http
 }
 
 // NewDefaultRestyClient configures a default instance of the resty.Client used to do HTTP requests.
-func NewDefaultRestyClient() *resty.Client {
+func NewDefaultRestyClient() (*resty.Client, error) {
 	cfg := config.Get().API
+
+	clientTransport, err := createHTTPTransport()
+	if err != nil {
+		return nil, err
+	}
 
 	restyClient := resty.NewWithClient(&http.Client{
 		Timeout:   defaultTimeout,
-		Transport: createHTTPTransport(),
+		Transport: clientTransport,
 	})
 
 	restyClient.SetBaseURL(cfg.URL)
 	restyClient.SetRetryCount(defaultRetryCount)
 	restyClient.Header.Set(headerAPIKey, cfg.Key)
 
-	return restyClient
+	return restyClient, nil
 }
 
 // NewDefaultDeltaHTTPClient configures a default http client used for sending delta requests. Delta requests use a
 // different client due to the need to access various low-level features of the http.Client.
-func NewDefaultDeltaHTTPClient() *http.Client {
+func NewDefaultDeltaHTTPClient() (*http.Client, error) {
+	clientTransport, err := createHTTPTransport()
+	if err != nil {
+		return nil, err
+	}
+
 	return &http.Client{
 		Timeout:   sendDeltaReadTimeout,
-		Transport: createHTTPTransport(),
-	}
+		Transport: clientTransport,
+	}, nil
 }
 
-func createHTTPTransport() *http.Transport {
+func createHTTPTransport() (*http.Transport, error) {
+	tlsConfig, err := createTLSConfig()
+	if err != nil {
+		return nil, fmt.Errorf("creating TLS config: %v", err)
+	}
+
 	return &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
@@ -96,7 +113,24 @@ func createHTTPTransport() *http.Transport {
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   5 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
+		TLSClientConfig:       tlsConfig,
+	}, nil
+}
+
+func createTLSConfig() (*tls.Config, error) {
+	cert := config.Get().TLS
+	if cert == nil {
+		return nil, nil
 	}
+
+	certPool := x509.NewCertPool()
+	if !certPool.AppendCertsFromPEM([]byte(cert.CACertFile)) {
+		return nil, fmt.Errorf("failed to add root certificate to CA pool")
+	}
+
+	return &tls.Config{
+		RootCAs: certPool,
+	}, nil
 }
 
 type client struct {

@@ -57,7 +57,17 @@ func main() {
 		SendTimeout: LogExporterSendTimeout,
 	}
 
-	castaiClient := castai.NewClient(log, castai.NewDefaultRestyClient(), castai.NewDefaultDeltaHTTPClient())
+	restyClient, err := castai.NewDefaultRestyClient()
+	if err != nil {
+		log.Fatalf("resty client failed: %v", err)
+	}
+
+	deltaHTTPClient, err := castai.NewDefaultDeltaHTTPClient()
+	if err != nil {
+		log.Fatalf("delta http client failed: %v", err)
+	}
+
+	castaiClient := castai.NewClient(log, restyClient, deltaHTTPClient)
 
 	registrator := castai.NewRegistrator()
 	defer registrator.ReleaseWaiters()
