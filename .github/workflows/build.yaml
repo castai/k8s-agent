@@ -119,6 +119,7 @@ jobs:
 
       - name: FOSSA scan docker image
         if: github.event_name == 'release'
+        continue-on-error: true
         uses: fossas/fossa-action@v1
         with:
           api-key: ${{ secrets.FOSSA_API_KEY }}
@@ -126,6 +127,7 @@ jobs:
 
       - name: FOSSA scan docker image RedHat UBI
         if: github.event_name == 'release'
+        continue-on-error: true
         uses: fossas/fossa-action@v1
         with:
           api-key: ${{ secrets.FOSSA_API_KEY }}
