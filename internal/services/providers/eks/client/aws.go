@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
@@ -124,6 +125,15 @@ func WithMetadataDiscovery() func(ctx context.Context, c *client) error {
 	}
 }
 
+// WithAPITimeout configures the request timeout for AWS API calls.
+func WithAPITimeout(apiTimeout time.Duration) func(ctx context.Context, c *client) error {
+	return func(ctx context.Context, c *client) error {
+		c.APITimeout = apiTimeout
+
+		return nil
+	}
+}
+
 type client struct {
 	log         logrus.FieldLogger
 	sess        *session.Session
@@ -132,6 +142,7 @@ type client struct {
 	region      *string
 	accountID   *string
 	clusterName *string
+	APITimeout  time.Duration
 }
 
 func (c *client) GetRegion(ctx context.Context) (*string, error) {
@@ -153,7 +164,10 @@ func (c *client) GetAccountID(ctx context.Context) (*string, error) {
 	if c.accountID != nil {
 		return c.accountID, nil
 	}
+	ctx, cancel := c.requestContext(ctx)
+	defer cancel()
 
+	c.log.Debug("fetching instance identity document")
 	resp, err := c.metaClient.GetInstanceIdentityDocumentWithContext(ctx)
 	if err != nil {
 		return nil, err
@@ -169,12 +183,12 @@ func (c *client) GetClusterName(ctx context.Context) (*string, error) {
 		return c.clusterName, nil
 	}
 
-	instanceID, err := c.metaClient.GetMetadataWithContext(ctx, "instance-id")
+	instanceID, err := c.getMetadataWithContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting instance id from metadata: %w", err)
 	}
 
-	resp, err := c.ec2Client.DescribeInstancesWithContext(ctx, &ec2.DescribeInstancesInput{
+	resp, err := c.describeInstancesWithContext(ctx, &ec2.DescribeInstancesInput{
 		InstanceIds: []*string{pointer.StringPtr(instanceID)},
 	})
 	if err != nil {
@@ -203,23 +217,6 @@ func (c *client) GetClusterName(ctx context.Context) (*string, error) {
 	return c.clusterName, nil
 }
 
-func getClusterName(tags []*ec2.Tag) string {
-	for _, tag := range tags {
-		if tag == nil || tag.Key == nil || tag.Value == nil {
-			continue
-		}
-		for _, clusterTag := range eksClusterTags {
-			if strings.HasPrefix(*tag.Key, clusterTag) && *tag.Value == owned {
-				return strings.TrimPrefix(*tag.Key, clusterTag)
-			}
-		}
-		if *tag.Key == tagKOPSKubernetesCluster {
-			return *tag.Value
-		}
-	}
-	return ""
-}
-
 func (c *client) GetInstancesByInstanceIDs(ctx context.Context, instanceIDs []string) ([]*ec2.Instance, error) {
 	idsPtr := make([]*string, len(instanceIDs))
 	for i := range instanceIDs {
@@ -241,7 +238,7 @@ func (c *client) GetInstancesByInstanceIDs(ctx context.Context, instanceIDs []st
 			},
 		}
 
-		resp, err := c.ec2Client.DescribeInstancesWithContext(ctx, req)
+		resp, err := c.describeInstancesWithContext(ctx, req)
 		if err != nil {
 			return nil, fmt.Errorf("describing instances: %w", err)
 		}
@@ -252,4 +249,45 @@ func (c *client) GetInstancesByInstanceIDs(ctx context.Context, instanceIDs []st
 	}
 
 	return instances, nil
+}
+
+func (c *client) getMetadataWithContext(ctx context.Context) (string, error) {
+	ctx, cancel := c.requestContext(ctx)
+	defer cancel()
+
+	c.log.Debug("fetching EC2 instance metadata")
+	return c.metaClient.GetMetadataWithContext(ctx, "instance-id")
+}
+
+func (c *client) describeInstancesWithContext(ctx context.Context, req *ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error) {
+	ctxWithTimeout, cancel := c.requestContext(ctx)
+	defer cancel()
+
+	c.log.Debug("fetching EC2 instance information")
+	return c.ec2Client.DescribeInstancesWithContext(ctxWithTimeout, req)
+}
+
+func (c *client) requestContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if c.APITimeout > 0 {
+		return context.WithTimeout(ctx, c.APITimeout)
+	}
+
+	return ctx, func() {}
+}
+
+func getClusterName(tags []*ec2.Tag) string {
+	for _, tag := range tags {
+		if tag == nil || tag.Key == nil || tag.Value == nil {
+			continue
+		}
+		for _, clusterTag := range eksClusterTags {
+			if strings.HasPrefix(*tag.Key, clusterTag) && *tag.Value == owned {
+				return strings.TrimPrefix(*tag.Key, clusterTag)
+			}
+		}
+		if *tag.Key == tagKOPSKubernetesCluster {
+			return *tag.Value
+		}
+	}
+	return ""
 }

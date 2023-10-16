@@ -63,9 +63,10 @@ type API struct {
 }
 
 type EKS struct {
-	AccountID   string `mapstructure:"account_id"`
-	Region      string `mapstructure:"region"`
-	ClusterName string `mapstructure:"cluster_name"`
+	AccountID   string        `mapstructure:"account_id"`
+	Region      string        `mapstructure:"region"`
+	ClusterName string        `mapstructure:"cluster_name"`
+	APITimeout  time.Duration `mapstructure:"api_timeout"`
 }
 
 type GKE struct {
@@ -177,6 +178,9 @@ func Get() Config {
 		}
 		if cfg.EKS.ClusterName == "" {
 			requiredWhenDiscoveryDisabled("EKS_CLUSTER_NAME")
+		}
+		if cfg.EKS.APITimeout <= 0 {
+			cfg.EKS.APITimeout = 120 * time.Second
 		}
 	}
 
