@@ -159,4 +159,40 @@ func TestProvider_IsSpot(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, got)
 	})
+
+	t.Run("should not perform call out to AWS API if node types can be determined using labels", func(t *testing.T) {
+		awsClient := mock_client.NewMockClient(gomock.NewController(t))
+
+		p := &Provider{
+			log:       logrus.New(),
+			awsClient: awsClient,
+			spotCache: map[string]bool{},
+		}
+
+		nodeCastaiSpot := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			labels.CastaiSpot: "true",
+		}}}
+		nodeCastaiSpotFallback := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			labels.CastaiSpotFallback: "true",
+		}}}
+
+		nodeKarpenterSpot := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			labels.KarpenterCapacityType: labels.ValueKarpenterCapacityTypeSpot,
+		}}}
+		nodeKarpenterOnDemand := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			labels.KarpenterCapacityType: labels.ValueKarpenterCapacityTypeOnDemand,
+		}}}
+
+		nodeEKSSpot := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			LabelCapacity: ValueCapacitySpot,
+		}}}
+		nodeEKSOnDemand := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			LabelCapacity: ValueCapacityOnDemand,
+		}}}
+
+		got, err := p.FilterSpot(context.Background(), []*v1.Node{nodeCastaiSpot, nodeCastaiSpotFallback, nodeKarpenterSpot, nodeKarpenterOnDemand, nodeEKSSpot, nodeEKSOnDemand})
+
+		require.NoError(t, err)
+		require.Equal(t, []*v1.Node{nodeCastaiSpot, nodeKarpenterSpot, nodeEKSSpot}, got)
+	})
 }
