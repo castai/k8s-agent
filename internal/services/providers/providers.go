@@ -1,20 +1,20 @@
 package providers
 
 import (
-	"context"
-	"fmt"
-
-	"github.com/sirupsen/logrus"
-	"k8s.io/client-go/dynamic"
-
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/discovery"
 	"castai-agent/internal/services/providers/aks"
 	"castai-agent/internal/services/providers/eks"
 	"castai-agent/internal/services/providers/gke"
 	"castai-agent/internal/services/providers/kops"
+	"castai-agent/internal/services/providers/kwok"
 	"castai-agent/internal/services/providers/openshift"
 	"castai-agent/internal/services/providers/types"
+	"context"
+	"fmt"
+
+	"github.com/sirupsen/logrus"
+	"k8s.io/client-go/dynamic"
 )
 
 func GetProvider(ctx context.Context, log logrus.FieldLogger, discoveryService discovery.Service, dyno dynamic.Interface) (types.Provider, error) {
@@ -38,6 +38,10 @@ func GetProvider(ctx context.Context, log logrus.FieldLogger, discoveryService d
 
 	if cfg.Provider == openshift.Name {
 		return openshift.New(discoveryService, dyno), nil
+	}
+
+	if cfg.Provider == "kwok" {
+		return kwok.New(log.WithField("provider", "kwok"))
 	}
 
 	return nil, fmt.Errorf("unknown provider %q", cfg.Provider)
