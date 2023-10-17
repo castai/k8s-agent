@@ -10,6 +10,30 @@ Visit the [docs](https://docs.cast.ai/docs/getting-started) to connect your clus
 
 The helm chart for the CAST AI Kubernetes agent is published in the [castai/helm-charts](https://github.com/castai/helm-charts) repo.
 
+
+## Reading configuration from file
+
+You can pass configuration to agent via YAML file.
+
+Example file
+```yaml
+api:
+  key: "api key"
+  url: "api.cast.ai"
+```
+or
+
+```yaml
+api.key: "api key"
+api.url: "api.cast.ai"
+```
+
+Shell example
+
+```shell 
+CONFIG_PATH=<PATH_TO_CONFIG> ./castai-agent
+```
+
 ## Contributing
 
 ### Run the agent in your IDE 

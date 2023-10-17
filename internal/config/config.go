@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -150,6 +151,16 @@ func Get() Config {
 
 	cfg = &Config{}
 	bindEnvs(*cfg)
+
+	if cfgFile := os.Getenv("CONFIG_PATH"); cfgFile != "" {
+		fmt.Println("Using config from a file", cfgFile)
+		viper.SetConfigType("yaml")
+		viper.SetConfigFile(cfgFile)
+		if err := viper.ReadInConfig(); err != nil {
+			panic(fmt.Errorf("reading default config: %v", err))
+		}
+	}
+
 	if err := viper.Unmarshal(&cfg); err != nil {
 		panic(fmt.Errorf("parsing configuration: %v", err))
 	}
