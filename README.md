@@ -34,6 +34,12 @@ Shell example
 CONFIG_PATH=<PATH_TO_CONFIG> ./castai-agent
 ```
 
+## API_KEY from file 
+
+There is a possibility to read API_KEY from file instead of env variable it can be done by using `API_KEY_FILE` env variable.
+This variable points to file that contains API_KEY value.
+
+
 ## Contributing
 
 ### Run the agent in your IDE 
