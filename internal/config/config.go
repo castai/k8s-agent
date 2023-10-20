@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
@@ -64,10 +65,11 @@ type API struct {
 }
 
 type EKS struct {
-	AccountID   string        `mapstructure:"account_id"`
-	Region      string        `mapstructure:"region"`
-	ClusterName string        `mapstructure:"cluster_name"`
-	APITimeout  time.Duration `mapstructure:"api_timeout"`
+	AccountID                        string        `mapstructure:"account_id"`
+	Region                           string        `mapstructure:"region"`
+	ClusterName                      string        `mapstructure:"cluster_name"`
+	APITimeout                       time.Duration `mapstructure:"api_timeout"`
+	APINodeLifecycleDiscoveryEnabled *bool         `mapstructure:"api_node_lifecycle_discovery_enabled"`
 }
 
 type GKE struct {
@@ -192,6 +194,9 @@ func Get() Config {
 		}
 		if cfg.EKS.APITimeout <= 0 {
 			cfg.EKS.APITimeout = 120 * time.Second
+		}
+		if cfg.EKS.APINodeLifecycleDiscoveryEnabled == nil {
+			cfg.EKS.APINodeLifecycleDiscoveryEnabled = lo.ToPtr(true)
 		}
 	}
 
