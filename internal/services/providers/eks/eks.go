@@ -32,7 +32,7 @@ const (
 )
 
 // New configures and returns an EKS provider.
-func New(ctx context.Context, log logrus.FieldLogger) (types.Provider, error) {
+func New(ctx context.Context, log logrus.FieldLogger, apiNodeLifecycleDiscoveryEnabled bool) (types.Provider, error) {
 	var opts []client.Opt
 
 	if cfg := config.Get().EKS; cfg != nil {
@@ -50,16 +50,18 @@ func New(ctx context.Context, log logrus.FieldLogger) (types.Provider, error) {
 	}
 
 	return &Provider{
-		log:       log,
-		awsClient: awsClient,
-		spotCache: map[string]bool{},
+		log:                              log,
+		awsClient:                        awsClient,
+		apiNodeLifecycleDiscoveryEnabled: apiNodeLifecycleDiscoveryEnabled,
+		spotCache:                        map[string]bool{},
 	}, nil
 }
 
 // Provider is the EKS implementation of the providers.Provider interface.
 type Provider struct {
-	log       logrus.FieldLogger
-	awsClient client.Client
+	log                              logrus.FieldLogger
+	awsClient                        client.Client
+	apiNodeLifecycleDiscoveryEnabled bool
 
 	spotCache map[string]bool
 }
@@ -128,22 +130,24 @@ func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node
 		nodesByInstanceID[instanceID] = node
 	}
 
-	if len(instanceIDs) > 0 {
-		instances, err := p.awsClient.GetInstancesByInstanceIDs(ctx, instanceIDs)
-		if err != nil {
-			return nil, fmt.Errorf("getting instances by instance IDs: %w", err)
+	if len(instanceIDs) == 0 || !p.apiNodeLifecycleDiscoveryEnabled {
+		return ret, nil
+	}
+
+	instances, err := p.awsClient.GetInstancesByInstanceIDs(ctx, instanceIDs)
+	if err != nil {
+		return nil, fmt.Errorf("getting instances by instance IDs: %w", err)
+	}
+
+	for _, instance := range instances {
+		isSpot := instance.InstanceLifecycle != nil && *instance.InstanceLifecycle == "spot"
+		instanceID := *instance.InstanceId
+
+		if isSpot {
+			ret = append(ret, nodesByInstanceID[instanceID])
 		}
 
-		for _, instance := range instances {
-			isSpot := instance.InstanceLifecycle != nil && *instance.InstanceLifecycle == "spot"
-			instanceID := *instance.InstanceId
-
-			if isSpot {
-				ret = append(ret, nodesByInstanceID[instanceID])
-			}
-
-			p.spotCache[instanceID] = isSpot
-		}
+		p.spotCache[instanceID] = isSpot
 	}
 
 	return ret, nil
