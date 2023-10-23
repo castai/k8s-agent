@@ -43,6 +43,8 @@ type Mode string
 const (
 	ModeAgent   Mode = "agent"
 	ModeMonitor Mode = "monitor"
+
+	DefaultAPINodeLifecycleDiscoveryEnabled = true
 )
 
 type TLS struct {
@@ -196,7 +198,7 @@ func Get() Config {
 			cfg.EKS.APITimeout = 120 * time.Second
 		}
 		if cfg.EKS.APINodeLifecycleDiscoveryEnabled == nil {
-			cfg.EKS.APINodeLifecycleDiscoveryEnabled = lo.ToPtr(true)
+			cfg.EKS.APINodeLifecycleDiscoveryEnabled = lo.ToPtr(DefaultAPINodeLifecycleDiscoveryEnabled)
 		}
 	}
 

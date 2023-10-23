@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
@@ -85,4 +86,40 @@ func TestGetProvider(t *testing.T) {
 		r.NoError(err)
 		r.IsType(&openshift.Provider{}, got)
 	})
+}
+
+func Test_isAPINodeLifecycleDiscoveryEnabled(t *testing.T) {
+	tests := map[string]struct {
+		cfg  config.Config
+		want bool
+	}{
+		"should use default node lifecycle discovery value when EKS config is nil": {
+			cfg:  config.Config{},
+			want: true,
+		},
+		"should use default node lifecycle discovery value when EKS config is not nil and config value is nil": {
+			cfg: config.Config{
+				EKS: &config.EKS{APINodeLifecycleDiscoveryEnabled: nil},
+			},
+			want: true,
+		},
+		"should use node lifecycle discovery value from config when it is configured": {
+			cfg: config.Config{
+				EKS: &config.EKS{
+					APINodeLifecycleDiscoveryEnabled: lo.ToPtr(false),
+				},
+			},
+			want: false,
+		},
+	}
+
+	for testName, tt := range tests {
+		t.Run(testName, func(t *testing.T) {
+			r := require.New(t)
+
+			got := isAPINodeLifecycleDiscoveryEnabled(tt.cfg)
+
+			r.Equal(tt.want, got)
+		})
+	}
 }
