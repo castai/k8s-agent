@@ -201,7 +201,7 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 		Steps:    3,
 	}
 	numAttempts := 0
-	err = wait.ExponentialBackoffWithContext(ctx, backoff, func(_ context.Context) (done bool, err error) {
+	err = wait.ExponentialBackoffWithContext(ctx, backoff, func() (done bool, err error) {
 		numAttempts++
 		log = log.WithField("attempts", numAttempts)
 
