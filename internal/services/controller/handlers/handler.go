@@ -40,7 +40,7 @@ func NewHandler(
 	}
 }
 
-func (h *handler) OnAdd(obj interface{}) {
+func (h *handler) OnAdd(obj interface{}, _ bool) {
 	h.handle(castai.EventAdd, obj)
 }
 
