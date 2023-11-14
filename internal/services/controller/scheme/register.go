@@ -29,5 +29,4 @@ var builder = runtime.SchemeBuilder{
 
 func init() {
 	utilruntime.Must(builder.AddToScheme(Scheme))
-	//utilruntime.Must(karpenterCore.SchemeBuilder.AddToScheme(Scheme)) // todo:
 }

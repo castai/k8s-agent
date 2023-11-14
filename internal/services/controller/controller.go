@@ -523,14 +523,6 @@ func getConditionalInformers(f informers.SharedInformerFactory, client dynamic.I
 	}
 }
 
-func withDefaultTimeout(options metav1.ListOptions) metav1.ListOptions {
-	if options.TimeoutSeconds == nil {
-		options.TimeoutSeconds = lo.ToPtr(int64(15))
-	}
-
-	return options
-}
-
 func getDefaultInformers(f informers.SharedInformerFactory) map[reflect.Type]cache.SharedInformer {
 	return map[reflect.Type]cache.SharedInformer{
 		reflect.TypeOf(&corev1.Node{}):                  f.Core().V1().Nodes().Informer(),
