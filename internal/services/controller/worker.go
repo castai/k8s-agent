@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"k8s.io/client-go/dynamic"
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -21,6 +22,7 @@ func Loop(
 	log logrus.FieldLogger,
 	clientset kubernetes.Interface,
 	metricsClient versioned.Interface,
+	dynamicClient dynamic.Interface,
 	castaiclient castai.Client,
 	provider types.Provider,
 	clusterID string,
@@ -30,7 +32,6 @@ func Loop(
 ) error {
 	return repeatUntilContextClosed(ctx, func(ctx context.Context) error {
 		log = log.WithField("controller_id", uuid.New().String())
-
 		defer func() {
 			if err := recover(); err != nil {
 				log.Errorf("panic: runtime error: %v", err)
@@ -54,6 +55,7 @@ func Loop(
 			clientset.Discovery(),
 			castaiclient,
 			metricsClient,
+			dynamicClient,
 			provider,
 			clusterID,
 			cfg.Controller,

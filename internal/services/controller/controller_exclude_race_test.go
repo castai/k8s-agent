@@ -6,6 +6,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	dynamic_fake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	metrics_fake "k8s.io/metrics/pkg/client/clientset/versioned/fake"
@@ -44,6 +46,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 
 	clientset := fake.NewSimpleClientset()
 	metricsClient := metrics_fake.NewSimpleClientset()
+	dynamicClient := dynamic_fake.NewSimpleDynamicClient(runtime.NewScheme())
 	f := informers.NewSharedInformerFactory(clientset, 0)
 
 	version.EXPECT().Full().Return("1.21+").MaxTimes(2)
@@ -123,7 +126,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 		})
 
 	log.SetLevel(logrus.DebugLevel)
-	ctrl := New(log, f, clientset.Discovery(), castaiclient, metricsClient, provider, clusterID.String(), &config.Controller{
+	ctrl := New(log, f, clientset.Discovery(), castaiclient, metricsClient, dynamicClient, provider, clusterID.String(), &config.Controller{
 		Interval:             2 * time.Second,
 		PrepTimeout:          2 * time.Second,
 		InitialSleepDuration: 10 * time.Millisecond,
