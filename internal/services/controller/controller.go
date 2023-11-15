@@ -41,13 +41,11 @@ import (
 	"castai-agent/internal/services/controller/handlers/filters"
 	"castai-agent/internal/services/controller/handlers/filters/autoscalerevents"
 	"castai-agent/internal/services/controller/handlers/filters/oomevents"
-	castaiinformers "castai-agent/internal/services/controller/informers"
+	custominformers "castai-agent/internal/services/controller/informers"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/internal/services/version"
 	"castai-agent/pkg/labels"
 )
-
-const fetchInterval = 30 * time.Second
 
 type Controller struct {
 	log          logrus.FieldLogger
@@ -56,7 +54,7 @@ type Controller struct {
 	provider     types.Provider
 	queue        workqueue.Interface
 	cfg          *config.Controller
-	informers    map[reflect.Type]*castaiinformers.HandledInformer
+	informers    map[reflect.Type]*custominformers.HandledInformer
 
 	discovery       discovery.DiscoveryInterface
 	metricsClient   versioned.Interface
@@ -75,7 +73,6 @@ type Controller struct {
 }
 
 type conditionalInformer struct {
-	version         schema.GroupVersion
 	resource        schema.GroupVersionResource
 	apiType         reflect.Type
 	exampleObject   runtime.Object
@@ -106,13 +103,13 @@ func New(
 	defaultInformers := getDefaultInformers(f)
 	conditionalInformers := getConditionalInformers(f, df, metricsClient, log)
 
-	handledInformers := map[reflect.Type]*castaiinformers.HandledInformer{}
+	handledInformers := map[reflect.Type]*custominformers.HandledInformer{}
 	for typ, informer := range defaultInformers {
-		handledInformers[typ] = castaiinformers.NewHandledInformer(log, queue, informer, typ, nil)
+		handledInformers[typ] = custominformers.NewHandledInformer(log, queue, informer, typ, nil)
 	}
 
 	eventType := reflect.TypeOf(&corev1.Event{})
-	handledInformers[eventType] = castaiinformers.NewHandledInformer(
+	handledInformers[eventType] = custominformers.NewHandledInformer(
 		log,
 		queue,
 		f.Core().V1().Events().Informer(),
@@ -264,7 +261,7 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 			c.log.Infof("Starting conditional informer for %v", informer.resource.Resource)
 			tryConditionalInformers[i].isApplied = true
 
-			handledInformer := castaiinformers.NewHandledInformer(c.log, c.queue, informer.informerFactory(), informer.apiType, nil)
+			handledInformer := custominformers.NewHandledInformer(c.log, c.queue, informer.informerFactory(), informer.apiType, nil)
 
 			go handledInformer.Run(ctx.Done())
 		}
@@ -294,10 +291,6 @@ func (c *Controller) collectInitialSnapshot(ctx context.Context) error {
 	// Collect initial state from cached informers and push to deltas queue.
 	for _, informer := range c.informers {
 		for _, item := range informer.GetStore().List() {
-			//if _, ok := item.(*unstructured.UnstructuredList); ok {
-			//	informer.SharedInformer.
-			//		fmt.Println("Variable is of type *unstructured.UnstructuredList")
-			//}
 			informer.Handler.OnAdd(item)
 		}
 	}
@@ -449,7 +442,6 @@ func (c *Controller) informerIsAllowedToAccessResource(ctx context.Context, verb
 func getConditionalInformers(f informers.SharedInformerFactory, df dynamicinformer.DynamicSharedInformerFactory, metricsClient versioned.Interface, logger logrus.FieldLogger) []conditionalInformer {
 	return []conditionalInformer{
 		{
-			version:         corev1.SchemeGroupVersion,
 			resource:        corev1.SchemeGroupVersion.WithResource("configmaps"),
 			apiType:         reflect.TypeOf(&corev1.ConfigMap{}),
 			permissionVerbs: []string{"get", "list", "watch"},
@@ -513,7 +505,7 @@ func getConditionalInformers(f informers.SharedInformerFactory, df dynamicinform
 			apiType:         reflect.TypeOf(&v1beta1.PodMetrics{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return castaiinformers.NewPodMetricsInformer(logger, metricsClient)
+				return custominformers.NewPodMetricsInformer(logger, metricsClient)
 			},
 		},
 	}
