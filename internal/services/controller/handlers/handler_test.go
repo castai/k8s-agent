@@ -93,7 +93,7 @@ func Test_handler(t *testing.T) {
 
 			h := NewHandler(logrus.New(), queue, reflect.TypeOf(item), nil, transformers.Transformers{})
 			queue.EXPECT().Add(delta.NewItem(castai.EventAdd, item))
-			h.OnAdd(item)
+			h.OnAdd(item, true)
 
 			queue.EXPECT().Add(delta.NewItem(castai.EventUpdate, item))
 			h.OnUpdate(item, item)

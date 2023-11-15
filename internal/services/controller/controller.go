@@ -291,7 +291,7 @@ func (c *Controller) collectInitialSnapshot(ctx context.Context) error {
 	// Collect initial state from cached informers and push to deltas queue.
 	for _, informer := range c.informers {
 		for _, item := range informer.GetStore().List() {
-			informer.Handler.OnAdd(item)
+			informer.Handler.OnAdd(item, true)
 		}
 	}
 
