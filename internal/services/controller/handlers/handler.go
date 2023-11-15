@@ -1,9 +1,10 @@
 package handlers
 
 import (
+	"reflect"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"reflect"
 
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/tools/cache"
