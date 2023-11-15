@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/dynamic/dynamicinformer"
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -49,13 +50,14 @@ func Loop(
 		log = log.WithField("k8s_version", v.Full())
 
 		f := informers.NewSharedInformerFactory(clientset, 0)
+		df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
 		ctrl := New(
 			log,
 			f,
+			df,
 			clientset.Discovery(),
 			castaiclient,
 			metricsClient,
-			dynamicClient,
 			provider,
 			clusterID,
 			cfg.Controller,

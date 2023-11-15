@@ -14,7 +14,6 @@ import (
 	policyv1 "k8s.io/api/policy/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	"reflect"
@@ -61,7 +60,6 @@ type Controller struct {
 
 	discovery       discovery.DiscoveryInterface
 	metricsClient   versioned.Interface
-	dynamicClient   dynamic.Interface
 	informerFactory informers.SharedInformerFactory
 
 	delta   *delta.Delta
@@ -89,10 +87,10 @@ type conditionalInformer struct {
 func New(
 	log logrus.FieldLogger,
 	f informers.SharedInformerFactory,
+	df dynamicinformer.DynamicSharedInformerFactory,
 	discovery discovery.DiscoveryInterface,
 	castaiclient castai.Client,
 	metricsClient versioned.Interface,
-	dynamicClient dynamic.Interface,
 	provider types.Provider,
 	clusterID string,
 	cfg *config.Controller,
@@ -106,7 +104,7 @@ func New(
 	queue := workqueue.NewNamed("castai-agent")
 
 	defaultInformers := getDefaultInformers(f)
-	conditionalInformers := getConditionalInformers(f, dynamicClient, metricsClient, log)
+	conditionalInformers := getConditionalInformers(f, df, metricsClient, log)
 
 	handledInformers := map[reflect.Type]*castaiinformers.HandledInformer{}
 	for typ, informer := range defaultInformers {
@@ -141,7 +139,6 @@ func New(
 		agentVersion:            agentVersion,
 		healthzProvider:         healthzProvider,
 		metricsClient:           metricsClient,
-		dynamicClient:           dynamicClient,
 		discovery:               discovery,
 		informerFactory:         f,
 		conditionalInformers:    conditionalInformers,
@@ -449,8 +446,7 @@ func (c *Controller) informerIsAllowedToAccessResource(ctx context.Context, verb
 	return access
 }
 
-func getConditionalInformers(f informers.SharedInformerFactory, client dynamic.Interface, cl versioned.Interface, logger logrus.FieldLogger) []conditionalInformer {
-	dynamicInformerFactory := dynamicinformer.NewDynamicSharedInformerFactory(client, fetchInterval)
+func getConditionalInformers(f informers.SharedInformerFactory, df dynamicinformer.DynamicSharedInformerFactory, metricsClient versioned.Interface, logger logrus.FieldLogger) []conditionalInformer {
 	return []conditionalInformer{
 		{
 			version:         corev1.SchemeGroupVersion,
@@ -491,7 +487,7 @@ func getConditionalInformers(f informers.SharedInformerFactory, client dynamic.I
 			exampleObject:   &karpenterCore.Provisioner{},
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return dynamicInformerFactory.ForResource(karpenterCore.SchemeGroupVersion.WithResource("provisioners")).Informer()
+				return df.ForResource(karpenterCore.SchemeGroupVersion.WithResource("provisioners")).Informer()
 			},
 		},
 		{
@@ -500,7 +496,7 @@ func getConditionalInformers(f informers.SharedInformerFactory, client dynamic.I
 			exampleObject:   &karpenterCore.Machine{},
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return dynamicInformerFactory.ForResource(karpenterCore.SchemeGroupVersion.WithResource("machines")).Informer()
+				return df.ForResource(karpenterCore.SchemeGroupVersion.WithResource("machines")).Informer()
 			},
 		},
 		{
@@ -509,7 +505,7 @@ func getConditionalInformers(f informers.SharedInformerFactory, client dynamic.I
 			exampleObject:   &karpenter.AWSNodeTemplate{},
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return dynamicInformerFactory.ForResource(karpenter.SchemeGroupVersion.WithResource("awsnodetemplates")).Informer()
+				return df.ForResource(karpenter.SchemeGroupVersion.WithResource("awsnodetemplates")).Informer()
 			},
 		},
 		{
@@ -517,7 +513,7 @@ func getConditionalInformers(f informers.SharedInformerFactory, client dynamic.I
 			apiType:         reflect.TypeOf(&v1beta1.PodMetrics{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return castaiinformers.NewPodMetricsInformer(logger, cl)
+				return castaiinformers.NewPodMetricsInformer(logger, metricsClient)
 			},
 		},
 	}

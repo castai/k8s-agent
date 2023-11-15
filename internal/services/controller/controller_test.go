@@ -5,9 +5,8 @@ import (
 	"errors"
 	"fmt"
 	karpenterCore "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/dynamic/dynamicinformer"
 	"reflect"
 	"sync/atomic"
 	"testing"
@@ -59,21 +58,9 @@ func TestMain(m *testing.M) {
 	)
 }
 
-var myScheme = runtime.NewScheme()
-
-func init() {
-	utilruntime.Must(karpenterCore.SchemeBuilder.AddToScheme(myScheme))
-	utilruntime.Must(fake.AddToScheme(myScheme))
-}
-
 func TestController_HappyPath(t *testing.T) {
-	//scheme := runtime.NewScheme()
-	//utilruntime.Must(karpenterCore.SchemeBuilder.AddToScheme(scheme))
-	//utilruntime.Must(fake.AddToScheme(scheme))
-
-	//scheme := scheme.Scheme
-	myScheme.AddKnownTypes(karpenterCore.SchemeGroupVersion, &karpenterCore.Provisioner{}, &karpenterCore.ProvisionerList{})
-	err := fake.AddToScheme(myScheme)
+	scheme := runtime.NewScheme()
+	utilruntime.Must(karpenterCore.SchemeBuilder.AddToScheme(scheme))
 
 	mockctrl := gomock.NewController(t)
 	castaiclient := mock_castai.NewMockClient(mockctrl)
@@ -127,22 +114,14 @@ func TestController_HappyPath(t *testing.T) {
 	csiData, err := delta.Encode(csi)
 	require.NoError(t, err)
 
-	//provisioners := &karpenterCore.Provisioner{
-	//	ObjectMeta: metav1.ObjectMeta{
-	//		Name:      "provisioners",
-	//		Namespace: v1.NamespaceDefault,
-	//	},
-	//}
-	gvk := schema.GroupVersionKind{
-		Group:   "karpenter.sh", // Your custom group or a standard Kubernetes API group
-		Version: "v1alpha5",     // The version of your resource
-		Kind:    "Provisioner",  // The kind of your resource
+	provisioners := &karpenterCore.Provisioner{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "provisioners",
+			Namespace: v1.NamespaceDefault,
+		},
 	}
 
-	obj := &unstructured.Unstructured{}
-	obj.SetGroupVersionKind(gvk)
-
-	//provisionersData, err := delta.Encode(obj)
+	provisionersData, err := delta.Encode(provisioners)
 	require.NoError(t, err)
 
 	fakeSelfSubjectAccessReviewsClient := &authfakev1.FakeSelfSubjectAccessReviews{
@@ -160,9 +139,11 @@ func TestController_HappyPath(t *testing.T) {
 		}, nil
 	})
 
-	clientset := fake.NewSimpleClientset()
-	fakeDiscovery, _ := clientset.Discovery().(*fakediscovery.FakeDiscovery)
-	fakeDiscovery.Fake.Resources = []*metav1.APIResourceList{
+	clientset := fake.NewSimpleClientset(node, pod, cfgMap, pdb, hpa, csi)
+	metricsClient := metrics_fake.NewSimpleClientset()
+	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, provisioners)
+
+	clientset.Fake.Resources = []*metav1.APIResourceList{
 		{
 			GroupVersion: autoscalingv1.SchemeGroupVersion.String(),
 			APIResources: []metav1.APIResource{
@@ -227,79 +208,20 @@ func TestController_HappyPath(t *testing.T) {
 			},
 		},
 	}
-	//err = clientset.Tracker().Add(obj)
 
-	//clientset.Tracker().Add(csi)
-	//clientset.Fake.Resources = []*metav1.APIResourceList{
-	//{
-	//	GroupVersion: autoscalingv1.SchemeGroupVersion.String(),
-	//	APIResources: []metav1.APIResource{
-	//		{
-	//			Group: "autoscaling",
-	//			Name:  "horizontalpodautoscalers",
-	//			Kind:  "HorizontalPodAutoscaler",
-	//			Verbs: []string{
-	//				"list",
-	//				"watch",
-	//				"get",
-	//			},
-	//		},
-	//	},
-	//},
-	//{
-	//	GroupVersion: storagev1.SchemeGroupVersion.String(),
-	//	APIResources: []metav1.APIResource{
-	//		{
-	//			Group: "storage.k8s.io",
-	//			Name:  "csinodes",
-	//			Kind:  "CSINode",
-	//			Verbs: []string{
-	//				"list",
-	//				"watch",
-	//				"get",
-	//			},
-	//		},
-	//	},
-	//},
-	//{
-	//	GroupVersion: v1.SchemeGroupVersion.String(),
-	//	APIResources: []metav1.APIResource{
-	//		{
-	//			Group: "",
-	//			Name:  "configmaps",
-	//			Kind:  "ConfigMap",
-	//			Verbs: []string{"get", "list", "watch"},
-	//		},
-	//	},
-	//},
-	//{
-	//	GroupVersion: policyv1.SchemeGroupVersion.String(),
-	//	APIResources: []metav1.APIResource{
-	//		{
-	//			Group: "policy",
-	//			Name:  "poddisruptionbudgets",
-	//			Kind:  "PodDisruptionBudget",
-	//			Verbs: []string{"get", "list", "watch"},
-	//		},
-	//	},
-	//},
-	//{
-	//	GroupVersion: karpenterCore.SchemeGroupVersion.String(),
-	//	APIResources: []metav1.APIResource{
-	//		{
-	//			Group: "karpenter.sh",
-	//			Name:  "provisioners",
-	//			Kind:  "Provisioner",
-	//			Verbs: []string{"get", "list", "watch"},
-	//		},
-	//	},
-	//},
-	//}
-
-	//fakeDiscovery.Fake.Resources = clientset.Fake.Resources
-
-	metricsClient := metrics_fake.NewSimpleClientset()
-	dynamicClient := dynamic_fake.NewSimpleDynamicClient(myScheme)
+	dynamicClient.Fake.Resources = []*metav1.APIResourceList{
+		{
+			GroupVersion: karpenterCore.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group: "karpenter.sh",
+					Name:  "provisioners",
+					Kind:  "Provisioner",
+					Verbs: []string{"get", "list", "watch"},
+				},
+			},
+		},
+	}
 
 	version.EXPECT().Full().Return("1.21+").MaxTimes(2)
 
@@ -315,7 +237,7 @@ func TestController_HappyPath(t *testing.T) {
 			require.Equal(t, clusterID, d.ClusterID)
 			require.Equal(t, "1.21+", d.ClusterVersion)
 			require.True(t, d.FullSnapshot)
-			require.Len(t, d.Items, 6)
+			require.Len(t, d.Items, 7)
 
 			var actualValues []string
 			for _, item := range d.Items {
@@ -327,8 +249,8 @@ func TestController_HappyPath(t *testing.T) {
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "ConfigMap", cfgMapData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "PodDisruptionBudget", pdbData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "HorizontalPodAutoscaler", hpaData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Provisioner", provisionersData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "CSINode", csiData))
-			//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Provisioner", provisionersData))
 
 			return nil
 		})
@@ -343,9 +265,11 @@ func TestController_HappyPath(t *testing.T) {
 	provider.EXPECT().FilterSpot(gomock.Any(), []*v1.Node{node}).Return([]*v1.Node{node}, nil)
 
 	f := informers.NewSharedInformerFactory(clientset, 0)
+	df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
+
 	log := logrus.New()
 	log.SetLevel(logrus.DebugLevel)
-	ctrl := New(log, f, fakeDiscovery, castaiclient, metricsClient, dynamicClient, provider, clusterID.String(), &config.Controller{
+	ctrl := New(log, f, df, clientset.Discovery(), castaiclient, metricsClient, provider, clusterID.String(), &config.Controller{
 		Interval:             15 * time.Second,
 		PrepTimeout:          2 * time.Second,
 		InitialSleepDuration: 10 * time.Millisecond,
@@ -383,9 +307,7 @@ func TestNew(t *testing.T) {
 					return true, nil, errors.New("some error")
 				})
 		metricsClient := metrics_fake.NewSimpleClientset()
-		scheme := runtime.NewScheme()
-		karpenterCore.SchemeBuilder.AddToScheme(scheme)
-		dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme)
+		dynamicClient := dynamic_fake.NewSimpleDynamicClient(runtime.NewScheme())
 
 		version.EXPECT().Full().Return("1.21+").MaxTimes(2)
 
@@ -393,9 +315,11 @@ func TestNew(t *testing.T) {
 		agentVersion := &config.AgentVersion{Version: "1.2.3"}
 
 		f := informers.NewSharedInformerFactory(clientset, 0)
+		df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
+
 		log := logrus.New()
 		log.SetLevel(logrus.DebugLevel)
-		ctrl := New(log, f, clientset.Discovery(), castaiclient, metricsClient, dynamicClient, provider, clusterID.String(), &config.Controller{
+		ctrl := New(log, f, df, clientset.Discovery(), castaiclient, metricsClient, provider, clusterID.String(), &config.Controller{
 			Interval:             15 * time.Second,
 			PrepTimeout:          2 * time.Second,
 			InitialSleepDuration: 10 * time.Millisecond,

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/dynamic/dynamicinformer"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -48,6 +49,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 	metricsClient := metrics_fake.NewSimpleClientset()
 	dynamicClient := dynamic_fake.NewSimpleDynamicClient(runtime.NewScheme())
 	f := informers.NewSharedInformerFactory(clientset, 0)
+	df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
 
 	version.EXPECT().Full().Return("1.21+").MaxTimes(2)
 
@@ -126,7 +128,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 		})
 
 	log.SetLevel(logrus.DebugLevel)
-	ctrl := New(log, f, clientset.Discovery(), castaiclient, metricsClient, dynamicClient, provider, clusterID.String(), &config.Controller{
+	ctrl := New(log, f, df, clientset.Discovery(), castaiclient, metricsClient, provider, clusterID.String(), &config.Controller{
 		Interval:             2 * time.Second,
 		PrepTimeout:          2 * time.Second,
 		InitialSleepDuration: 10 * time.Millisecond,
