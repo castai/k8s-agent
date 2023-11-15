@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	karpenterCore "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
+	karpenter "github.com/aws/karpenter/pkg/apis/v1alpha1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"reflect"
@@ -61,6 +62,7 @@ func TestMain(m *testing.M) {
 func TestController_HappyPath(t *testing.T) {
 	scheme := runtime.NewScheme()
 	utilruntime.Must(karpenterCore.SchemeBuilder.AddToScheme(scheme))
+	utilruntime.Must(karpenter.SchemeBuilder.AddToScheme(scheme))
 
 	mockctrl := gomock.NewController(t)
 	castaiclient := mock_castai.NewMockClient(mockctrl)
@@ -69,6 +71,10 @@ func TestController_HappyPath(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	provisionersGvr := karpenterCore.SchemeGroupVersion.WithResource("provisioners")
+	machinesGvr := karpenterCore.SchemeGroupVersion.WithResource("machines")
+	awsNodeTemplatesGvr := karpenter.SchemeGroupVersion.WithResource("awsnodetemplates")
 
 	node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node1", Labels: map[string]string{}}}
 	expectedNode := node.DeepCopy()
@@ -115,13 +121,45 @@ func TestController_HappyPath(t *testing.T) {
 	require.NoError(t, err)
 
 	provisioners := &karpenterCore.Provisioner{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Provisioner",
+			APIVersion: provisionersGvr.GroupVersion().String(),
+		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "provisioners",
+			Name:      provisionersGvr.Resource,
 			Namespace: v1.NamespaceDefault,
 		},
 	}
 
 	provisionersData, err := delta.Encode(provisioners)
+	require.NoError(t, err)
+
+	machines := &karpenterCore.Machine{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Machine",
+			APIVersion: machinesGvr.GroupVersion().String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      machinesGvr.Resource,
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+
+	machinesData, err := delta.Encode(machines)
+	require.NoError(t, err)
+
+	awsNodeTemplates := &karpenter.AWSNodeTemplate{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "AWSNodeTemplate",
+			APIVersion: awsNodeTemplatesGvr.GroupVersion().String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      awsNodeTemplatesGvr.Resource,
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+
+	awsNodeTemplatesData, err := delta.Encode(awsNodeTemplates)
 	require.NoError(t, err)
 
 	fakeSelfSubjectAccessReviewsClient := &authfakev1.FakeSelfSubjectAccessReviews{
@@ -141,7 +179,7 @@ func TestController_HappyPath(t *testing.T) {
 
 	clientset := fake.NewSimpleClientset(node, pod, cfgMap, pdb, hpa, csi)
 	metricsClient := metrics_fake.NewSimpleClientset()
-	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, provisioners)
+	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, provisioners, machines, awsNodeTemplates)
 
 	clientset.Fake.Resources = []*metav1.APIResourceList{
 		{
@@ -151,11 +189,7 @@ func TestController_HappyPath(t *testing.T) {
 					Group: "autoscaling",
 					Name:  "horizontalpodautoscalers",
 					Kind:  "HorizontalPodAutoscaler",
-					Verbs: []string{
-						"list",
-						"watch",
-						"get",
-					},
+					Verbs: []string{"get", "list", "watch"},
 				},
 			},
 		},
@@ -166,11 +200,7 @@ func TestController_HappyPath(t *testing.T) {
 					Group: "storage.k8s.io",
 					Name:  "csinodes",
 					Kind:  "CSINode",
-					Verbs: []string{
-						"list",
-						"watch",
-						"get",
-					},
+					Verbs: []string{"get", "list", "watch"},
 				},
 			},
 		},
@@ -178,7 +208,7 @@ func TestController_HappyPath(t *testing.T) {
 			GroupVersion: v1.SchemeGroupVersion.String(),
 			APIResources: []metav1.APIResource{
 				{
-					Group: "",
+					Group: "v1",
 					Name:  "configmaps",
 					Kind:  "ConfigMap",
 					Verbs: []string{"get", "list", "watch"},
@@ -197,27 +227,35 @@ func TestController_HappyPath(t *testing.T) {
 			},
 		},
 		{
-			GroupVersion: karpenterCore.SchemeGroupVersion.String(),
+			GroupVersion: provisionersGvr.GroupVersion().String(),
 			APIResources: []metav1.APIResource{
 				{
-					Group: "karpenter.sh",
-					Name:  "provisioners",
-					Kind:  "Provisioner",
-					Verbs: []string{"get", "list", "watch"},
+					Group:   provisionersGvr.Group,
+					Name:    provisionersGvr.Resource,
+					Version: provisionersGvr.Version,
+					Verbs:   []string{"get", "list", "watch"},
 				},
 			},
 		},
-	}
-
-	dynamicClient.Fake.Resources = []*metav1.APIResourceList{
 		{
-			GroupVersion: karpenterCore.SchemeGroupVersion.String(),
+			GroupVersion: machinesGvr.GroupVersion().String(),
 			APIResources: []metav1.APIResource{
 				{
-					Group: "karpenter.sh",
-					Name:  "provisioners",
-					Kind:  "Provisioner",
-					Verbs: []string{"get", "list", "watch"},
+					Group:   machinesGvr.Group,
+					Name:    machinesGvr.Resource,
+					Version: machinesGvr.Version,
+					Verbs:   []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
+			GroupVersion: awsNodeTemplatesGvr.GroupVersion().String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group:   awsNodeTemplatesGvr.Group,
+					Name:    awsNodeTemplatesGvr.Resource,
+					Version: awsNodeTemplatesGvr.Version,
+					Verbs:   []string{"get", "list", "watch"},
 				},
 			},
 		},
@@ -237,7 +275,7 @@ func TestController_HappyPath(t *testing.T) {
 			require.Equal(t, clusterID, d.ClusterID)
 			require.Equal(t, "1.21+", d.ClusterVersion)
 			require.True(t, d.FullSnapshot)
-			require.Len(t, d.Items, 7)
+			require.Len(t, d.Items, 9)
 
 			var actualValues []string
 			for _, item := range d.Items {
@@ -249,8 +287,10 @@ func TestController_HappyPath(t *testing.T) {
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "ConfigMap", cfgMapData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "PodDisruptionBudget", pdbData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "HorizontalPodAutoscaler", hpaData))
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Provisioner", provisionersData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "CSINode", csiData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Provisioner", provisionersData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Machine", machinesData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "AWSNodeTemplate", awsNodeTemplatesData))
 
 			return nil
 		})
