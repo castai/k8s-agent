@@ -258,7 +258,7 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 				continue
 			}
 
-			c.log.Infof("Starting conditional informer for %v", informer.resource.Resource)
+			c.log.Infof("Starting conditional informer for %v", informer.resource.String())
 			tryConditionalInformers[i].isApplied = true
 
 			handledInformer := custominformers.NewHandledInformer(c.log, c.queue, informer.informerFactory(), informer.apiType, nil)
