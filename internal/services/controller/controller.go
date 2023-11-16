@@ -23,7 +23,6 @@ import (
 	policyv1 "k8s.io/api/policy/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/discovery"
@@ -75,7 +74,6 @@ type Controller struct {
 type conditionalInformer struct {
 	resource        schema.GroupVersionResource
 	apiType         reflect.Type
-	exampleObject   runtime.Object
 	informerFactory func() cache.SharedIndexInformer
 	permissionVerbs []string
 	isApplied       bool
@@ -476,7 +474,6 @@ func getConditionalInformers(f informers.SharedInformerFactory, df dynamicinform
 		{
 			resource:        karpenterCore.SchemeGroupVersion.WithResource("provisioners"),
 			apiType:         reflect.TypeOf(&karpenterCore.Provisioner{}),
-			exampleObject:   &karpenterCore.Provisioner{},
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
 				return df.ForResource(karpenterCore.SchemeGroupVersion.WithResource("provisioners")).Informer()
@@ -485,7 +482,6 @@ func getConditionalInformers(f informers.SharedInformerFactory, df dynamicinform
 		{
 			resource:        karpenterCore.SchemeGroupVersion.WithResource("machines"),
 			apiType:         reflect.TypeOf(&karpenterCore.Machine{}),
-			exampleObject:   &karpenterCore.Machine{},
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
 				return df.ForResource(karpenterCore.SchemeGroupVersion.WithResource("machines")).Informer()
@@ -494,7 +490,6 @@ func getConditionalInformers(f informers.SharedInformerFactory, df dynamicinform
 		{
 			resource:        karpenter.SchemeGroupVersion.WithResource("awsnodetemplates"),
 			apiType:         reflect.TypeOf(&karpenter.AWSNodeTemplate{}),
-			exampleObject:   &karpenter.AWSNodeTemplate{},
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
 				return df.ForResource(karpenter.SchemeGroupVersion.WithResource("awsnodetemplates")).Informer()
