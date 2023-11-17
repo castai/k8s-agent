@@ -6,6 +6,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/metrics/pkg/client/clientset/versioned"
@@ -21,6 +23,7 @@ func Loop(
 	log logrus.FieldLogger,
 	clientset kubernetes.Interface,
 	metricsClient versioned.Interface,
+	dynamicClient dynamic.Interface,
 	castaiclient castai.Client,
 	provider types.Provider,
 	clusterID string,
@@ -30,7 +33,6 @@ func Loop(
 ) error {
 	return repeatUntilContextClosed(ctx, func(ctx context.Context) error {
 		log = log.WithField("controller_id", uuid.New().String())
-
 		defer func() {
 			if err := recover(); err != nil {
 				log.Errorf("panic: runtime error: %v", err)
@@ -48,9 +50,11 @@ func Loop(
 		log = log.WithField("k8s_version", v.Full())
 
 		f := informers.NewSharedInformerFactory(clientset, 0)
+		df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
 		ctrl := New(
 			log,
 			f,
+			df,
 			clientset.Discovery(),
 			castaiclient,
 			metricsClient,

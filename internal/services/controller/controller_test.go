@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	karpenterCore "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
+	karpenter "github.com/aws/karpenter/pkg/apis/v1alpha1"
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -21,8 +23,11 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	fakediscovery "k8s.io/client-go/discovery/fake"
+	"k8s.io/client-go/dynamic/dynamicinformer"
+	dynamic_fake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	authfakev1 "k8s.io/client-go/kubernetes/typed/authorization/v1/fake"
@@ -56,6 +61,10 @@ func TestMain(m *testing.M) {
 }
 
 func TestController_HappyPath(t *testing.T) {
+	scheme := runtime.NewScheme()
+	utilruntime.Must(karpenterCore.SchemeBuilder.AddToScheme(scheme))
+	utilruntime.Must(karpenter.SchemeBuilder.AddToScheme(scheme))
+
 	mockctrl := gomock.NewController(t)
 	castaiclient := mock_castai.NewMockClient(mockctrl)
 	version := mock_version.NewMockInterface(mockctrl)
@@ -63,6 +72,10 @@ func TestController_HappyPath(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	provisionersGvr := karpenterCore.SchemeGroupVersion.WithResource("provisioners")
+	machinesGvr := karpenterCore.SchemeGroupVersion.WithResource("machines")
+	awsNodeTemplatesGvr := karpenter.SchemeGroupVersion.WithResource("awsnodetemplates")
 
 	node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node1", Labels: map[string]string{}}}
 	expectedNode := node.DeepCopy()
@@ -108,6 +121,48 @@ func TestController_HappyPath(t *testing.T) {
 	csiData, err := delta.Encode(csi)
 	require.NoError(t, err)
 
+	provisioners := &karpenterCore.Provisioner{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Provisioner",
+			APIVersion: provisionersGvr.GroupVersion().String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      provisionersGvr.Resource,
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+
+	provisionersData, err := delta.Encode(provisioners)
+	require.NoError(t, err)
+
+	machines := &karpenterCore.Machine{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Machine",
+			APIVersion: machinesGvr.GroupVersion().String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      machinesGvr.Resource,
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+
+	machinesData, err := delta.Encode(machines)
+	require.NoError(t, err)
+
+	awsNodeTemplates := &karpenter.AWSNodeTemplate{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "AWSNodeTemplate",
+			APIVersion: awsNodeTemplatesGvr.GroupVersion().String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      awsNodeTemplatesGvr.Resource,
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+
+	awsNodeTemplatesData, err := delta.Encode(awsNodeTemplates)
+	require.NoError(t, err)
+
 	fakeSelfSubjectAccessReviewsClient := &authfakev1.FakeSelfSubjectAccessReviews{
 		Fake: &authfakev1.FakeAuthorizationV1{
 			Fake: &k8stesting.Fake{},
@@ -124,6 +179,9 @@ func TestController_HappyPath(t *testing.T) {
 	})
 
 	clientset := fake.NewSimpleClientset(node, pod, cfgMap, pdb, hpa, csi)
+	metricsClient := metrics_fake.NewSimpleClientset()
+	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, provisioners, machines, awsNodeTemplates)
+
 	clientset.Fake.Resources = []*metav1.APIResourceList{
 		{
 			GroupVersion: autoscalingv1.SchemeGroupVersion.String(),
@@ -132,11 +190,7 @@ func TestController_HappyPath(t *testing.T) {
 					Group: "autoscaling",
 					Name:  "horizontalpodautoscalers",
 					Kind:  "HorizontalPodAutoscaler",
-					Verbs: []string{
-						"list",
-						"watch",
-						"get",
-					},
+					Verbs: []string{"get", "list", "watch"},
 				},
 			},
 		},
@@ -147,11 +201,7 @@ func TestController_HappyPath(t *testing.T) {
 					Group: "storage.k8s.io",
 					Name:  "csinodes",
 					Kind:  "CSINode",
-					Verbs: []string{
-						"list",
-						"watch",
-						"get",
-					},
+					Verbs: []string{"get", "list", "watch"},
 				},
 			},
 		},
@@ -159,7 +209,7 @@ func TestController_HappyPath(t *testing.T) {
 			GroupVersion: v1.SchemeGroupVersion.String(),
 			APIResources: []metav1.APIResource{
 				{
-					Group: "",
+					Group: "v1",
 					Name:  "configmaps",
 					Kind:  "ConfigMap",
 					Verbs: []string{"get", "list", "watch"},
@@ -177,9 +227,40 @@ func TestController_HappyPath(t *testing.T) {
 				},
 			},
 		},
+		{
+			GroupVersion: provisionersGvr.GroupVersion().String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group:   provisionersGvr.Group,
+					Name:    provisionersGvr.Resource,
+					Version: provisionersGvr.Version,
+					Verbs:   []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
+			GroupVersion: machinesGvr.GroupVersion().String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group:   machinesGvr.Group,
+					Name:    machinesGvr.Resource,
+					Version: machinesGvr.Version,
+					Verbs:   []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
+			GroupVersion: awsNodeTemplatesGvr.GroupVersion().String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group:   awsNodeTemplatesGvr.Group,
+					Name:    awsNodeTemplatesGvr.Resource,
+					Version: awsNodeTemplatesGvr.Version,
+					Verbs:   []string{"get", "list", "watch"},
+				},
+			},
+		},
 	}
-
-	metricsClient := metrics_fake.NewSimpleClientset()
 
 	version.EXPECT().Full().Return("1.21+").MaxTimes(2)
 
@@ -195,7 +276,7 @@ func TestController_HappyPath(t *testing.T) {
 			require.Equal(t, clusterID, d.ClusterID)
 			require.Equal(t, "1.21+", d.ClusterVersion)
 			require.True(t, d.FullSnapshot)
-			require.Len(t, d.Items, 6)
+			require.Len(t, d.Items, 9)
 
 			var actualValues []string
 			for _, item := range d.Items {
@@ -208,6 +289,9 @@ func TestController_HappyPath(t *testing.T) {
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "PodDisruptionBudget", pdbData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "HorizontalPodAutoscaler", hpaData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "CSINode", csiData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Provisioner", provisionersData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Machine", machinesData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "AWSNodeTemplate", awsNodeTemplatesData))
 
 			return nil
 		})
@@ -222,9 +306,11 @@ func TestController_HappyPath(t *testing.T) {
 	provider.EXPECT().FilterSpot(gomock.Any(), []*v1.Node{node}).Return([]*v1.Node{node}, nil)
 
 	f := informers.NewSharedInformerFactory(clientset, 0)
+	df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
+
 	log := logrus.New()
 	log.SetLevel(logrus.DebugLevel)
-	ctrl := New(log, f, clientset.Discovery(), castaiclient, metricsClient, provider, clusterID.String(), &config.Controller{
+	ctrl := New(log, f, df, clientset.Discovery(), castaiclient, metricsClient, provider, clusterID.String(), &config.Controller{
 		Interval:             15 * time.Second,
 		PrepTimeout:          2 * time.Second,
 		InitialSleepDuration: 10 * time.Millisecond,
@@ -262,6 +348,7 @@ func TestNew(t *testing.T) {
 					return true, nil, errors.New("some error")
 				})
 		metricsClient := metrics_fake.NewSimpleClientset()
+		dynamicClient := dynamic_fake.NewSimpleDynamicClient(runtime.NewScheme())
 
 		version.EXPECT().Full().Return("1.21+").MaxTimes(2)
 
@@ -269,9 +356,11 @@ func TestNew(t *testing.T) {
 		agentVersion := &config.AgentVersion{Version: "1.2.3"}
 
 		f := informers.NewSharedInformerFactory(clientset, 0)
+		df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
+
 		log := logrus.New()
 		log.SetLevel(logrus.DebugLevel)
-		ctrl := New(log, f, clientset.Discovery(), castaiclient, metricsClient, provider, clusterID.String(), &config.Controller{
+		ctrl := New(log, f, df, clientset.Discovery(), castaiclient, metricsClient, provider, clusterID.String(), &config.Controller{
 			Interval:             15 * time.Second,
 			PrepTimeout:          2 * time.Second,
 			InitialSleepDuration: 10 * time.Millisecond,

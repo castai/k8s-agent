@@ -4,6 +4,8 @@ import (
 	"reflect"
 
 	"github.com/sirupsen/logrus"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 
@@ -60,8 +62,24 @@ func (h *handler) handle(e castai.EventType, obj interface{}) {
 	e, obj = h.transformers.Apply(e, obj)
 
 	if reflect.TypeOf(obj) != h.handledType {
-		h.log.Errorf("expected to get %v but got %T", h.handledType, obj)
-		return
+		// Check if obj is of type *unstructured.Unstructured
+		if unstrObj, ok := obj.(*unstructured.Unstructured); ok {
+			// Create an instance of the target type
+			targetObj := reflect.New(h.handledType.Elem()).Interface()
+
+			// Convert from Unstructured to the target type
+			err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstrObj.UnstructuredContent(), targetObj)
+			if err != nil {
+				h.log.Errorf("error converting from unstructured to %v: %v", h.handledType, err)
+				return
+			}
+
+			// Assign the converted object back to obj
+			obj = targetObj
+		} else {
+			h.log.Errorf("expected to get %v but got %T", h.handledType, obj)
+			return
+		}
 	}
 
 	h.log.Debugf("generic handler called: %s: %s", e, reflect.TypeOf(obj))
