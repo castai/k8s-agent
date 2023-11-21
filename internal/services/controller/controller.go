@@ -498,7 +498,7 @@ func getConditionalInformers(f informers.SharedInformerFactory, df dynamicinform
 		{
 			resource:        v1beta1.SchemeGroupVersion.WithResource("pods"),
 			apiType:         reflect.TypeOf(&v1beta1.PodMetrics{}),
-			permissionVerbs: []string{"get", "list", "watch"},
+			permissionVerbs: []string{"get", "list"},
 			informerFactory: func() cache.SharedIndexInformer {
 				return custominformers.NewPodMetricsInformer(logger, metricsClient)
 			},
