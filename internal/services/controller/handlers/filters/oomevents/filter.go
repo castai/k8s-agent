@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"castai-agent/internal/castai"
 )
@@ -15,6 +16,8 @@ const (
 	AnnotationStarvedResource = "starved_resource"
 
 	ResourceMemory = "memory"
+
+	fieldSelector = "involvedObject.kind=" + KindPod + ",reason=" + ReasonOOMEviction
 )
 
 func Filter(_ castai.EventType, obj interface{}) bool {
@@ -42,5 +45,8 @@ func Filter(_ castai.EventType, obj interface{}) bool {
 	}
 
 	return strings.Contains(starvedResourcesString, ResourceMemory)
+}
 
+func ListOpts(opts *metav1.ListOptions) {
+	opts.FieldSelector = fieldSelector
 }

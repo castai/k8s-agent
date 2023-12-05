@@ -2,12 +2,14 @@ package autoscalerevents
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"castai-agent/internal/castai"
 )
 
 const (
 	AutoscalerController = "autoscaler.cast.ai"
+	fieldSelector        = "reportingComponent=" + AutoscalerController
 )
 
 func Filter(_ castai.EventType, obj interface{}) bool {
@@ -16,4 +18,8 @@ func Filter(_ castai.EventType, obj interface{}) bool {
 		return false
 	}
 	return event.ReportingController == AutoscalerController
+}
+
+func ListOpts(opts *metav1.ListOptions) {
+	opts.FieldSelector = fieldSelector
 }
