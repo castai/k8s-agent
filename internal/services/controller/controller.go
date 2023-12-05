@@ -28,6 +28,8 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/informers"
+	v1 "k8s.io/client-go/informers/core/v1"
+	"k8s.io/client-go/kubernetes"
 	authorizationtypev1 "k8s.io/client-go/kubernetes/typed/authorization/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
@@ -53,7 +55,7 @@ type Controller struct {
 	provider     types.Provider
 	queue        workqueue.Interface
 	cfg          *config.Controller
-	informers    map[reflect.Type]*custominformers.HandledInformer
+	informers    map[string]*custominformers.HandledInformer
 
 	discovery       discovery.DiscoveryInterface
 	metricsClient   versioned.Interface
@@ -101,21 +103,29 @@ func New(
 	defaultInformers := getDefaultInformers(f)
 	conditionalInformers := getConditionalInformers(f, df, metricsClient, log)
 
-	handledInformers := map[reflect.Type]*custominformers.HandledInformer{}
+	handledInformers := map[string]*custominformers.HandledInformer{}
 	for typ, informer := range defaultInformers {
-		handledInformers[typ] = custominformers.NewHandledInformer(log, queue, informer, typ, nil)
+		handledInformers[typ.String()] = custominformers.NewHandledInformer(log, queue, informer, typ, nil)
 	}
 
 	eventType := reflect.TypeOf(&corev1.Event{})
-	handledInformers[eventType] = custominformers.NewHandledInformer(
+	handledInformers[fmt.Sprintf("%s:autoscaler", eventType)] = custominformers.NewHandledInformer(
 		log,
 		queue,
-		f.Core().V1().Events().Informer(),
+		createEventInformer(f, autoscalerevents.ListOpts),
 		eventType,
 		filters.Filters{
 			{
 				autoscalerevents.Filter,
 			},
+		},
+	)
+	handledInformers[fmt.Sprintf("%s:oom", eventType)] = custominformers.NewHandledInformer(
+		log,
+		queue,
+		createEventInformer(f, oomevents.ListOpts),
+		eventType,
+		filters.Filters{
 			{
 				oomevents.Filter,
 			},
@@ -156,7 +166,7 @@ func (c *Controller) Run(ctx context.Context) error {
 		syncs = append(syncs, func() bool {
 			hasSynced := informer.HasSynced()
 			if !hasSynced {
-				c.log.Infof("Informer cache for %v has not been synced.", objType.String())
+				c.log.Infof("Informer cache for %v has not been synced.", objType)
 			}
 
 			return hasSynced
@@ -522,6 +532,12 @@ func getDefaultInformers(f informers.SharedInformerFactory) map[reflect.Type]cac
 		reflect.TypeOf(&storagev1.StorageClass{}):       f.Storage().V1().StorageClasses().Informer(),
 		reflect.TypeOf(&batchv1.Job{}):                  f.Batch().V1().Jobs().Informer(),
 	}
+}
+
+func createEventInformer(f informers.SharedInformerFactory, listOptions func(*metav1.ListOptions)) cache.SharedIndexInformer {
+	return f.InformerFor(&corev1.Event{}, func(client kubernetes.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+		return v1.NewFilteredEventInformer(client, corev1.NamespaceAll, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, listOptions)
+	})
 }
 
 func fetchAPIResourceLists(client discovery.DiscoveryInterface, log logrus.FieldLogger) []*metav1.APIResourceList {

@@ -6,6 +6,9 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/selection"
+	k8stesting "k8s.io/client-go/testing"
 
 	"castai-agent/internal/castai"
 )
@@ -42,4 +45,27 @@ func TestFilter(t *testing.T) {
 			require.Equal(t, tc.want, filter)
 		})
 	}
+}
+
+func TestListOpts(t *testing.T) {
+	expectedRequirements := fields.Requirements{
+		{
+			Field:    "involvedObject.kind",
+			Operator: selection.Equals,
+			Value:    KindPod,
+		},
+		{
+			Field:    "reason",
+			Operator: selection.Equals,
+			Value:    ReasonOOMEviction,
+		},
+	}
+
+	opts := metav1.ListOptions{}
+	ListOpts(&opts)
+	_, selector, _ := k8stesting.ExtractFromListOptions(opts)
+	if selector == nil {
+		selector = fields.Everything()
+	}
+	require.ElementsMatch(t, expectedRequirements, selector.Requirements())
 }

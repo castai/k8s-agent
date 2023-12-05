@@ -368,7 +368,7 @@ func TestNew(t *testing.T) {
 
 		r.NotNil(ctrl)
 
-		_, found := ctrl.informers[reflect.TypeOf(&v1beta1.PodMetrics{})]
+		_, found := ctrl.informers[reflect.TypeOf(&v1beta1.PodMetrics{}).String()]
 		r.False(found, "pod metrics informer should not be registered if metrics api is not available")
 	})
 }
