@@ -3,6 +3,7 @@ package oomevents
 import (
 	"testing"
 
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -11,6 +12,7 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 
 	"castai-agent/internal/castai"
+	mock_version "castai-agent/internal/services/version/mock"
 )
 
 func TestFilter(t *testing.T) {
@@ -48,6 +50,9 @@ func TestFilter(t *testing.T) {
 }
 
 func TestListOpts(t *testing.T) {
+	mockctrl := gomock.NewController(t)
+	v := mock_version.NewMockInterface(mockctrl)
+
 	expectedRequirements := fields.Requirements{
 		{
 			Field:    "involvedObject.kind",
@@ -62,7 +67,7 @@ func TestListOpts(t *testing.T) {
 	}
 
 	opts := metav1.ListOptions{}
-	ListOpts(&opts)
+	ListOpts(&opts, v)
 	_, selector, _ := k8stesting.ExtractFromListOptions(opts)
 	if selector == nil {
 		selector = fields.Everything()

@@ -262,7 +262,7 @@ func TestController_HappyPath(t *testing.T) {
 		},
 	}
 
-	version.EXPECT().Full().Return("1.21+").MaxTimes(2)
+	version.EXPECT().Full().Return("1.21+").MaxTimes(3)
 
 	clusterID := uuid.New()
 
