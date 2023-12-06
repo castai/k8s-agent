@@ -7,6 +7,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"castai-agent/internal/castai"
+	"castai-agent/internal/services/version"
 )
 
 const (
@@ -47,6 +48,6 @@ func Filter(_ castai.EventType, obj interface{}) bool {
 	return strings.Contains(starvedResourcesString, ResourceMemory)
 }
 
-func ListOpts(opts *metav1.ListOptions) {
+func ListOpts(opts *metav1.ListOptions, _ version.Interface) {
 	opts.FieldSelector = fieldSelector
 }

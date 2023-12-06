@@ -112,7 +112,7 @@ func New(
 	handledInformers[fmt.Sprintf("%s:autoscaler", eventType)] = custominformers.NewHandledInformer(
 		log,
 		queue,
-		createEventInformer(f, autoscalerevents.ListOpts),
+		createEventInformer(f, v, autoscalerevents.ListOpts),
 		eventType,
 		filters.Filters{
 			{
@@ -123,7 +123,7 @@ func New(
 	handledInformers[fmt.Sprintf("%s:oom", eventType)] = custominformers.NewHandledInformer(
 		log,
 		queue,
-		createEventInformer(f, oomevents.ListOpts),
+		createEventInformer(f, v, oomevents.ListOpts),
 		eventType,
 		filters.Filters{
 			{
@@ -534,9 +534,11 @@ func getDefaultInformers(f informers.SharedInformerFactory) map[reflect.Type]cac
 	}
 }
 
-func createEventInformer(f informers.SharedInformerFactory, listOptions func(*metav1.ListOptions)) cache.SharedIndexInformer {
+func createEventInformer(f informers.SharedInformerFactory, v version.Interface, listOptions func(*metav1.ListOptions, version.Interface)) cache.SharedIndexInformer {
 	return f.InformerFor(&corev1.Event{}, func(client kubernetes.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-		return v1.NewFilteredEventInformer(client, corev1.NamespaceAll, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, listOptions)
+		return v1.NewFilteredEventInformer(client, corev1.NamespaceAll, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, func(options *metav1.ListOptions) {
+			listOptions(options, v)
+		})
 	})
 }
 
