@@ -1,6 +1,7 @@
 package scheme
 
 import (
+	datadoghqv1alpha1 "github.com/DataDog/extendeddaemonset/api/v1alpha1"
 	karpenterCore "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
 	karpenter "github.com/aws/karpenter/pkg/apis/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -25,6 +26,7 @@ var builder = runtime.SchemeBuilder{
 	policyv1.AddToScheme,
 	karpenterCore.SchemeBuilder.AddToScheme,
 	karpenter.SchemeBuilder.AddToScheme,
+	datadoghqv1alpha1.SchemeBuilder.AddToScheme,
 }
 
 func init() {
