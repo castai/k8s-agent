@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	datadoghqv1alpha1 "github.com/DataDog/extendeddaemonset/api/v1alpha1"
 	karpenterCore "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
 	karpenter "github.com/aws/karpenter/pkg/apis/v1alpha1"
 	"github.com/golang/mock/gomock"
@@ -64,6 +65,7 @@ func TestController_HappyPath(t *testing.T) {
 	scheme := runtime.NewScheme()
 	utilruntime.Must(karpenterCore.SchemeBuilder.AddToScheme(scheme))
 	utilruntime.Must(karpenter.SchemeBuilder.AddToScheme(scheme))
+	utilruntime.Must(datadoghqv1alpha1.SchemeBuilder.AddToScheme(scheme))
 
 	mockctrl := gomock.NewController(t)
 	castaiclient := mock_castai.NewMockClient(mockctrl)
@@ -76,6 +78,7 @@ func TestController_HappyPath(t *testing.T) {
 	provisionersGvr := karpenterCore.SchemeGroupVersion.WithResource("provisioners")
 	machinesGvr := karpenterCore.SchemeGroupVersion.WithResource("machines")
 	awsNodeTemplatesGvr := karpenter.SchemeGroupVersion.WithResource("awsnodetemplates")
+	datadogExtendedDSReplicaSetsGvr := datadoghqv1alpha1.GroupVersion.WithResource("extendeddaemonsetreplicasets")
 
 	node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node1", Labels: map[string]string{}}}
 	expectedNode := node.DeepCopy()
@@ -163,6 +166,20 @@ func TestController_HappyPath(t *testing.T) {
 	awsNodeTemplatesData, err := delta.Encode(awsNodeTemplates)
 	require.NoError(t, err)
 
+	datadogExtendedDSReplicaSet := &datadoghqv1alpha1.ExtendedDaemonSetReplicaSet{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ExtendedDaemonSetReplicaSet",
+			APIVersion: datadogExtendedDSReplicaSetsGvr.GroupVersion().String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      datadogExtendedDSReplicaSetsGvr.Resource,
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+
+	datadogExtendedDSReplicaSetData, err := delta.Encode(datadogExtendedDSReplicaSet)
+	require.NoError(t, err)
+
 	fakeSelfSubjectAccessReviewsClient := &authfakev1.FakeSelfSubjectAccessReviews{
 		Fake: &authfakev1.FakeAuthorizationV1{
 			Fake: &k8stesting.Fake{},
@@ -180,7 +197,7 @@ func TestController_HappyPath(t *testing.T) {
 
 	clientset := fake.NewSimpleClientset(node, pod, cfgMap, pdb, hpa, csi)
 	metricsClient := metrics_fake.NewSimpleClientset()
-	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, provisioners, machines, awsNodeTemplates)
+	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, provisioners, machines, awsNodeTemplates, datadogExtendedDSReplicaSet)
 
 	clientset.Fake.Resources = []*metav1.APIResourceList{
 		{
@@ -260,6 +277,17 @@ func TestController_HappyPath(t *testing.T) {
 				},
 			},
 		},
+		{
+			GroupVersion: datadogExtendedDSReplicaSetsGvr.GroupVersion().String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group:   datadogExtendedDSReplicaSetsGvr.Group,
+					Name:    datadogExtendedDSReplicaSetsGvr.Resource,
+					Version: datadogExtendedDSReplicaSetsGvr.Version,
+					Verbs:   []string{"get", "list", "watch"},
+				},
+			},
+		},
 	}
 
 	version.EXPECT().Full().Return("1.21+").MaxTimes(3)
@@ -276,7 +304,7 @@ func TestController_HappyPath(t *testing.T) {
 			require.Equal(t, clusterID, d.ClusterID)
 			require.Equal(t, "1.21+", d.ClusterVersion)
 			require.True(t, d.FullSnapshot)
-			require.Len(t, d.Items, 9)
+			require.Len(t, d.Items, 10)
 
 			var actualValues []string
 			for _, item := range d.Items {
@@ -292,6 +320,7 @@ func TestController_HappyPath(t *testing.T) {
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Provisioner", provisionersData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Machine", machinesData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "AWSNodeTemplate", awsNodeTemplatesData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "ExtendedDaemonSetReplicaSet", datadogExtendedDSReplicaSetData))
 
 			return nil
 		})

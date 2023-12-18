@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	datadoghqv1alpha1 "github.com/DataDog/extendeddaemonset/api/v1alpha1"
 	karpenterCore "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
 	karpenter "github.com/aws/karpenter/pkg/apis/v1alpha1"
 	"github.com/samber/lo"
@@ -503,6 +504,14 @@ func getConditionalInformers(f informers.SharedInformerFactory, df dynamicinform
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
 				return df.ForResource(karpenter.SchemeGroupVersion.WithResource("awsnodetemplates")).Informer()
+			},
+		},
+		{
+			resource:        datadoghqv1alpha1.GroupVersion.WithResource("extendeddaemonsetreplicasets"),
+			apiType:         reflect.TypeOf(&datadoghqv1alpha1.ExtendedDaemonSetReplicaSet{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(datadoghqv1alpha1.GroupVersion.WithResource("extendeddaemonsetreplicasets")).Informer()
 			},
 		},
 		{

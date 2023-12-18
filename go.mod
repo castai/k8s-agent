@@ -4,6 +4,7 @@ go 1.21
 
 require (
 	cloud.google.com/go/compute/metadata v0.2.3
+	github.com/DataDog/extendeddaemonset v0.9.0-rc.3
 	github.com/aws/aws-sdk-go v1.44.294
 	github.com/aws/karpenter v0.29.2
 	github.com/aws/karpenter-core v0.29.2
