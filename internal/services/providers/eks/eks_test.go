@@ -21,6 +21,7 @@ import (
 )
 
 func TestProvider_RegisterCluster(t *testing.T) {
+	r := require.New(t)
 	ctx := context.Background()
 	mockctrl := gomock.NewController(t)
 	awsClient := mock_client.NewMockClient(mockctrl)
@@ -56,18 +57,20 @@ func TestProvider_RegisterCluster(t *testing.T) {
 
 	got, err := p.RegisterCluster(ctx, castClient)
 
-	require.NoError(t, err)
-	require.Equal(t, expected, got)
+	r.NoError(err)
+	r.Equal(expected, got)
 }
 
 func TestProvider_IsSpot(t *testing.T) {
 	t.Run("spot instance capacity label", func(t *testing.T) {
+		r := require.New(t)
 		awsClient := mock_client.NewMockClient(gomock.NewController(t))
 
 		p := &Provider{
-			log:       logrus.New(),
-			awsClient: awsClient,
-			spotCache: map[string]bool{},
+			log:                              logrus.New(),
+			awsClient:                        awsClient,
+			apiNodeLifecycleDiscoveryEnabled: true,
+			spotCache:                        map[string]bool{},
 		}
 
 		node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
@@ -76,17 +79,19 @@ func TestProvider_IsSpot(t *testing.T) {
 
 		got, err := p.FilterSpot(context.Background(), []*v1.Node{node})
 
-		require.NoError(t, err)
-		require.Equal(t, []*v1.Node{node}, got)
+		r.NoError(err)
+		r.Equal([]*v1.Node{node}, got)
 	})
 
 	t.Run("spot instance CAST AI label", func(t *testing.T) {
+		r := require.New(t)
 		awsClient := mock_client.NewMockClient(gomock.NewController(t))
 
 		p := &Provider{
-			log:       logrus.New(),
-			awsClient: awsClient,
-			spotCache: map[string]bool{},
+			log:                              logrus.New(),
+			awsClient:                        awsClient,
+			apiNodeLifecycleDiscoveryEnabled: true,
+			spotCache:                        map[string]bool{},
 		}
 
 		node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
@@ -95,17 +100,19 @@ func TestProvider_IsSpot(t *testing.T) {
 
 		got, err := p.FilterSpot(context.Background(), []*v1.Node{node})
 
-		require.NoError(t, err)
-		require.Equal(t, []*v1.Node{node}, got)
+		r.NoError(err)
+		r.Equal([]*v1.Node{node}, got)
 	})
 
 	t.Run("spot instance lifecycle response", func(t *testing.T) {
+		r := require.New(t)
 		awsClient := mock_client.NewMockClient(gomock.NewController(t))
 
 		p := &Provider{
-			log:       logrus.New(),
-			awsClient: awsClient,
-			spotCache: map[string]bool{},
+			log:                              logrus.New(),
+			awsClient:                        awsClient,
+			apiNodeLifecycleDiscoveryEnabled: true,
+			spotCache:                        map[string]bool{},
 		}
 
 		awsClient.EXPECT().GetInstancesByInstanceIDs(gomock.Any(), []string{"instanceID"}).Return([]*ec2.Instance{
@@ -123,22 +130,24 @@ func TestProvider_IsSpot(t *testing.T) {
 
 		got, err := p.FilterSpot(context.Background(), []*v1.Node{node})
 
-		require.NoError(t, err)
-		require.Equal(t, []*v1.Node{node}, got)
+		r.NoError(err)
+		r.Equal([]*v1.Node{node}, got)
 
 		got, err = p.FilterSpot(context.Background(), []*v1.Node{node})
 
-		require.NoError(t, err)
-		require.Equal(t, []*v1.Node{node}, got)
+		r.NoError(err)
+		r.Equal([]*v1.Node{node}, got)
 	})
 
 	t.Run("on-demand instance", func(t *testing.T) {
+		r := require.New(t)
 		awsClient := mock_client.NewMockClient(gomock.NewController(t))
 
 		p := &Provider{
-			log:       logrus.New(),
-			awsClient: awsClient,
-			spotCache: map[string]bool{},
+			log:                              logrus.New(),
+			awsClient:                        awsClient,
+			apiNodeLifecycleDiscoveryEnabled: true,
+			spotCache:                        map[string]bool{},
 		}
 
 		awsClient.EXPECT().GetInstancesByInstanceIDs(gomock.Any(), []string{"instanceID"}).Return([]*ec2.Instance{
@@ -156,7 +165,70 @@ func TestProvider_IsSpot(t *testing.T) {
 
 		got, err := p.FilterSpot(context.Background(), []*v1.Node{node})
 
-		require.NoError(t, err)
-		require.Empty(t, got)
+		r.NoError(err)
+		r.Empty(got)
+	})
+
+	t.Run("should not perform call out to AWS API if node types can be determined using labels", func(t *testing.T) {
+		r := require.New(t)
+		awsClient := mock_client.NewMockClient(gomock.NewController(t))
+
+		p := &Provider{
+			log:                              logrus.New(),
+			awsClient:                        awsClient,
+			apiNodeLifecycleDiscoveryEnabled: true,
+			spotCache:                        map[string]bool{},
+		}
+
+		nodeCastaiSpot := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			labels.CastaiSpot: "true",
+		}}}
+		nodeCastaiSpotFallback := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			labels.CastaiSpotFallback: "true",
+		}}}
+
+		nodeKarpenterSpot := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			labels.KarpenterCapacityType: labels.ValueKarpenterCapacityTypeSpot,
+		}}}
+		nodeKarpenterOnDemand := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			labels.KarpenterCapacityType: labels.ValueKarpenterCapacityTypeOnDemand,
+		}}}
+
+		nodeEKSSpot := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			LabelCapacity: ValueCapacitySpot,
+		}}}
+		nodeEKSOnDemand := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			LabelCapacity: ValueCapacityOnDemand,
+		}}}
+
+		got, err := p.FilterSpot(context.Background(), []*v1.Node{nodeCastaiSpot, nodeCastaiSpotFallback, nodeKarpenterSpot, nodeKarpenterOnDemand, nodeEKSSpot, nodeEKSOnDemand})
+
+		r.NoError(err)
+		r.Equal([]*v1.Node{nodeCastaiSpot, nodeKarpenterSpot, nodeEKSSpot}, got)
+	})
+
+	t.Run("should consider on-demand node lifecycle when node lifecycle could not be discovered using labels and API lifecycle discovery is disabled", func(t *testing.T) {
+		r := require.New(t)
+		awsClient := mock_client.NewMockClient(gomock.NewController(t))
+
+		p := &Provider{
+			log:                              logrus.New(),
+			awsClient:                        awsClient,
+			apiNodeLifecycleDiscoveryEnabled: false,
+			spotCache:                        map[string]bool{},
+		}
+
+		awsClient.EXPECT().GetInstancesByInstanceIDs(gomock.Any(), gomock.Any()).Times(0)
+
+		node := &v1.Node{
+			Spec: v1.NodeSpec{
+				ProviderID: "aws:///eu-west-1a/instanceID",
+			},
+		}
+
+		got, err := p.FilterSpot(context.Background(), []*v1.Node{node})
+
+		r.NoError(err)
+		r.Empty(got)
 	})
 }

@@ -21,7 +21,14 @@ func GetProvider(ctx context.Context, log logrus.FieldLogger, discoveryService d
 	cfg := config.Get()
 
 	if cfg.Provider == eks.Name || cfg.EKS != nil {
-		return eks.New(ctx, log.WithField("provider", eks.Name))
+		eksProviderLogger := log.WithField("provider", eks.Name)
+		apiNodeLifecycleDiscoveryEnabled := isAPINodeLifecycleDiscoveryEnabled(cfg)
+
+		if !apiNodeLifecycleDiscoveryEnabled {
+			eksProviderLogger.Info("node lifecycle discovery through AWS API is disabled - all nodes without spot labels will be considered on-demand")
+		}
+
+		return eks.New(ctx, eksProviderLogger, apiNodeLifecycleDiscoveryEnabled)
 	}
 
 	if cfg.Provider == gke.Name || cfg.GKE != nil {
@@ -45,4 +52,12 @@ func GetProvider(ctx context.Context, log logrus.FieldLogger, discoveryService d
 	}
 
 	return nil, fmt.Errorf("unknown provider %q", cfg.Provider)
+}
+
+func isAPINodeLifecycleDiscoveryEnabled(cfg config.Config) bool {
+	if cfg.EKS != nil && cfg.EKS.APINodeLifecycleDiscoveryEnabled != nil {
+		return *cfg.EKS.APINodeLifecycleDiscoveryEnabled
+	}
+
+	return config.DefaultAPINodeLifecycleDiscoveryEnabled
 }

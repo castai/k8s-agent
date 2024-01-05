@@ -2,10 +2,12 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
@@ -41,6 +43,8 @@ type Mode string
 const (
 	ModeAgent   Mode = "agent"
 	ModeMonitor Mode = "monitor"
+
+	DefaultAPINodeLifecycleDiscoveryEnabled = true
 )
 
 type TLS struct {
@@ -63,9 +67,11 @@ type API struct {
 }
 
 type EKS struct {
-	AccountID   string `mapstructure:"account_id"`
-	Region      string `mapstructure:"region"`
-	ClusterName string `mapstructure:"cluster_name"`
+	AccountID                        string        `mapstructure:"account_id"`
+	Region                           string        `mapstructure:"region"`
+	ClusterName                      string        `mapstructure:"cluster_name"`
+	APITimeout                       time.Duration `mapstructure:"api_timeout"`
+	APINodeLifecycleDiscoveryEnabled *bool         `mapstructure:"api_node_lifecycle_discovery_enabled"`
 }
 
 type GKE struct {
@@ -149,6 +155,16 @@ func Get() Config {
 
 	cfg = &Config{}
 	bindEnvs(*cfg)
+
+	if cfgFile := os.Getenv("CONFIG_PATH"); cfgFile != "" {
+		fmt.Println("Using config from a file", cfgFile)
+		viper.SetConfigType("yaml")
+		viper.SetConfigFile(cfgFile)
+		if err := viper.ReadInConfig(); err != nil {
+			panic(fmt.Errorf("reading default config: %v", err))
+		}
+	}
+
 	if err := viper.Unmarshal(&cfg); err != nil {
 		panic(fmt.Errorf("parsing configuration: %v", err))
 	}
@@ -177,6 +193,12 @@ func Get() Config {
 		}
 		if cfg.EKS.ClusterName == "" {
 			requiredWhenDiscoveryDisabled("EKS_CLUSTER_NAME")
+		}
+		if cfg.EKS.APITimeout <= 0 {
+			cfg.EKS.APITimeout = 120 * time.Second
+		}
+		if cfg.EKS.APINodeLifecycleDiscoveryEnabled == nil {
+			cfg.EKS.APINodeLifecycleDiscoveryEnabled = lo.ToPtr(DefaultAPINodeLifecycleDiscoveryEnabled)
 		}
 	}
 

@@ -15,19 +15,29 @@ import (
 	"castai-agent/pkg/labels"
 )
 
+type nodeLifecycle string
+
+const (
+	NodeLifecycleUnknown  nodeLifecycle = "unknown"
+	NodeLifecycleSpot     nodeLifecycle = "spot"
+	NodeLifecycleOnDemand nodeLifecycle = "on_demand"
+)
+
 const (
 	Name = "eks"
 
-	LabelCapacity     = "eks.amazonaws.com/capacityType"
-	ValueCapacitySpot = "SPOT"
+	LabelCapacity         = "eks.amazonaws.com/capacityType"
+	ValueCapacitySpot     = "SPOT"
+	ValueCapacityOnDemand = "ON_DEMAND"
 )
 
 // New configures and returns an EKS provider.
-func New(ctx context.Context, log logrus.FieldLogger) (types.Provider, error) {
+func New(ctx context.Context, log logrus.FieldLogger, apiNodeLifecycleDiscoveryEnabled bool) (types.Provider, error) {
 	var opts []client.Opt
 
 	if cfg := config.Get().EKS; cfg != nil {
 		opts = append(opts, client.WithMetadata(cfg.AccountID, cfg.Region, cfg.ClusterName))
+		opts = append(opts, client.WithAPITimeout(cfg.APITimeout))
 	} else {
 		opts = append(opts, client.WithMetadataDiscovery())
 	}
@@ -40,16 +50,18 @@ func New(ctx context.Context, log logrus.FieldLogger) (types.Provider, error) {
 	}
 
 	return &Provider{
-		log:       log,
-		awsClient: awsClient,
-		spotCache: map[string]bool{},
+		log:                              log,
+		awsClient:                        awsClient,
+		apiNodeLifecycleDiscoveryEnabled: apiNodeLifecycleDiscoveryEnabled,
+		spotCache:                        map[string]bool{},
 	}, nil
 }
 
 // Provider is the EKS implementation of the providers.Provider interface.
 type Provider struct {
-	log       logrus.FieldLogger
-	awsClient client.Client
+	log                              logrus.FieldLogger
+	awsClient                        client.Client
+	apiNodeLifecycleDiscoveryEnabled bool
 
 	spotCache map[string]bool
 }
@@ -91,24 +103,15 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node, error) {
 	var ret []*v1.Node
 
-	isLabeledSpot := func(n *v1.Node) bool {
-		if val, ok := n.Labels[LabelCapacity]; ok && val == ValueCapacitySpot {
-			return true
-		}
-
-		if val, ok := n.Labels[labels.CastaiSpot]; ok && val == "true" {
-			return true
-		}
-
-		return false
-	}
-
 	var instanceIDs []string
 	nodesByInstanceID := map[string]*v1.Node{}
 
 	for _, node := range nodes {
-		if isLabeledSpot(node) {
+		lifecycle := determineLifecycle(node)
+		if lifecycle == NodeLifecycleSpot {
 			ret = append(ret, node)
+			continue
+		} else if lifecycle == NodeLifecycleOnDemand {
 			continue
 		}
 
@@ -127,22 +130,24 @@ func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node
 		nodesByInstanceID[instanceID] = node
 	}
 
-	if len(instanceIDs) > 0 {
-		instances, err := p.awsClient.GetInstancesByInstanceIDs(ctx, instanceIDs)
-		if err != nil {
-			return nil, fmt.Errorf("getting instances by instance IDs: %w", err)
+	if len(instanceIDs) == 0 || !p.apiNodeLifecycleDiscoveryEnabled {
+		return ret, nil
+	}
+
+	instances, err := p.awsClient.GetInstancesByInstanceIDs(ctx, instanceIDs)
+	if err != nil {
+		return nil, fmt.Errorf("getting instances by instance IDs: %w", err)
+	}
+
+	for _, instance := range instances {
+		isSpot := instance.InstanceLifecycle != nil && *instance.InstanceLifecycle == "spot"
+		instanceID := *instance.InstanceId
+
+		if isSpot {
+			ret = append(ret, nodesByInstanceID[instanceID])
 		}
 
-		for _, instance := range instances {
-			isSpot := instance.InstanceLifecycle != nil && *instance.InstanceLifecycle == "spot"
-			instanceID := *instance.InstanceId
-
-			if isSpot {
-				ret = append(ret, nodesByInstanceID[instanceID])
-			}
-
-			p.spotCache[instanceID] = isSpot
-		}
+		p.spotCache[instanceID] = isSpot
 	}
 
 	return ret, nil
@@ -150,4 +155,32 @@ func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node
 
 func (p *Provider) Name() string {
 	return Name
+}
+
+func determineLifecycle(n *v1.Node) nodeLifecycle {
+	if val, ok := n.Labels[LabelCapacity]; ok {
+		if val == ValueCapacitySpot {
+			return NodeLifecycleSpot
+		} else if val == ValueCapacityOnDemand {
+			return NodeLifecycleOnDemand
+		}
+	}
+
+	if val, ok := n.Labels[labels.CastaiSpotFallback]; ok && val == "true" {
+		return NodeLifecycleOnDemand
+	}
+
+	if val, ok := n.Labels[labels.CastaiSpot]; ok && val == "true" {
+		return NodeLifecycleSpot
+	}
+
+	if val, ok := n.Labels[labels.KarpenterCapacityType]; ok {
+		if val == labels.ValueKarpenterCapacityTypeSpot {
+			return NodeLifecycleSpot
+		} else if val == labels.ValueKarpenterCapacityTypeOnDemand {
+			return NodeLifecycleOnDemand
+		}
+	}
+
+	return NodeLifecycleUnknown
 }

@@ -196,6 +196,7 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 			log,
 			clientset,
 			metricsClient,
+			dynamicClient,
 			castaiclient,
 			provider,
 			clusterID,
