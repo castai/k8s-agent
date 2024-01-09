@@ -1,6 +1,3 @@
-//go:build !race
-// +build !race
-
 package controller
 
 import (
@@ -51,7 +48,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 	f := informers.NewSharedInformerFactory(clientset, 0)
 	df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
 
-	version.EXPECT().Full().Return("1.21+").MaxTimes(2)
+	version.EXPECT().Full().Return("1.21+").MaxTimes(3)
 
 	clusterID := uuid.New()
 	log := logrus.New()
