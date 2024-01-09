@@ -10,6 +10,7 @@ import (
 	"time"
 
 	datadoghqv1alpha1 "github.com/DataDog/extendeddaemonset/api/v1alpha1"
+	argorollouts "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	karpenterCore "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
 	karpenter "github.com/aws/karpenter/pkg/apis/v1alpha1"
 	"github.com/golang/mock/gomock"
@@ -66,6 +67,7 @@ func TestController_HappyPath(t *testing.T) {
 	utilruntime.Must(karpenterCore.SchemeBuilder.AddToScheme(scheme))
 	utilruntime.Must(karpenter.SchemeBuilder.AddToScheme(scheme))
 	utilruntime.Must(datadoghqv1alpha1.SchemeBuilder.AddToScheme(scheme))
+	utilruntime.Must(argorollouts.SchemeBuilder.AddToScheme(scheme))
 
 	mockctrl := gomock.NewController(t)
 	castaiclient := mock_castai.NewMockClient(mockctrl)
@@ -180,6 +182,20 @@ func TestController_HappyPath(t *testing.T) {
 	datadogExtendedDSReplicaSetData, err := delta.Encode(datadogExtendedDSReplicaSet)
 	require.NoError(t, err)
 
+	rollout := &argorollouts.Rollout{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Rollout",
+			APIVersion: argorollouts.RolloutGVR.GroupVersion().String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      argorollouts.RolloutGVR.Resource,
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+
+	rolloutData, err := delta.Encode(rollout)
+	require.NoError(t, err)
+
 	fakeSelfSubjectAccessReviewsClient := &authfakev1.FakeSelfSubjectAccessReviews{
 		Fake: &authfakev1.FakeAuthorizationV1{
 			Fake: &k8stesting.Fake{},
@@ -197,7 +213,8 @@ func TestController_HappyPath(t *testing.T) {
 
 	clientset := fake.NewSimpleClientset(node, pod, cfgMap, pdb, hpa, csi)
 	metricsClient := metrics_fake.NewSimpleClientset()
-	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, provisioners, machines, awsNodeTemplates, datadogExtendedDSReplicaSet)
+	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, provisioners, machines, awsNodeTemplates, datadogExtendedDSReplicaSet, rollout)
+	objectCount := len([]runtime.Object{node, pod, cfgMap, pdb, hpa, csi, provisioners, machines, awsNodeTemplates, datadogExtendedDSReplicaSet, rollout})
 
 	clientset.Fake.Resources = []*metav1.APIResourceList{
 		{
@@ -288,6 +305,17 @@ func TestController_HappyPath(t *testing.T) {
 				},
 			},
 		},
+		{
+			GroupVersion: argorollouts.RolloutGVR.GroupVersion().String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group:   argorollouts.RolloutGVR.Group,
+					Name:    argorollouts.RolloutGVR.Resource,
+					Version: argorollouts.RolloutGVR.Version,
+					Verbs:   []string{"get", "list", "watch"},
+				},
+			},
+		},
 	}
 
 	version.EXPECT().Full().Return("1.21+").MaxTimes(3)
@@ -304,7 +332,7 @@ func TestController_HappyPath(t *testing.T) {
 			require.Equal(t, clusterID, d.ClusterID)
 			require.Equal(t, "1.21+", d.ClusterVersion)
 			require.True(t, d.FullSnapshot)
-			require.Len(t, d.Items, 10)
+			require.Len(t, d.Items, objectCount)
 
 			var actualValues []string
 			for _, item := range d.Items {
@@ -321,6 +349,7 @@ func TestController_HappyPath(t *testing.T) {
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Machine", machinesData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "AWSNodeTemplate", awsNodeTemplatesData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "ExtendedDaemonSetReplicaSet", datadogExtendedDSReplicaSetData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Rollout", rolloutData))
 
 			return nil
 		})

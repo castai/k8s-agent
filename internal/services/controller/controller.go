@@ -12,6 +12,7 @@ import (
 	"time"
 
 	datadoghqv1alpha1 "github.com/DataDog/extendeddaemonset/api/v1alpha1"
+	argorollouts "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	karpenterCore "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
 	karpenter "github.com/aws/karpenter/pkg/apis/v1alpha1"
 	"github.com/samber/lo"
@@ -520,6 +521,14 @@ func getConditionalInformers(f informers.SharedInformerFactory, df dynamicinform
 			permissionVerbs: []string{"get", "list"},
 			informerFactory: func() cache.SharedIndexInformer {
 				return custominformers.NewPodMetricsInformer(logger, metricsClient)
+			},
+		},
+		{
+			resource:        argorollouts.RolloutGVR,
+			apiType:         reflect.TypeOf(&argorollouts.Rollout{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(argorollouts.RolloutGVR).Informer()
 			},
 		},
 	}
