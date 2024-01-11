@@ -5,6 +5,7 @@ go 1.21
 require (
 	cloud.google.com/go/compute/metadata v0.2.3
 	github.com/DataDog/extendeddaemonset v0.9.0-rc.3
+	github.com/argoproj/argo-rollouts v1.6.4
 	github.com/aws/aws-sdk-go v1.44.294
 	github.com/aws/karpenter v0.29.2
 	github.com/aws/karpenter-core v0.29.2
@@ -29,7 +30,6 @@ require (
 
 require (
 	cloud.google.com/go/compute v1.20.1 // indirect
-	github.com/argoproj/argo-rollouts v1.6.4 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
 	github.com/evanphx/json-patch v5.6.0+incompatible // indirect
