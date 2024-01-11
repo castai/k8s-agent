@@ -1,13 +1,14 @@
 package kwok
 
 import (
-	"castai-agent/internal/castai"
-	"castai-agent/internal/services/providers/types"
 	"context"
 	"fmt"
 
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
+
+	"castai-agent/internal/castai"
+	"castai-agent/internal/services/providers/types"
 )
 
 const (
@@ -41,7 +42,7 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 	}, nil
 }
 
-func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node, error) {
+func (p *Provider) FilterSpot(_ context.Context, nodes []*v1.Node) ([]*v1.Node, error) {
 	return nodes, nil
 }
 

@@ -1,6 +1,12 @@
 package providers
 
 import (
+	"context"
+	"fmt"
+
+	"github.com/sirupsen/logrus"
+	"k8s.io/client-go/dynamic"
+
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/discovery"
 	"castai-agent/internal/services/providers/aks"
@@ -10,11 +16,6 @@ import (
 	"castai-agent/internal/services/providers/kwok"
 	"castai-agent/internal/services/providers/openshift"
 	"castai-agent/internal/services/providers/types"
-	"context"
-	"fmt"
-
-	"github.com/sirupsen/logrus"
-	"k8s.io/client-go/dynamic"
 )
 
 func GetProvider(ctx context.Context, log logrus.FieldLogger, discoveryService discovery.Service, dyno dynamic.Interface) (types.Provider, error) {
