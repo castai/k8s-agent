@@ -242,7 +242,8 @@ func (c *Controller) Run(ctx context.Context) error {
 
 func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, conditionalInformers []conditionalInformer) {
 	tryConditionalInformers := conditionalInformers
-	if err := wait.PollImmediateInfiniteWithContext(ctx, time.Minute*2, func(ctx context.Context) (done bool, err error) {
+
+	if err := wait.PollUntilContextCancel(ctx, 2*time.Minute, true, func(ctx context.Context) (done bool, err error) {
 		apiResourceLists := fetchAPIResourceLists(c.discovery, c.log)
 		if apiResourceLists == nil {
 			return false, nil
@@ -283,8 +284,8 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 			return false, nil
 		}
 		return true, nil
-	}); err != nil {
-		c.log.Warnf("Error when waiting for server resources: %v", err.Error())
+	}); err != nil && !errors.Is(err, context.Canceled) {
+		c.log.Errorf("error when waiting for server resources: %v", err)
 	}
 }
 
