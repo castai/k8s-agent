@@ -106,8 +106,8 @@ func New(
 	conditionalInformers := getConditionalInformers(f, df, metricsClient, log)
 
 	handledInformers := map[string]*custominformers.HandledInformer{}
-	for typ, informer := range defaultInformers {
-		handledInformers[typ.String()] = custominformers.NewHandledInformer(log, queue, informer, typ, nil)
+	for typ, i := range defaultInformers {
+		handledInformers[typ.String()] = custominformers.NewHandledInformer(log, queue, i.informer, typ, i.filters)
 	}
 
 	eventType := reflect.TypeOf(&corev1.Event{})
@@ -535,21 +535,40 @@ func getConditionalInformers(f informers.SharedInformerFactory, df dynamicinform
 	}
 }
 
-func getDefaultInformers(f informers.SharedInformerFactory) map[reflect.Type]cache.SharedInformer {
-	return map[reflect.Type]cache.SharedInformer{
-		reflect.TypeOf(&corev1.Node{}):                  f.Core().V1().Nodes().Informer(),
-		reflect.TypeOf(&corev1.Pod{}):                   f.Core().V1().Pods().Informer(),
-		reflect.TypeOf(&corev1.PersistentVolume{}):      f.Core().V1().PersistentVolumes().Informer(),
-		reflect.TypeOf(&corev1.PersistentVolumeClaim{}): f.Core().V1().PersistentVolumeClaims().Informer(),
-		reflect.TypeOf(&corev1.ReplicationController{}): f.Core().V1().ReplicationControllers().Informer(),
-		reflect.TypeOf(&corev1.Namespace{}):             f.Core().V1().Namespaces().Informer(),
-		reflect.TypeOf(&corev1.Service{}):               f.Core().V1().Services().Informer(),
-		reflect.TypeOf(&appsv1.Deployment{}):            f.Apps().V1().Deployments().Informer(),
-		reflect.TypeOf(&appsv1.ReplicaSet{}):            f.Apps().V1().ReplicaSets().Informer(),
-		reflect.TypeOf(&appsv1.DaemonSet{}):             f.Apps().V1().DaemonSets().Informer(),
-		reflect.TypeOf(&appsv1.StatefulSet{}):           f.Apps().V1().StatefulSets().Informer(),
-		reflect.TypeOf(&storagev1.StorageClass{}):       f.Storage().V1().StorageClasses().Informer(),
-		reflect.TypeOf(&batchv1.Job{}):                  f.Batch().V1().Jobs().Informer(),
+type defaultInformer struct {
+	informer cache.SharedInformer
+	filters  filters.Filters
+}
+
+func getDefaultInformers(f informers.SharedInformerFactory) map[reflect.Type]defaultInformer {
+	return map[reflect.Type]defaultInformer{
+		reflect.TypeOf(&corev1.Node{}):                  {informer: f.Core().V1().Nodes().Informer()},
+		reflect.TypeOf(&corev1.Pod{}):                   {informer: f.Core().V1().Pods().Informer()},
+		reflect.TypeOf(&corev1.PersistentVolume{}):      {informer: f.Core().V1().PersistentVolumes().Informer()},
+		reflect.TypeOf(&corev1.PersistentVolumeClaim{}): {informer: f.Core().V1().PersistentVolumeClaims().Informer()},
+		reflect.TypeOf(&corev1.ReplicationController{}): {informer: f.Core().V1().ReplicationControllers().Informer()},
+		reflect.TypeOf(&corev1.Namespace{}):             {informer: f.Core().V1().Namespaces().Informer()},
+		reflect.TypeOf(&appsv1.Deployment{}):            {informer: f.Apps().V1().Deployments().Informer()},
+		reflect.TypeOf(&appsv1.ReplicaSet{}):            {informer: f.Apps().V1().ReplicaSets().Informer()},
+		reflect.TypeOf(&appsv1.DaemonSet{}):             {informer: f.Apps().V1().DaemonSets().Informer()},
+		reflect.TypeOf(&appsv1.StatefulSet{}):           {informer: f.Apps().V1().StatefulSets().Informer()},
+		reflect.TypeOf(&storagev1.StorageClass{}):       {informer: f.Storage().V1().StorageClasses().Informer()},
+		reflect.TypeOf(&batchv1.Job{}):                  {informer: f.Batch().V1().Jobs().Informer()},
+		reflect.TypeOf(&corev1.Service{}): {
+			informer: f.Core().V1().Services().Informer(),
+			filters: filters.Filters{
+				{
+					// spec.type isn't supported as a field selector, so we need to filter it out locally
+					func(e castai.EventType, obj interface{}) bool {
+						svc, ok := obj.(*corev1.Service)
+						if !ok {
+							return false
+						}
+						return svc.Spec.Type != corev1.ServiceTypeExternalName
+					},
+				},
+			},
+		},
 	}
 }
 
