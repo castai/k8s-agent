@@ -13,8 +13,10 @@ import (
 
 	datadoghqv1alpha1 "github.com/DataDog/extendeddaemonset/api/v1alpha1"
 	argorollouts "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
-	karpenterCore "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
-	karpenter "github.com/aws/karpenter/pkg/apis/v1alpha1"
+	karpenterCoreAlpha "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
+	karpenterCore "github.com/aws/karpenter-core/pkg/apis/v1beta1"
+	karpenterAlpha "github.com/aws/karpenter/pkg/apis/v1alpha1"
+	karpenter "github.com/aws/karpenter/pkg/apis/v1beta1"
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
@@ -485,27 +487,51 @@ func getConditionalInformers(f informers.SharedInformerFactory, df dynamicinform
 			},
 		},
 		{
-			resource:        karpenterCore.SchemeGroupVersion.WithResource("provisioners"),
-			apiType:         reflect.TypeOf(&karpenterCore.Provisioner{}),
+			resource:        karpenterCoreAlpha.SchemeGroupVersion.WithResource("provisioners"),
+			apiType:         reflect.TypeOf(&karpenterCoreAlpha.Provisioner{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return df.ForResource(karpenterCore.SchemeGroupVersion.WithResource("provisioners")).Informer()
+				return df.ForResource(karpenterCoreAlpha.SchemeGroupVersion.WithResource("provisioners")).Informer()
 			},
 		},
 		{
-			resource:        karpenterCore.SchemeGroupVersion.WithResource("machines"),
-			apiType:         reflect.TypeOf(&karpenterCore.Machine{}),
+			resource:        karpenterCoreAlpha.SchemeGroupVersion.WithResource("machines"),
+			apiType:         reflect.TypeOf(&karpenterCoreAlpha.Machine{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return df.ForResource(karpenterCore.SchemeGroupVersion.WithResource("machines")).Informer()
+				return df.ForResource(karpenterCoreAlpha.SchemeGroupVersion.WithResource("machines")).Informer()
 			},
 		},
 		{
-			resource:        karpenter.SchemeGroupVersion.WithResource("awsnodetemplates"),
-			apiType:         reflect.TypeOf(&karpenter.AWSNodeTemplate{}),
+			resource:        karpenterAlpha.SchemeGroupVersion.WithResource("awsnodetemplates"),
+			apiType:         reflect.TypeOf(&karpenterAlpha.AWSNodeTemplate{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return df.ForResource(karpenter.SchemeGroupVersion.WithResource("awsnodetemplates")).Informer()
+				return df.ForResource(karpenterAlpha.SchemeGroupVersion.WithResource("awsnodetemplates")).Informer()
+			},
+		},
+		{
+			resource:        karpenterCore.SchemeGroupVersion.WithResource("nodepools"),
+			apiType:         reflect.TypeOf(&karpenterCore.NodePool{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(karpenterCore.SchemeGroupVersion.WithResource("nodepools")).Informer()
+			},
+		},
+		{
+			resource:        karpenterCore.SchemeGroupVersion.WithResource("nodeclaims"),
+			apiType:         reflect.TypeOf(&karpenterCore.NodeClaim{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(karpenterCore.SchemeGroupVersion.WithResource("nodeclaims")).Informer()
+			},
+		},
+		{
+			resource:        karpenter.SchemeGroupVersion.WithResource("ec2nodeclasses"),
+			apiType:         reflect.TypeOf(&karpenter.EC2NodeClass{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(karpenter.SchemeGroupVersion.WithResource("ec2nodeclasses")).Informer()
 			},
 		},
 		{
