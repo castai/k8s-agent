@@ -11,8 +11,10 @@ import (
 
 	datadoghqv1alpha1 "github.com/DataDog/extendeddaemonset/api/v1alpha1"
 	argorollouts "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
-	karpenterCore "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
-	karpenter "github.com/aws/karpenter/pkg/apis/v1alpha1"
+	karpenterCoreAlpha "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
+	karpenterCore "github.com/aws/karpenter-core/pkg/apis/v1beta1"
+	karpenterAlpha "github.com/aws/karpenter/pkg/apis/v1alpha1"
+	karpenter "github.com/aws/karpenter/pkg/apis/v1beta1"
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -64,6 +66,8 @@ func TestMain(m *testing.M) {
 
 func TestController_HappyPath(t *testing.T) {
 	scheme := runtime.NewScheme()
+	utilruntime.Must(karpenterCoreAlpha.SchemeBuilder.AddToScheme(scheme))
+	utilruntime.Must(karpenterAlpha.SchemeBuilder.AddToScheme(scheme))
 	utilruntime.Must(karpenterCore.SchemeBuilder.AddToScheme(scheme))
 	utilruntime.Must(karpenter.SchemeBuilder.AddToScheme(scheme))
 	utilruntime.Must(datadoghqv1alpha1.SchemeBuilder.AddToScheme(scheme))
@@ -77,9 +81,12 @@ func TestController_HappyPath(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	provisionersGvr := karpenterCore.SchemeGroupVersion.WithResource("provisioners")
-	machinesGvr := karpenterCore.SchemeGroupVersion.WithResource("machines")
-	awsNodeTemplatesGvr := karpenter.SchemeGroupVersion.WithResource("awsnodetemplates")
+	provisionersGvr := karpenterCoreAlpha.SchemeGroupVersion.WithResource("provisioners")
+	machinesGvr := karpenterCoreAlpha.SchemeGroupVersion.WithResource("machines")
+	awsNodeTemplatesGvr := karpenterAlpha.SchemeGroupVersion.WithResource("awsnodetemplates")
+	nodePoolsGvr := karpenterCore.SchemeGroupVersion.WithResource("nodepools")
+	nodeClaimsGvr := karpenterCore.SchemeGroupVersion.WithResource("nodeclaims")
+	ec2NodeClassesGvr := karpenter.SchemeGroupVersion.WithResource("ec2nodeclasses")
 	datadogExtendedDSReplicaSetsGvr := datadoghqv1alpha1.GroupVersion.WithResource("extendeddaemonsetreplicasets")
 
 	node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node1", Labels: map[string]string{}}}
@@ -126,7 +133,7 @@ func TestController_HappyPath(t *testing.T) {
 	csiData, err := delta.Encode(csi)
 	require.NoError(t, err)
 
-	provisioners := &karpenterCore.Provisioner{
+	provisioners := &karpenterCoreAlpha.Provisioner{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Provisioner",
 			APIVersion: provisionersGvr.GroupVersion().String(),
@@ -140,7 +147,7 @@ func TestController_HappyPath(t *testing.T) {
 	provisionersData, err := delta.Encode(provisioners)
 	require.NoError(t, err)
 
-	machines := &karpenterCore.Machine{
+	machines := &karpenterCoreAlpha.Machine{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Machine",
 			APIVersion: machinesGvr.GroupVersion().String(),
@@ -154,7 +161,7 @@ func TestController_HappyPath(t *testing.T) {
 	machinesData, err := delta.Encode(machines)
 	require.NoError(t, err)
 
-	awsNodeTemplates := &karpenter.AWSNodeTemplate{
+	awsNodeTemplates := &karpenterAlpha.AWSNodeTemplate{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "AWSNodeTemplate",
 			APIVersion: awsNodeTemplatesGvr.GroupVersion().String(),
@@ -166,6 +173,48 @@ func TestController_HappyPath(t *testing.T) {
 	}
 
 	awsNodeTemplatesData, err := delta.Encode(awsNodeTemplates)
+	require.NoError(t, err)
+
+	nodePools := &karpenterCore.NodePool{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "NodePool",
+			APIVersion: nodePoolsGvr.GroupVersion().String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      nodePoolsGvr.Resource,
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+
+	nodePoolsData, err := delta.Encode(nodePools)
+	require.NoError(t, err)
+
+	nodeClaims := &karpenterCore.NodeClaim{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "NodeClaim",
+			APIVersion: nodeClaimsGvr.GroupVersion().String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      nodeClaimsGvr.Resource,
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+
+	nodeClaimsData, err := delta.Encode(nodeClaims)
+	require.NoError(t, err)
+
+	ec2NodeClasses := &karpenter.EC2NodeClass{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "EC2NodeClass",
+			APIVersion: ec2NodeClassesGvr.GroupVersion().String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      ec2NodeClassesGvr.Resource,
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+
+	ec2NodeClassesData, err := delta.Encode(ec2NodeClasses)
 	require.NoError(t, err)
 
 	datadogExtendedDSReplicaSet := &datadoghqv1alpha1.ExtendedDaemonSetReplicaSet{
@@ -213,8 +262,8 @@ func TestController_HappyPath(t *testing.T) {
 
 	clientset := fake.NewSimpleClientset(node, pod, cfgMap, pdb, hpa, csi)
 	metricsClient := metrics_fake.NewSimpleClientset()
-	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, provisioners, machines, awsNodeTemplates, datadogExtendedDSReplicaSet, rollout)
-	objectCount := len([]runtime.Object{node, pod, cfgMap, pdb, hpa, csi, provisioners, machines, awsNodeTemplates, datadogExtendedDSReplicaSet, rollout})
+	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, provisioners, machines, awsNodeTemplates, nodePools, nodeClaims, ec2NodeClasses, datadogExtendedDSReplicaSet, rollout)
+	objectCount := len([]runtime.Object{node, pod, cfgMap, pdb, hpa, csi, provisioners, machines, awsNodeTemplates, nodePools, nodeClaims, ec2NodeClasses, datadogExtendedDSReplicaSet, rollout})
 
 	clientset.Fake.Resources = []*metav1.APIResourceList{
 		{
@@ -295,6 +344,39 @@ func TestController_HappyPath(t *testing.T) {
 			},
 		},
 		{
+			GroupVersion: nodePoolsGvr.GroupVersion().String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group:   nodePoolsGvr.Group,
+					Name:    nodePoolsGvr.Resource,
+					Version: nodePoolsGvr.Version,
+					Verbs:   []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
+			GroupVersion: nodeClaimsGvr.GroupVersion().String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group:   nodeClaimsGvr.Group,
+					Name:    nodeClaimsGvr.Resource,
+					Version: nodeClaimsGvr.Version,
+					Verbs:   []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
+			GroupVersion: ec2NodeClassesGvr.GroupVersion().String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group:   ec2NodeClassesGvr.Group,
+					Name:    ec2NodeClassesGvr.Resource,
+					Version: ec2NodeClassesGvr.Version,
+					Verbs:   []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
 			GroupVersion: datadogExtendedDSReplicaSetsGvr.GroupVersion().String(),
 			APIResources: []metav1.APIResource{
 				{
@@ -348,6 +430,9 @@ func TestController_HappyPath(t *testing.T) {
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Provisioner", provisionersData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Machine", machinesData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "AWSNodeTemplate", awsNodeTemplatesData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "NodePool", nodePoolsData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "NodeClaim", nodeClaimsData))
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "EC2NodeClass", ec2NodeClassesData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "ExtendedDaemonSetReplicaSet", datadogExtendedDSReplicaSetData))
 			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Rollout", rolloutData))
 
