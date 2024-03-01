@@ -157,7 +157,7 @@ func New(
 
 func (c *Controller) Run(ctx context.Context) error {
 	defer c.queue.ShutDown()
-
+	var controllerRuntimeError error
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -212,7 +212,8 @@ func (c *Controller) Run(ctx context.Context) error {
 			queueContent := c.debugQueueContent(maxItems)
 			log := c.log.WithField("queue_content", queueContent)
 			log.Errorf("error while collecting initial snapshot: %v", err)
-			c.log.Infof("restarting controller after failure to collect initial snapshot")
+			c.log.Infof("restarting agent after failure to collect initial snapshot")
+			controllerRuntimeError = err
 			c.triggerRestart()
 			return
 		}
@@ -239,7 +240,7 @@ func (c *Controller) Run(ctx context.Context) error {
 
 	c.pollQueueUntilShutdown()
 
-	return nil
+	return controllerRuntimeError
 }
 
 func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, conditionalInformers []conditionalInformer) {
