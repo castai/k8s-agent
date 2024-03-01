@@ -211,10 +211,10 @@ func (c *Controller) Run(ctx context.Context) error {
 			const maxItems = 5
 			queueContent := c.debugQueueContent(maxItems)
 			log := c.log.WithField("queue_content", queueContent)
-			// Crash agent in case it's not able to collect full snapshot from informers cache.
-			// TODO (CO-1632): refactor crashing to "normal" exit or healthz metric; abruptly
-			//  stopping the agent does not give it a chance to release leader lock.
-			log.Fatalf("error while collecting initial snapshot: %v", err)
+			log.Errorf("error while collecting initial snapshot: %v", err)
+			c.log.Infof("restarting controller after failure to collect initial snapshot")
+			c.triggerRestart()
+			return
 		}
 
 		// Since both initial snapshot collection and event handlers writes to the same delta queue add
