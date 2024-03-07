@@ -20,6 +20,7 @@ require (
 	github.com/stretchr/testify v1.8.4
 	go.uber.org/goleak v1.2.1
 	golang.org/x/net v0.18.0
+	golang.org/x/sync v0.4.0
 	k8s.io/api v0.28.3
 	k8s.io/apimachinery v0.28.3
 	k8s.io/client-go v0.28.3
