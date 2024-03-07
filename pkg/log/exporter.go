@@ -69,7 +69,19 @@ func (ex *exporter) Fire(entry *logrus.Entry) error {
 }
 
 func (ex *exporter) Wait() {
-	ex.wg.Wait()
+	timeout := 15 * time.Second
+	c := make(chan struct{})
+	go func() {
+		defer close(c)
+		ex.wg.Wait()
+	}()
+	select {
+	case <-c:
+		return
+	case <-time.After(timeout):
+		ex.localLog.Error("failed to send logs after shutdown timed out")
+		return
+	}
 }
 
 func (ex *exporter) sendLogEvent(clusterID string, e *logrus.Entry) {

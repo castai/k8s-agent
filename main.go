@@ -94,6 +94,8 @@ func main() {
 	}
 
 	log.Infof("%s shutdown", cfg.Mode)
+	// to invoke exit handlers set up in castailog.SetupLogExporter
+	logrus.Exit(0)
 }
 
 func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg config.Config, clusterIDChanged func(clusterID string)) error {
@@ -106,7 +108,8 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 		Version:   Version,
 	}
 
-	// buffer will allow for all senders to push, even though we will only read first error and cancel context after it
+	// buffer will allow for all senders to push, even though we will only read first error and cancel context after it;
+	// all errors from exitCh are logged
 	exitCh := make(chan error, 10)
 	go watchExitErrors(ctx, log, exitCh, ctxCancel)
 
@@ -248,14 +251,17 @@ func runMonitorMode(ctx context.Context, log *logrus.Entry, cfg config.Config, c
 
 // if any errors are observed on exitCh, context cancel is called, and all errors in the channel are logged
 func watchExitErrors(ctx context.Context, log *logrus.Entry, exitCh chan error, ctxCancel func()) {
-	select {
-	case err := <-exitCh:
-		if err != nil && !errors.Is(err, context.Canceled) {
-			log.Errorf("agent stopped with an error: %v", err)
+	for {
+		select {
+		case err := <-exitCh:
+			if err != nil && !errors.Is(err, context.Canceled) {
+				log.Errorf("agent stopped with an error: %v", err)
+			}
+			ctxCancel()
+		case <-ctx.Done():
+			log.Infof("context done")
+			return
 		}
-		ctxCancel()
-	case <-ctx.Done():
-		return
 	}
 }
 
