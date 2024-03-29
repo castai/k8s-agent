@@ -174,6 +174,10 @@ func determineLifecycle(n *v1.Node) nodeLifecycle {
 		return NodeLifecycleSpot
 	}
 
+	if val, ok := n.Labels[labels.WorkerSpot]; ok && val == "true" {
+		return NodeLifecycleSpot
+	}
+
 	if val, ok := n.Labels[labels.KarpenterCapacityType]; ok {
 		if val == labels.ValueKarpenterCapacityTypeSpot {
 			return NodeLifecycleSpot

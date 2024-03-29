@@ -83,6 +83,27 @@ func TestProvider_IsSpot(t *testing.T) {
 		r.Equal([]*v1.Node{node}, got)
 	})
 
+	t.Run("spot instance worker label", func(t *testing.T) {
+		r := require.New(t)
+		awsClient := mock_client.NewMockClient(gomock.NewController(t))
+
+		p := &Provider{
+			log:                              logrus.New(),
+			awsClient:                        awsClient,
+			apiNodeLifecycleDiscoveryEnabled: true,
+			spotCache:                        map[string]bool{},
+		}
+
+		node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+			labels.WorkerSpot: "true",
+		}}}
+
+		got, err := p.FilterSpot(context.Background(), []*v1.Node{node})
+
+		r.NoError(err)
+		r.Equal([]*v1.Node{node}, got)
+	})
+
 	t.Run("spot instance CAST AI label", func(t *testing.T) {
 		r := require.New(t)
 		awsClient := mock_client.NewMockClient(gomock.NewController(t))
