@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/informers"
 	v1 "k8s.io/client-go/informers/core/v1"
@@ -79,6 +80,8 @@ type Controller struct {
 }
 
 type conditionalInformer struct {
+	// if empty it means all namespaces
+	namespace       string
 	resource        schema.GroupVersionResource
 	apiType         reflect.Type
 	informerFactory func() cache.SharedIndexInformer
@@ -86,11 +89,17 @@ type conditionalInformer struct {
 	isApplied       bool
 }
 
+func (i *conditionalInformer) Name() string {
+	if i.namespace != "" {
+		return fmt.Sprintf("Namespace:%s %s", i.namespace, i.resource.String())
+	}
+	return i.resource.String()
+}
+
 func New(
 	log logrus.FieldLogger,
-	f informers.SharedInformerFactory,
-	df dynamicinformer.DynamicSharedInformerFactory,
-	discovery discovery.DiscoveryInterface,
+	clientset kubernetes.Interface,
+	dynamicClient dynamic.Interface,
 	castaiclient castai.Client,
 	metricsClient versioned.Interface,
 	provider types.Provider,
@@ -105,8 +114,12 @@ func New(
 
 	queue := workqueue.NewNamed("castai-agent")
 
+	f := informers.NewSharedInformerFactory(clientset, 0)
+	df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
+	discovery := clientset.Discovery()
+
 	defaultInformers := getDefaultInformers(f)
-	conditionalInformers := getConditionalInformers(f, df, metricsClient, log)
+	conditionalInformers := getConditionalInformers(clientset, cfg, f, df, metricsClient, log)
 
 	handledInformers := map[string]*custominformers.HandledInformer{}
 	for typ, i := range defaultInformers {
@@ -261,19 +274,19 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 			apiResourceListForGroupVersion := getAPIResourceListByGroupVersion(informer.resource.GroupVersion().String(), apiResourceLists)
 			if !isResourceAvailable(informer.apiType, apiResourceListForGroupVersion) {
 				c.log.Warnf("Skipping conditional informer name: %v, because API resource is not available",
-					informer.resource.String(),
+					informer.Name(),
 				)
 				continue
 			}
 
 			if !c.informerHasAccess(ctx, informer) {
 				c.log.Warnf("Skipping conditional informer name: %v, because required access is not available",
-					informer.resource.String(),
+					informer.Name(),
 				)
 				continue
 			}
 
-			c.log.Infof("Starting conditional informer for %v", informer.resource.String())
+			c.log.Infof("Starting conditional informer for %v", informer.Name())
 			tryConditionalInformers[i].isApplied = true
 
 			handledInformer := custominformers.NewHandledInformer(c.log, c.queue, informer.informerFactory(), informer.apiType, nil)
@@ -423,12 +436,12 @@ func (c *Controller) debugQueueContent(maxItems int) string {
 
 func (c *Controller) informerHasAccess(ctx context.Context, informer conditionalInformer) bool {
 	// Check if allowed to access all resources with the wildcard "*" verb
-	if access := c.informerIsAllowedToAccessResource(ctx, "*", informer, informer.resource.Group); access.Status.Allowed {
+	if access := c.informerIsAllowedToAccessResource(ctx, informer.namespace, "*", informer, informer.resource.Group); access.Status.Allowed {
 		return true
 	}
 
 	for _, verb := range informer.permissionVerbs {
-		access := c.informerIsAllowedToAccessResource(ctx, verb, informer, informer.resource.Group)
+		access := c.informerIsAllowedToAccessResource(ctx, informer.namespace, verb, informer, informer.resource.Group)
 		if !access.Status.Allowed {
 			return false
 		}
@@ -436,13 +449,14 @@ func (c *Controller) informerHasAccess(ctx context.Context, informer conditional
 	return true
 }
 
-func (c *Controller) informerIsAllowedToAccessResource(ctx context.Context, verb string, informer conditionalInformer, groupName string) *authorizationv1.SelfSubjectAccessReview {
+func (c *Controller) informerIsAllowedToAccessResource(ctx context.Context, namespace, verb string, informer conditionalInformer, groupName string) *authorizationv1.SelfSubjectAccessReview {
 	access, err := c.selfSubjectAccessReview.Create(ctx, &authorizationv1.SelfSubjectAccessReview{
 		Spec: authorizationv1.SelfSubjectAccessReviewSpec{
 			ResourceAttributes: &authorizationv1.ResourceAttributes{
-				Verb:     verb,
-				Group:    groupName,
-				Resource: informer.resource.Resource,
+				Namespace: namespace,
+				Verb:      verb,
+				Group:     groupName,
+				Resource:  informer.resource.Resource,
 			},
 		},
 	}, metav1.CreateOptions{})
@@ -454,16 +468,12 @@ func (c *Controller) informerIsAllowedToAccessResource(ctx context.Context, verb
 	return access
 }
 
-func getConditionalInformers(f informers.SharedInformerFactory, df dynamicinformer.DynamicSharedInformerFactory, metricsClient versioned.Interface, logger logrus.FieldLogger) []conditionalInformer {
-	return []conditionalInformer{
-		{
-			resource:        corev1.SchemeGroupVersion.WithResource("configmaps"),
-			apiType:         reflect.TypeOf(&corev1.ConfigMap{}),
-			permissionVerbs: []string{"get", "list", "watch"},
-			informerFactory: func() cache.SharedIndexInformer {
-				return f.Core().V1().ConfigMaps().Informer()
-			},
-		},
+func (c *Controller) Start(done <-chan struct{}) {
+	c.informerFactory.Start(done)
+}
+
+func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Controller, f informers.SharedInformerFactory, df dynamicinformer.DynamicSharedInformerFactory, metricsClient versioned.Interface, logger logrus.FieldLogger) []conditionalInformer {
+	conditionalInformers := []conditionalInformer{
 		{
 			resource:        policyv1.SchemeGroupVersion.WithResource("poddisruptionbudgets"),
 			apiType:         reflect.TypeOf(&policyv1.PodDisruptionBudget{}),
@@ -561,6 +571,20 @@ func getConditionalInformers(f informers.SharedInformerFactory, df dynamicinform
 			},
 		},
 	}
+
+	for _, cmNamespace := range cfg.ConfigMapNamespaces {
+		conditionalInformers = append(conditionalInformers, conditionalInformer{
+			namespace:       cmNamespace,
+			resource:        corev1.SchemeGroupVersion.WithResource("configmaps"),
+			apiType:         reflect.TypeOf(&corev1.ConfigMap{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				namespaceScopedInformer := informers.NewSharedInformerFactoryWithOptions(clientset, 0, informers.WithNamespace(cmNamespace))
+				return namespaceScopedInformer.Core().V1().ConfigMaps().Informer()
+			},
+		})
+	}
+	return conditionalInformers
 }
 
 type defaultInformer struct {

@@ -7,8 +7,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/dynamic/dynamicinformer"
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/metrics/pkg/client/clientset/versioned"
 
@@ -49,13 +47,10 @@ func Loop(
 
 		log = log.WithField("k8s_version", v.Full())
 
-		f := informers.NewSharedInformerFactory(clientset, 0)
-		df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
 		ctrl := New(
 			log,
-			f,
-			df,
-			clientset.Discovery(),
+			clientset,
+			dynamicClient,
 			castaiclient,
 			metricsClient,
 			provider,
@@ -67,7 +62,7 @@ func Loop(
 			clientset.AuthorizationV1().SelfSubjectAccessReviews(),
 		)
 
-		f.Start(ctrlCtx.Done())
+		ctrl.Start(ctrlCtx.Done())
 
 		// Loop the controller. This is a blocking call.
 		return ctrl.Run(ctrlCtx)

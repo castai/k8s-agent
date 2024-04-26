@@ -30,9 +30,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	fakediscovery "k8s.io/client-go/discovery/fake"
-	"k8s.io/client-go/dynamic/dynamicinformer"
 	dynamic_fake "k8s.io/client-go/dynamic/fake"
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	authfakev1 "k8s.io/client-go/kubernetes/typed/authorization/v1/fake"
 	k8stesting "k8s.io/client-go/testing"
@@ -448,22 +446,28 @@ func TestController_HappyPath(t *testing.T) {
 
 	provider.EXPECT().FilterSpot(gomock.Any(), []*v1.Node{node}).Return([]*v1.Node{node}, nil)
 
-	f := informers.NewSharedInformerFactory(clientset, 0)
-	df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
-
 	log := logrus.New()
 	log.SetLevel(logrus.DebugLevel)
-	ctrl := New(log, f, df, clientset.Discovery(), castaiclient, metricsClient, provider, clusterID.String(), &config.Controller{
-		Interval:             15 * time.Second,
-		PrepTimeout:          2 * time.Second,
-		InitialSleepDuration: 10 * time.Millisecond,
-	},
+	ctrl := New(
+		log,
+		clientset,
+		dynamicClient,
+		castaiclient,
+		metricsClient,
+		provider,
+		clusterID.String(),
+		&config.Controller{
+			Interval:             15 * time.Second,
+			PrepTimeout:          2 * time.Second,
+			InitialSleepDuration: 10 * time.Millisecond,
+			ConfigMapNamespaces:  []string{v1.NamespaceDefault},
+		},
 		version,
 		agentVersion,
 		NewHealthzProvider(defaultHealthzCfg, log),
 		fakeSelfSubjectAccessReviewsClient,
 	)
-	f.Start(ctx.Done())
+	ctrl.Start(ctx.Done())
 
 	go func() {
 		require.NoError(t, ctrl.Run(ctx))
@@ -498,16 +502,26 @@ func TestNew(t *testing.T) {
 		clusterID := uuid.New()
 		agentVersion := &config.AgentVersion{Version: "1.2.3"}
 
-		f := informers.NewSharedInformerFactory(clientset, 0)
-		df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
-
 		log := logrus.New()
 		log.SetLevel(logrus.DebugLevel)
-		ctrl := New(log, f, df, clientset.Discovery(), castaiclient, metricsClient, provider, clusterID.String(), &config.Controller{
-			Interval:             15 * time.Second,
-			PrepTimeout:          2 * time.Second,
-			InitialSleepDuration: 10 * time.Millisecond,
-		}, version, agentVersion, NewHealthzProvider(defaultHealthzCfg, log), clientset.AuthorizationV1().SelfSubjectAccessReviews())
+		ctrl := New(
+			log,
+			clientset,
+			dynamicClient,
+			castaiclient,
+			metricsClient,
+			provider,
+			clusterID.String(),
+			&config.Controller{
+				Interval:             15 * time.Second,
+				PrepTimeout:          2 * time.Second,
+				InitialSleepDuration: 10 * time.Millisecond,
+			},
+			version,
+			agentVersion,
+			NewHealthzProvider(defaultHealthzCfg, log),
+			clientset.AuthorizationV1().SelfSubjectAccessReviews(),
+		)
 
 		r.NotNil(ctrl)
 
@@ -532,8 +546,6 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
 	metricsClient := metrics_fake.NewSimpleClientset()
 	dynamicClient := dynamic_fake.NewSimpleDynamicClient(runtime.NewScheme())
-	f := informers.NewSharedInformerFactory(clientset, 0)
-	df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
 
 	version.EXPECT().Full().Return("1.21+").MaxTimes(3)
 
@@ -612,13 +624,26 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 		})
 
 	log.SetLevel(logrus.DebugLevel)
-	ctrl := New(log, f, df, clientset.Discovery(), castaiclient, metricsClient, provider, clusterID.String(), &config.Controller{
-		Interval:             2 * time.Second,
-		PrepTimeout:          2 * time.Second,
-		InitialSleepDuration: 10 * time.Millisecond,
-	}, version, agentVersion, NewHealthzProvider(defaultHealthzCfg, log), clientset.AuthorizationV1().SelfSubjectAccessReviews())
+	ctrl := New(
+		log,
+		clientset,
+		dynamicClient,
+		castaiclient,
+		metricsClient,
+		provider,
+		clusterID.String(),
+		&config.Controller{
+			Interval:             2 * time.Second,
+			PrepTimeout:          2 * time.Second,
+			InitialSleepDuration: 10 * time.Millisecond,
+		},
+		version,
+		agentVersion,
+		NewHealthzProvider(defaultHealthzCfg, log),
+		clientset.AuthorizationV1().SelfSubjectAccessReviews(),
+	)
 
-	f.Start(ctx.Done())
+	ctrl.Start(ctx.Done())
 
 	go func() {
 		require.NoError(t, ctrl.Run(ctx))

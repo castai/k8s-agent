@@ -113,6 +113,7 @@ type Controller struct {
 	InitialSleepDuration           time.Duration `mapstructure:"initial_sleep_duration"`
 	HealthySnapshotIntervalLimit   time.Duration `mapstructure:"healthy_snapshot_interval_limit"`
 	InitializationTimeoutExtension time.Duration `mapstructure:"initialization_timeout_extension"`
+	ConfigMapNamespaces            []string      `mapstructure:"config_map_namespaces"`
 }
 
 type LeaderElectionConfig struct {
