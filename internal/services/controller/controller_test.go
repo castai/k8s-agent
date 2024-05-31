@@ -22,7 +22,6 @@ import (
 	"go.uber.org/goleak"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
-	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	v1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -73,9 +72,9 @@ func TestController_HappyPath(t *testing.T) {
 			objectCount: 14,
 		},
 		"err when fetching api resources": {
-			err: fmt.Errorf("unable to retrieve the complete list of server APIs: external.metrics.k8s.io/v1beta1:"+
-				"stale GroupVersion discovery: external.metrics.k8s.io/v1beta1,%v: some error",
-				storagev1.SchemeGroupVersion.String()),
+			err: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
+				"stale GroupVersion discovery: some error,%v: another error",
+				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
 			objectCount: 12,
 		},
 	}
@@ -155,21 +154,6 @@ func TestController_HappyPath(t *testing.T) {
 						require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, k, v))
 					}
 
-					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Node", nodeData))
-					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Pod", podData))
-					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "ConfigMap", cfgMapData))
-					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "PodDisruptionBudget", pdbData))
-					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "HorizontalPodAutoscaler", hpaData))
-					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "CSINode", csiData))
-					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Provisioner", provisionersData))
-					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Machine", machinesData))
-					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "AWSNodeTemplate", awsNodeTemplatesData))
-					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "NodePool", nodePoolsData))
-					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "NodeClaim", nodeClaimsData))
-					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "EC2NodeClass", ec2NodeClassesData))
-					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "ExtendedDaemonSetReplicaSet", datadogExtendedDSReplicaSetData))
-					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Rollout", rolloutData))
-
 					return nil
 				})
 
@@ -180,9 +164,6 @@ func TestController_HappyPath(t *testing.T) {
 					require.Equalf(t, "1.2.3", req.AgentVersion, "got request: %+v", req)
 				})
 
-			//var node *v1.Node
-			//err := json.Unmarshal(*objectsData["Node"], &node)
-			//require.NoError(t, err)
 			node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node1", Labels: map[string]string{}}}
 			provider.EXPECT().FilterSpot(gomock.Any(), []*v1.Node{node}).Return([]*v1.Node{node}, nil)
 
@@ -400,7 +381,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 	pdbData, err := delta.Encode(pdb)
 	require.NoError(t, err)
 
-	hpa := &autoscalingv2.HorizontalPodAutoscaler{
+	hpa := &autoscalingv1.HorizontalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "horizontalpodautoscalers",
 			Namespace: v1.NamespaceDefault,
@@ -532,17 +513,6 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 	clientset := fake.NewSimpleClientset(node, pod, cfgMap, pdb, hpa, csi)
 	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, provisioners, machines, awsNodeTemplates, nodePools, nodeClaims, ec2NodeClasses, datadogExtendedDSReplicaSet, rollout)
 	clientset.Fake.Resources = []*metav1.APIResourceList{
-		//{
-		//	GroupVersion: "external.metrics.k8s.io/v1beta1",
-		//	APIResources: []metav1.APIResource{
-		//		{
-		//			Group: "external.metrics.k8s.io",
-		//			Name:  "metrics",
-		//			Kind:  "ExternalMetric",
-		//			Verbs: []string{"get", "list", "watch"},
-		//		},
-		//	},
-		//},
 		{
 			GroupVersion: autoscalingv1.SchemeGroupVersion.String(),
 			APIResources: []metav1.APIResource{
