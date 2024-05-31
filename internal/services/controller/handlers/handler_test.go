@@ -15,7 +15,7 @@ import (
 	"castai-agent/internal/castai"
 	"castai-agent/internal/services/controller/delta"
 	"castai-agent/internal/services/controller/handlers/transformers"
-	mock_workqueue "castai-agent/internal/services/controller/mock"
+	mock_workqueue "castai-agent/internal/services/controller/mock/workqueue"
 )
 
 func Test_handler(t *testing.T) {

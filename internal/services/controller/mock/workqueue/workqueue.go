@@ -2,7 +2,7 @@
 // Source: k8s.io/client-go/util/workqueue (interfaces: Interface)
 
 // Package mock_workqueue is a generated GoMock package.
-package mock_workqueue
+package workqueue
 
 import (
 	reflect "reflect"

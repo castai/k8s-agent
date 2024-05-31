@@ -2,9 +2,8 @@ package controller
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
 	"fmt"
-	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -17,30 +16,33 @@ import (
 	karpenter "github.com/aws/karpenter/pkg/apis/v1beta1"
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
+	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	v1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	fakediscovery "k8s.io/client-go/discovery/fake"
 	dynamic_fake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
 	authfakev1 "k8s.io/client-go/kubernetes/typed/authorization/v1/fake"
 	k8stesting "k8s.io/client-go/testing"
-	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
+	"k8s.io/metrics/pkg/apis/external_metrics"
 	metrics_fake "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller/delta"
+	mock_discovery "castai-agent/internal/services/controller/mock/discovery"
 	mock_types "castai-agent/internal/services/providers/types/mock"
 	mock_version "castai-agent/internal/services/version/mock"
 	"castai-agent/pkg/labels"
@@ -63,14 +65,181 @@ func TestMain(m *testing.M) {
 }
 
 func TestController_HappyPath(t *testing.T) {
-	scheme := runtime.NewScheme()
-	utilruntime.Must(karpenterCoreAlpha.SchemeBuilder.AddToScheme(scheme))
-	utilruntime.Must(karpenterAlpha.SchemeBuilder.AddToScheme(scheme))
-	utilruntime.Must(karpenterCore.SchemeBuilder.AddToScheme(scheme))
-	utilruntime.Must(karpenter.SchemeBuilder.AddToScheme(scheme))
-	utilruntime.Must(datadoghqv1alpha1.SchemeBuilder.AddToScheme(scheme))
-	utilruntime.Must(argorollouts.SchemeBuilder.AddToScheme(scheme))
+	tests := map[string]struct {
+		err         error
+		objectCount int
+	}{
+		"happy path": {
+			objectCount: 14,
+		},
+		"err when fetching api resources": {
+			err: fmt.Errorf("unable to retrieve the complete list of server APIs: external.metrics.k8s.io/v1beta1:"+
+				"stale GroupVersion discovery: external.metrics.k8s.io/v1beta1,%v: some error",
+				storagev1.SchemeGroupVersion.String()),
+			objectCount: 12,
+		},
+	}
 
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			scheme := runtime.NewScheme()
+			utilruntime.Must(karpenterCoreAlpha.SchemeBuilder.AddToScheme(scheme))
+			utilruntime.Must(karpenterAlpha.SchemeBuilder.AddToScheme(scheme))
+			utilruntime.Must(karpenterCore.SchemeBuilder.AddToScheme(scheme))
+			utilruntime.Must(karpenter.SchemeBuilder.AddToScheme(scheme))
+			utilruntime.Must(datadoghqv1alpha1.SchemeBuilder.AddToScheme(scheme))
+			utilruntime.Must(argorollouts.SchemeBuilder.AddToScheme(scheme))
+			utilruntime.Must(external_metrics.SchemeBuilder.AddToScheme(scheme))
+
+			mockctrl := gomock.NewController(t)
+			castaiclient := mock_castai.NewMockClient(mockctrl)
+			version := mock_version.NewMockInterface(mockctrl)
+			provider := mock_types.NewMockProvider(mockctrl)
+			objectsData, clientset, dynamicClient := loadInitialHappyPathData(t, scheme)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			fakeSelfSubjectAccessReviewsClient := &authfakev1.FakeSelfSubjectAccessReviews{
+				Fake: &authfakev1.FakeAuthorizationV1{
+					Fake: &k8stesting.Fake{},
+				},
+			}
+
+			// returns true for all requests to fakeSelfSubjectAccessReviewsClient
+			fakeSelfSubjectAccessReviewsClient.Fake.PrependReactor("create", "selfsubjectaccessreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				return true, &authorizationv1.SelfSubjectAccessReview{
+					Status: authorizationv1.SubjectAccessReviewStatus{
+						Allowed: true,
+					},
+				}, nil
+			})
+
+			metricsClient := metrics_fake.NewSimpleClientset()
+			log := logrus.New()
+			log.SetLevel(logrus.DebugLevel)
+
+			version.EXPECT().Full().Return("1.21+").MaxTimes(3)
+
+			clusterID := uuid.New()
+			var mockDiscovery *mock_discovery.MockDiscoveryInterface
+			_, apiResources, _ := clientset.Discovery().ServerGroupsAndResources()
+			if tt.err != nil {
+				mockDiscovery = mock_discovery.NewMockDiscoveryInterface(mockctrl)
+				errors := processApiResourcesError(log, tt.err)
+				apiResources = lo.Filter(apiResources, func(apiResource *metav1.APIResourceList, _ int) bool {
+					gv, _ := schema.ParseGroupVersion(apiResource.GroupVersion)
+					return !errors[gv]
+				})
+				mockDiscovery.EXPECT().ServerGroupsAndResources().Return([]*metav1.APIGroup{}, apiResources, tt.err).AnyTimes()
+			}
+
+			var invocations int64
+
+			castaiclient.EXPECT().
+				SendDelta(gomock.Any(), clusterID.String(), gomock.Any()).AnyTimes().
+				DoAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
+					defer atomic.AddInt64(&invocations, 1)
+
+					require.Equal(t, clusterID, d.ClusterID)
+					require.Equal(t, "1.21+", d.ClusterVersion)
+					require.True(t, d.FullSnapshot)
+					require.Len(t, d.Items, tt.objectCount)
+
+					var actualValues []string
+					for _, item := range d.Items {
+						actualValues = append(actualValues, fmt.Sprintf("%s-%s-%v", item.Event, item.Kind, item.Data))
+					}
+
+					for k, v := range objectsData {
+						require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, k, v))
+					}
+
+					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Node", nodeData))
+					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Pod", podData))
+					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "ConfigMap", cfgMapData))
+					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "PodDisruptionBudget", pdbData))
+					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "HorizontalPodAutoscaler", hpaData))
+					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "CSINode", csiData))
+					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Provisioner", provisionersData))
+					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Machine", machinesData))
+					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "AWSNodeTemplate", awsNodeTemplatesData))
+					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "NodePool", nodePoolsData))
+					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "NodeClaim", nodeClaimsData))
+					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "EC2NodeClass", ec2NodeClassesData))
+					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "ExtendedDaemonSetReplicaSet", datadogExtendedDSReplicaSetData))
+					//require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Rollout", rolloutData))
+
+					return nil
+				})
+
+			agentVersion := &config.AgentVersion{Version: "1.2.3"}
+			castaiclient.EXPECT().ExchangeAgentTelemetry(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
+				Return(&castai.AgentTelemetryResponse{}, nil).
+				Do(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
+					require.Equalf(t, "1.2.3", req.AgentVersion, "got request: %+v", req)
+				})
+
+			//var node *v1.Node
+			//err := json.Unmarshal(*objectsData["Node"], &node)
+			//require.NoError(t, err)
+			node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node1", Labels: map[string]string{}}}
+			provider.EXPECT().FilterSpot(gomock.Any(), []*v1.Node{node}).Return([]*v1.Node{node}, nil)
+
+			ctrl := New(
+				log,
+				clientset,
+				dynamicClient,
+				castaiclient,
+				metricsClient,
+				provider,
+				clusterID.String(),
+				&config.Controller{
+					Interval:             15 * time.Second,
+					PrepTimeout:          2 * time.Second,
+					InitialSleepDuration: 10 * time.Millisecond,
+					ConfigMapNamespaces:  []string{v1.NamespaceDefault},
+				},
+				version,
+				agentVersion,
+				NewHealthzProvider(defaultHealthzCfg, log),
+				fakeSelfSubjectAccessReviewsClient,
+			)
+
+			if mockDiscovery != nil {
+				ctrl.discovery = mockDiscovery
+			}
+
+			ctrl.Start(ctx.Done())
+
+			go func() {
+				require.NoError(t, ctrl.Run(ctx))
+			}()
+
+			wait.Until(func() {
+				if atomic.LoadInt64(&invocations) >= 1 {
+					cancel()
+				}
+			}, 10*time.Millisecond, ctx.Done())
+		})
+	}
+}
+
+func TestController_ApiResourcesErrorProcessing(t *testing.T) {
+	err := fmt.Errorf("unable to retrieve the complete list of server APIs: external.metrics.k8s.io/v1beta1: stale GroupVersion discovery: external.metrics.k8s.io/v1beta1,external.metrics.k8s.io/v2beta2: stale GroupVersion discovery: external.metrics.k8s.io/v2beta2")
+	val := processApiResourcesError(logrus.New(), err)
+	require.Len(t, val, 2)
+	require.True(t, val[schema.GroupVersion{
+		Group:   "external.metrics.k8s.io",
+		Version: "v1beta1",
+	}])
+	require.True(t, val[schema.GroupVersion{
+		Group:   "external.metrics.k8s.io",
+		Version: "v2beta2",
+	}])
+}
+
+func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 	mockctrl := gomock.NewController(t)
 	castaiclient := mock_castai.NewMockClient(mockctrl)
 	version := mock_version.NewMockInterface(mockctrl)
@@ -79,6 +248,124 @@ func TestController_HappyPath(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "pod1"}}
+	podData, err := delta.Encode(pod)
+	require.NoError(t, err)
+
+	clientset := fake.NewSimpleClientset()
+	metricsClient := metrics_fake.NewSimpleClientset()
+	dynamicClient := dynamic_fake.NewSimpleDynamicClient(runtime.NewScheme())
+
+	version.EXPECT().Full().Return("1.21+").MaxTimes(3)
+
+	clusterID := uuid.New()
+	log := logrus.New()
+
+	var invocations int64
+
+	// initial full snapshot
+	castaiclient.EXPECT().
+		SendDelta(gomock.Any(), clusterID.String(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
+			defer atomic.AddInt64(&invocations, 1)
+
+			require.Equal(t, clusterID, d.ClusterID)
+			require.Equal(t, "1.21+", d.ClusterVersion)
+			require.True(t, d.FullSnapshot)
+			require.Len(t, d.Items, 0)
+
+			_, err := clientset.CoreV1().Pods("default").Create(ctx, pod, metav1.CreateOptions{})
+			require.NoError(t, err)
+
+			return nil
+		})
+
+	// first delta add pod - fail and trigger pod delete
+	castaiclient.EXPECT().
+		SendDelta(gomock.Any(), clusterID.String(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
+			defer atomic.AddInt64(&invocations, 1)
+
+			require.Equal(t, clusterID, d.ClusterID)
+			require.Equal(t, "1.21+", d.ClusterVersion)
+			require.False(t, d.FullSnapshot)
+			require.Len(t, d.Items, 1)
+
+			var actualValues []string
+			for _, item := range d.Items {
+				actualValues = append(actualValues, fmt.Sprintf("%s-%s-%v", item.Event, item.Kind, item.Data))
+			}
+
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Pod", podData))
+
+			err := clientset.CoreV1().Pods("default").Delete(ctx, pod.Name, metav1.DeleteOptions{})
+			require.NoError(t, err)
+
+			return fmt.Errorf("testError")
+		})
+
+	// second attempt to send data when pod delete is received
+	castaiclient.EXPECT().
+		SendDelta(gomock.Any(), clusterID.String(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
+			defer atomic.AddInt64(&invocations, 1)
+
+			require.Equal(t, clusterID, d.ClusterID)
+			require.Equal(t, "1.21+", d.ClusterVersion)
+			require.False(t, d.FullSnapshot)
+			require.Len(t, d.Items, 1)
+
+			var actualValues []string
+			for _, item := range d.Items {
+				actualValues = append(actualValues, fmt.Sprintf("%s-%s-%v", item.Event, item.Kind, item.Data))
+			}
+
+			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventDelete, "Pod", podData))
+
+			return nil
+		})
+
+	agentVersion := &config.AgentVersion{Version: "1.2.3"}
+	castaiclient.EXPECT().ExchangeAgentTelemetry(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
+		Return(&castai.AgentTelemetryResponse{}, nil).
+		Do(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
+			require.Equalf(t, "1.2.3", req.AgentVersion, "got request: %+v", req)
+		})
+
+	log.SetLevel(logrus.DebugLevel)
+	ctrl := New(
+		log,
+		clientset,
+		dynamicClient,
+		castaiclient,
+		metricsClient,
+		provider,
+		clusterID.String(),
+		&config.Controller{
+			Interval:             2 * time.Second,
+			PrepTimeout:          2 * time.Second,
+			InitialSleepDuration: 10 * time.Millisecond,
+		},
+		version,
+		agentVersion,
+		NewHealthzProvider(defaultHealthzCfg, log),
+		clientset.AuthorizationV1().SelfSubjectAccessReviews(),
+	)
+
+	ctrl.Start(ctx.Done())
+
+	go func() {
+		require.NoError(t, ctrl.Run(ctx))
+	}()
+
+	wait.Until(func() {
+		if atomic.LoadInt64(&invocations) >= 3 {
+			cancel()
+		}
+	}, 10*time.Millisecond, ctx.Done())
+}
+
+func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]*json.RawMessage, *fake.Clientset, *dynamic_fake.FakeDynamicClient) {
 	provisionersGvr := karpenterCoreAlpha.SchemeGroupVersion.WithResource("provisioners")
 	machinesGvr := karpenterCoreAlpha.SchemeGroupVersion.WithResource("machines")
 	awsNodeTemplatesGvr := karpenterAlpha.SchemeGroupVersion.WithResource("awsnodetemplates")
@@ -113,7 +400,7 @@ func TestController_HappyPath(t *testing.T) {
 	pdbData, err := delta.Encode(pdb)
 	require.NoError(t, err)
 
-	hpa := &autoscalingv1.HorizontalPodAutoscaler{
+	hpa := &autoscalingv2.HorizontalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "horizontalpodautoscalers",
 			Namespace: v1.NamespaceDefault,
@@ -242,28 +529,20 @@ func TestController_HappyPath(t *testing.T) {
 
 	rolloutData, err := delta.Encode(rollout)
 	require.NoError(t, err)
-
-	fakeSelfSubjectAccessReviewsClient := &authfakev1.FakeSelfSubjectAccessReviews{
-		Fake: &authfakev1.FakeAuthorizationV1{
-			Fake: &k8stesting.Fake{},
-		},
-	}
-
-	// returns true for all requests to fakeSelfSubjectAccessReviewsClient
-	fakeSelfSubjectAccessReviewsClient.Fake.PrependReactor("create", "selfsubjectaccessreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
-		return true, &authorizationv1.SelfSubjectAccessReview{
-			Status: authorizationv1.SubjectAccessReviewStatus{
-				Allowed: true,
-			},
-		}, nil
-	})
-
 	clientset := fake.NewSimpleClientset(node, pod, cfgMap, pdb, hpa, csi)
-	metricsClient := metrics_fake.NewSimpleClientset()
 	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, provisioners, machines, awsNodeTemplates, nodePools, nodeClaims, ec2NodeClasses, datadogExtendedDSReplicaSet, rollout)
-	objectCount := len([]runtime.Object{node, pod, cfgMap, pdb, hpa, csi, provisioners, machines, awsNodeTemplates, nodePools, nodeClaims, ec2NodeClasses, datadogExtendedDSReplicaSet, rollout})
-
 	clientset.Fake.Resources = []*metav1.APIResourceList{
+		//{
+		//	GroupVersion: "external.metrics.k8s.io/v1beta1",
+		//	APIResources: []metav1.APIResource{
+		//		{
+		//			Group: "external.metrics.k8s.io",
+		//			Name:  "metrics",
+		//			Kind:  "ExternalMetric",
+		//			Verbs: []string{"get", "list", "watch"},
+		//		},
+		//	},
+		//},
 		{
 			GroupVersion: autoscalingv1.SchemeGroupVersion.String(),
 			APIResources: []metav1.APIResource{
@@ -397,261 +676,21 @@ func TestController_HappyPath(t *testing.T) {
 			},
 		},
 	}
+	objects := make(map[string]*json.RawMessage)
+	objects["Node"] = nodeData
+	objects["Pod"] = podData
+	objects["ConfigMap"] = cfgMapData
+	objects["PodDisruptionBudget"] = pdbData
+	objects["HorizontalPodAutoscaler"] = hpaData
+	objects["CSINode"] = csiData
+	objects["Provisioner"] = provisionersData
+	objects["Machine"] = machinesData
+	objects["AWSNodeTemplate"] = awsNodeTemplatesData
+	objects["NodePool"] = nodePoolsData
+	objects["NodeClaim"] = nodeClaimsData
+	objects["EC2NodeClass"] = ec2NodeClassesData
+	objects["ExtendedDaemonSetReplicaSet"] = datadogExtendedDSReplicaSetData
+	objects["Rollout"] = rolloutData
 
-	version.EXPECT().Full().Return("1.21+").MaxTimes(3)
-
-	clusterID := uuid.New()
-
-	var invocations int64
-
-	castaiclient.EXPECT().
-		SendDelta(gomock.Any(), clusterID.String(), gomock.Any()).AnyTimes().
-		DoAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
-			defer atomic.AddInt64(&invocations, 1)
-
-			require.Equal(t, clusterID, d.ClusterID)
-			require.Equal(t, "1.21+", d.ClusterVersion)
-			require.True(t, d.FullSnapshot)
-			require.Len(t, d.Items, objectCount)
-
-			var actualValues []string
-			for _, item := range d.Items {
-				actualValues = append(actualValues, fmt.Sprintf("%s-%s-%v", item.Event, item.Kind, item.Data))
-			}
-
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Node", nodeData))
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Pod", podData))
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "ConfigMap", cfgMapData))
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "PodDisruptionBudget", pdbData))
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "HorizontalPodAutoscaler", hpaData))
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "CSINode", csiData))
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Provisioner", provisionersData))
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Machine", machinesData))
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "AWSNodeTemplate", awsNodeTemplatesData))
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "NodePool", nodePoolsData))
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "NodeClaim", nodeClaimsData))
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "EC2NodeClass", ec2NodeClassesData))
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "ExtendedDaemonSetReplicaSet", datadogExtendedDSReplicaSetData))
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Rollout", rolloutData))
-
-			return nil
-		})
-
-	agentVersion := &config.AgentVersion{Version: "1.2.3"}
-	castaiclient.EXPECT().ExchangeAgentTelemetry(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
-		Return(&castai.AgentTelemetryResponse{}, nil).
-		Do(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
-			require.Equalf(t, "1.2.3", req.AgentVersion, "got request: %+v", req)
-		})
-
-	provider.EXPECT().FilterSpot(gomock.Any(), []*v1.Node{node}).Return([]*v1.Node{node}, nil)
-
-	log := logrus.New()
-	log.SetLevel(logrus.DebugLevel)
-	ctrl := New(
-		log,
-		clientset,
-		dynamicClient,
-		castaiclient,
-		metricsClient,
-		provider,
-		clusterID.String(),
-		&config.Controller{
-			Interval:             15 * time.Second,
-			PrepTimeout:          2 * time.Second,
-			InitialSleepDuration: 10 * time.Millisecond,
-			ConfigMapNamespaces:  []string{v1.NamespaceDefault},
-		},
-		version,
-		agentVersion,
-		NewHealthzProvider(defaultHealthzCfg, log),
-		fakeSelfSubjectAccessReviewsClient,
-	)
-	ctrl.Start(ctx.Done())
-
-	go func() {
-		require.NoError(t, ctrl.Run(ctx))
-	}()
-
-	wait.Until(func() {
-		if atomic.LoadInt64(&invocations) >= 1 {
-			cancel()
-		}
-	}, 10*time.Millisecond, ctx.Done())
-}
-
-func TestNew(t *testing.T) {
-	t.Run("should not collect pod metrics when discovery api is unavailable", func(t *testing.T) {
-		r := require.New(t)
-		mockctrl := gomock.NewController(t)
-		castaiclient := mock_castai.NewMockClient(mockctrl)
-		version := mock_version.NewMockInterface(mockctrl)
-		provider := mock_types.NewMockProvider(mockctrl)
-
-		clientset := fake.NewSimpleClientset()
-		clientset.Discovery().(*fakediscovery.FakeDiscovery).
-			PrependReactor("get", "group",
-				func(_ k8stesting.Action) (handled bool, ret runtime.Object, err error) {
-					return true, nil, errors.New("some error")
-				})
-		metricsClient := metrics_fake.NewSimpleClientset()
-		dynamicClient := dynamic_fake.NewSimpleDynamicClient(runtime.NewScheme())
-
-		version.EXPECT().Full().Return("1.21+").MaxTimes(2)
-
-		clusterID := uuid.New()
-		agentVersion := &config.AgentVersion{Version: "1.2.3"}
-
-		log := logrus.New()
-		log.SetLevel(logrus.DebugLevel)
-		ctrl := New(
-			log,
-			clientset,
-			dynamicClient,
-			castaiclient,
-			metricsClient,
-			provider,
-			clusterID.String(),
-			&config.Controller{
-				Interval:             15 * time.Second,
-				PrepTimeout:          2 * time.Second,
-				InitialSleepDuration: 10 * time.Millisecond,
-			},
-			version,
-			agentVersion,
-			NewHealthzProvider(defaultHealthzCfg, log),
-			clientset.AuthorizationV1().SelfSubjectAccessReviews(),
-		)
-
-		r.NotNil(ctrl)
-
-		_, found := ctrl.informers[reflect.TypeOf(&v1beta1.PodMetrics{}).String()]
-		r.False(found, "pod metrics informer should not be registered if metrics api is not available")
-	})
-}
-
-func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
-	mockctrl := gomock.NewController(t)
-	castaiclient := mock_castai.NewMockClient(mockctrl)
-	version := mock_version.NewMockInterface(mockctrl)
-	provider := mock_types.NewMockProvider(mockctrl)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "pod1"}}
-	podData, err := delta.Encode(pod)
-	require.NoError(t, err)
-
-	clientset := fake.NewSimpleClientset()
-	metricsClient := metrics_fake.NewSimpleClientset()
-	dynamicClient := dynamic_fake.NewSimpleDynamicClient(runtime.NewScheme())
-
-	version.EXPECT().Full().Return("1.21+").MaxTimes(3)
-
-	clusterID := uuid.New()
-	log := logrus.New()
-
-	var invocations int64
-
-	// initial full snapshot
-	castaiclient.EXPECT().
-		SendDelta(gomock.Any(), clusterID.String(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
-			defer atomic.AddInt64(&invocations, 1)
-
-			require.Equal(t, clusterID, d.ClusterID)
-			require.Equal(t, "1.21+", d.ClusterVersion)
-			require.True(t, d.FullSnapshot)
-			require.Len(t, d.Items, 0)
-
-			_, err := clientset.CoreV1().Pods("default").Create(ctx, pod, metav1.CreateOptions{})
-			require.NoError(t, err)
-
-			return nil
-		})
-
-	// first delta add pod - fail and trigger pod delete
-	castaiclient.EXPECT().
-		SendDelta(gomock.Any(), clusterID.String(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
-			defer atomic.AddInt64(&invocations, 1)
-
-			require.Equal(t, clusterID, d.ClusterID)
-			require.Equal(t, "1.21+", d.ClusterVersion)
-			require.False(t, d.FullSnapshot)
-			require.Len(t, d.Items, 1)
-
-			var actualValues []string
-			for _, item := range d.Items {
-				actualValues = append(actualValues, fmt.Sprintf("%s-%s-%v", item.Event, item.Kind, item.Data))
-			}
-
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Pod", podData))
-
-			err := clientset.CoreV1().Pods("default").Delete(ctx, pod.Name, metav1.DeleteOptions{})
-			require.NoError(t, err)
-
-			return fmt.Errorf("testError")
-		})
-
-	// second attempt to send data when pod delete is received
-	castaiclient.EXPECT().
-		SendDelta(gomock.Any(), clusterID.String(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
-			defer atomic.AddInt64(&invocations, 1)
-
-			require.Equal(t, clusterID, d.ClusterID)
-			require.Equal(t, "1.21+", d.ClusterVersion)
-			require.False(t, d.FullSnapshot)
-			require.Len(t, d.Items, 1)
-
-			var actualValues []string
-			for _, item := range d.Items {
-				actualValues = append(actualValues, fmt.Sprintf("%s-%s-%v", item.Event, item.Kind, item.Data))
-			}
-
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventDelete, "Pod", podData))
-
-			return nil
-		})
-
-	agentVersion := &config.AgentVersion{Version: "1.2.3"}
-	castaiclient.EXPECT().ExchangeAgentTelemetry(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
-		Return(&castai.AgentTelemetryResponse{}, nil).
-		Do(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
-			require.Equalf(t, "1.2.3", req.AgentVersion, "got request: %+v", req)
-		})
-
-	log.SetLevel(logrus.DebugLevel)
-	ctrl := New(
-		log,
-		clientset,
-		dynamicClient,
-		castaiclient,
-		metricsClient,
-		provider,
-		clusterID.String(),
-		&config.Controller{
-			Interval:             2 * time.Second,
-			PrepTimeout:          2 * time.Second,
-			InitialSleepDuration: 10 * time.Millisecond,
-		},
-		version,
-		agentVersion,
-		NewHealthzProvider(defaultHealthzCfg, log),
-		clientset.AuthorizationV1().SelfSubjectAccessReviews(),
-	)
-
-	ctrl.Start(ctx.Done())
-
-	go func() {
-		require.NoError(t, ctrl.Run(ctx))
-	}()
-
-	wait.Until(func() {
-		if atomic.LoadInt64(&invocations) >= 3 {
-			cancel()
-		}
-	}, 10*time.Millisecond, ctx.Done())
+	return objects, clientset, dynamicClient
 }
