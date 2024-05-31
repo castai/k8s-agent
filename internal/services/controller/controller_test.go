@@ -16,7 +16,6 @@ import (
 	karpenter "github.com/aws/karpenter/pkg/apis/v1beta1"
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
-	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -27,7 +26,6 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	dynamic_fake "k8s.io/client-go/dynamic/fake"
@@ -41,7 +39,6 @@ import (
 	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller/delta"
-	mock_discovery "castai-agent/internal/services/controller/mock/discovery"
 	mock_types "castai-agent/internal/services/providers/types/mock"
 	mock_version "castai-agent/internal/services/version/mock"
 	"castai-agent/pkg/labels"
@@ -65,17 +62,10 @@ func TestMain(m *testing.M) {
 
 func TestController_HappyPath(t *testing.T) {
 	tests := map[string]struct {
-		err         error
 		objectCount int
 	}{
 		"happy path": {
 			objectCount: 14,
-		},
-		"err when fetching api resources": {
-			err: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
-				"stale GroupVersion discovery: some error,%v: another error",
-				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			objectCount: 12,
 		},
 	}
 
@@ -121,17 +111,6 @@ func TestController_HappyPath(t *testing.T) {
 			version.EXPECT().Full().Return("1.21+").MaxTimes(3)
 
 			clusterID := uuid.New()
-			var mockDiscovery *mock_discovery.MockDiscoveryInterface
-			_, apiResources, _ := clientset.Discovery().ServerGroupsAndResources()
-			if tt.err != nil {
-				mockDiscovery = mock_discovery.NewMockDiscoveryInterface(mockctrl)
-				errors := processApiResourcesError(log, tt.err)
-				apiResources = lo.Filter(apiResources, func(apiResource *metav1.APIResourceList, _ int) bool {
-					gv, _ := schema.ParseGroupVersion(apiResource.GroupVersion)
-					return !errors[gv]
-				})
-				mockDiscovery.EXPECT().ServerGroupsAndResources().Return([]*metav1.APIGroup{}, apiResources, tt.err).AnyTimes()
-			}
 
 			var invocations int64
 
@@ -187,10 +166,6 @@ func TestController_HappyPath(t *testing.T) {
 				fakeSelfSubjectAccessReviewsClient,
 			)
 
-			if mockDiscovery != nil {
-				ctrl.discovery = mockDiscovery
-			}
-
 			ctrl.Start(ctx.Done())
 
 			go func() {
@@ -204,20 +179,6 @@ func TestController_HappyPath(t *testing.T) {
 			}, 10*time.Millisecond, ctx.Done())
 		})
 	}
-}
-
-func TestController_ApiResourcesErrorProcessing(t *testing.T) {
-	err := fmt.Errorf("unable to retrieve the complete list of server APIs: external.metrics.k8s.io/v1beta1: stale GroupVersion discovery: external.metrics.k8s.io/v1beta1,external.metrics.k8s.io/v2beta2: stale GroupVersion discovery: external.metrics.k8s.io/v2beta2")
-	val := processApiResourcesError(logrus.New(), err)
-	require.Len(t, val, 2)
-	require.True(t, val[schema.GroupVersion{
-		Group:   "external.metrics.k8s.io",
-		Version: "v1beta1",
-	}])
-	require.True(t, val[schema.GroupVersion{
-		Group:   "external.metrics.k8s.io",
-		Version: "v2beta2",
-	}])
 }
 
 func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {

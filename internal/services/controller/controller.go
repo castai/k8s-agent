@@ -472,25 +472,6 @@ func (c *Controller) Start(done <-chan struct{}) {
 	c.informerFactory.Start(done)
 }
 
-func processApiResourcesError(log logrus.FieldLogger, err error) map[schema.GroupVersion]bool {
-	cleanedString := strings.Split(err.Error(), "unable to retrieve the complete list of server APIs: ")[1]
-
-	// Split the string by comma
-	paths := strings.Split(cleanedString, ",")
-
-	result := make(map[schema.GroupVersion]bool)
-	for _, path := range paths {
-		apiPath := strings.Split(path, ":")[0]
-		gv, e := schema.ParseGroupVersion(apiPath)
-		if e != nil {
-			log.Errorf("Error when unmarshalling group version: %v", e)
-			continue
-		}
-		result[gv] = true
-	}
-	return result
-}
-
 func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Controller, f informers.SharedInformerFactory, df dynamicinformer.DynamicSharedInformerFactory, metricsClient versioned.Interface, logger logrus.FieldLogger) []conditionalInformer {
 	conditionalInformers := []conditionalInformer{
 		{
