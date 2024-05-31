@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -71,11 +72,16 @@ func TestController_HappyPath(t *testing.T) {
 		"happy path": {
 			objectCount: 14,
 		},
-		"err when fetching api resources": {
+		"err when fetching api resources - multiple errors": {
 			err: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
 			objectCount: 12,
+		},
+		"err when fetching api resources - single error": {
+			err: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
+				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
+			objectCount: 13,
 		},
 	}
 
@@ -130,6 +136,21 @@ func TestController_HappyPath(t *testing.T) {
 					gv, _ := schema.ParseGroupVersion(apiResource.GroupVersion)
 					return !errors[gv]
 				})
+
+				// filter expected data based on available resources
+				for k := range objectsData {
+					kLowerCased := strings.ToLower(k)
+					found := false
+					for _, resource := range apiResources {
+						if strings.Contains(resource.APIResources[0].Name, kLowerCased) {
+							found = true
+							break
+						}
+					}
+					if !found {
+						delete(objectsData, k)
+					}
+				}
 				mockDiscovery.EXPECT().ServerGroupsAndResources().Return([]*metav1.APIGroup{}, apiResources, tt.err).AnyTimes()
 			}
 

@@ -81,12 +81,13 @@ type Controller struct {
 
 type conditionalInformer struct {
 	// if empty it means all namespaces
-	namespace       string
-	resource        schema.GroupVersionResource
-	apiType         reflect.Type
-	informerFactory func() cache.SharedIndexInformer
-	permissionVerbs []string
-	isApplied       bool
+	namespace         string
+	resource          schema.GroupVersionResource
+	apiType           reflect.Type
+	informerFactory   func() cache.SharedIndexInformer
+	permissionVerbs   []string
+	isApplied         bool
+	isResourceInError bool
 }
 
 func (i *conditionalInformer) Name() string {
@@ -261,14 +262,17 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 	tryConditionalInformers := conditionalInformers
 
 	if err := wait.PollUntilContextCancel(ctx, 2*time.Minute, true, func(ctx context.Context) (done bool, err error) {
-		apiResourceLists := fetchAPIResourceLists(c.discovery, c.log)
-		if apiResourceLists == nil {
-			return false, nil
+		_, apiResourceLists, err := c.discovery.ServerGroupsAndResources()
+		if err != nil {
+			c.log.Warnf("Error when getting server resources: %v", err.Error())
+			resourcesInError := processApiResourcesError(c.log, err)
+			for i, informer := range tryConditionalInformers {
+				tryConditionalInformers[i].isResourceInError = resourcesInError[informer.resource.GroupVersion()]
+			}
 		}
 		c.log.Infof("Cluster API server is available, trying to start conditional informers")
-
 		for i, informer := range tryConditionalInformers {
-			if informer.isApplied {
+			if informer.isApplied || informer.isResourceInError {
 				continue
 			}
 			apiResourceListForGroupVersion := getAPIResourceListByGroupVersion(informer.resource.GroupVersion().String(), apiResourceLists)
@@ -288,6 +292,8 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 
 			c.log.Infof("Starting conditional informer for %v", informer.Name())
 			tryConditionalInformers[i].isApplied = true
+			// reset errors
+			tryConditionalInformers[i].isResourceInError = false
 
 			handledInformer := custominformers.NewHandledInformer(c.log, c.queue, informer.informerFactory(), informer.apiType, nil)
 
