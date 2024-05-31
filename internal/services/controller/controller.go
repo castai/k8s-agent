@@ -273,7 +273,7 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 		c.log.Infof("Cluster API server is available, trying to start conditional informers")
 		for i, informer := range tryConditionalInformers {
 			if informer.isApplied || informer.isResourceInError {
-				// reset error
+				// reset error so we can try again
 				tryConditionalInformers[i].isResourceInError = false
 				continue
 			}
@@ -477,7 +477,6 @@ func (c *Controller) informerIsAllowedToAccessResource(ctx context.Context, name
 func (c *Controller) Start(done <-chan struct{}) {
 	c.informerFactory.Start(done)
 }
-
 func processApiResourcesError(log logrus.FieldLogger, err error) map[schema.GroupVersion]bool {
 	cleanedString := strings.Split(err.Error(), "unable to retrieve the complete list of server APIs: ")[1]
 

@@ -66,8 +66,8 @@ func TestMain(m *testing.M) {
 
 func TestController_HappyPath(t *testing.T) {
 	tests := map[string]struct {
-		err         error
 		objectCount int
+		err         error
 	}{
 		"happy path": {
 			objectCount: 14,
@@ -153,7 +153,6 @@ func TestController_HappyPath(t *testing.T) {
 				}
 				mockDiscovery.EXPECT().ServerGroupsAndResources().Return([]*metav1.APIGroup{}, apiResources, tt.err).AnyTimes()
 			}
-
 			var invocations int64
 
 			castaiclient.EXPECT().
