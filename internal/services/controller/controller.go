@@ -273,6 +273,8 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 		c.log.Infof("Cluster API server is available, trying to start conditional informers")
 		for i, informer := range tryConditionalInformers {
 			if informer.isApplied || informer.isResourceInError {
+				// reset error
+				tryConditionalInformers[i].isResourceInError = false
 				continue
 			}
 			apiResourceListForGroupVersion := getAPIResourceListByGroupVersion(informer.resource.GroupVersion().String(), apiResourceLists)
@@ -292,8 +294,6 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 
 			c.log.Infof("Starting conditional informer for %v", informer.Name())
 			tryConditionalInformers[i].isApplied = true
-			// reset errors
-			tryConditionalInformers[i].isResourceInError = false
 
 			handledInformer := custominformers.NewHandledInformer(c.log, c.queue, informer.informerFactory(), informer.apiType, nil)
 
