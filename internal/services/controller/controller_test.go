@@ -64,7 +64,7 @@ func TestController_HappyPath(t *testing.T) {
 	tests := map[string]struct {
 		objectCount int
 	}{
-		"happy path": {
+		"All supported objects are found and received in delta": {
 			objectCount: 14,
 		},
 	}
