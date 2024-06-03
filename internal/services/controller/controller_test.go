@@ -68,7 +68,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 		expectedReceivedObjectsCount int
 		apiResourceError             error
 	}{
-		"happy path": {
+		"All supported objects are found and received in delta": {
 			expectedReceivedObjectsCount: 14,
 		},
 		"when fetching api resources produces multiple errors should exclude those resources": {
