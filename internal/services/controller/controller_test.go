@@ -63,7 +63,7 @@ func TestMain(m *testing.M) {
 	)
 }
 
-func TestController_ShoulReceiveDeltasBasedOnAvailableResources(t *testing.T) {
+func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 	tests := map[string]struct {
 		expectedReceivedObjectsCount int
 		apiResourceError             error
