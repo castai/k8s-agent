@@ -35,7 +35,6 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	authfakev1 "k8s.io/client-go/kubernetes/typed/authorization/v1/fake"
 	k8stesting "k8s.io/client-go/testing"
-	"k8s.io/metrics/pkg/apis/external_metrics"
 	metrics_fake "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 
 	"castai-agent/internal/castai"
@@ -64,24 +63,24 @@ func TestMain(m *testing.M) {
 	)
 }
 
-func TestController_HappyPath(t *testing.T) {
+func TestController_ShoulReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 	tests := map[string]struct {
-		objectCount int
-		err         error
+		expectedReceivedObjectsCount int
+		apiResourceError             error
 	}{
 		"happy path": {
-			objectCount: 14,
+			expectedReceivedObjectsCount: 14,
 		},
-		"err when fetching api resources - multiple errors": {
-			err: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
+		"when fetching api resources produces multiple errors should exclude those resources": {
+			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			objectCount: 12,
+			expectedReceivedObjectsCount: 12,
 		},
-		"err when fetching api resources - single error": {
-			err: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
+		"when fetching api resources produces single error should exclude that resource": {
+			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
-			objectCount: 13,
+			expectedReceivedObjectsCount: 13,
 		},
 	}
 
@@ -94,7 +93,6 @@ func TestController_HappyPath(t *testing.T) {
 			utilruntime.Must(karpenter.SchemeBuilder.AddToScheme(scheme))
 			utilruntime.Must(datadoghqv1alpha1.SchemeBuilder.AddToScheme(scheme))
 			utilruntime.Must(argorollouts.SchemeBuilder.AddToScheme(scheme))
-			utilruntime.Must(external_metrics.SchemeBuilder.AddToScheme(scheme))
 
 			mockctrl := gomock.NewController(t)
 			castaiclient := mock_castai.NewMockClient(mockctrl)
@@ -129,9 +127,9 @@ func TestController_HappyPath(t *testing.T) {
 			clusterID := uuid.New()
 			var mockDiscovery *mock_discovery.MockDiscoveryInterface
 			_, apiResources, _ := clientset.Discovery().ServerGroupsAndResources()
-			if tt.err != nil {
+			if tt.apiResourceError != nil {
 				mockDiscovery = mock_discovery.NewMockDiscoveryInterface(mockctrl)
-				errors := processApiResourcesError(log, tt.err)
+				errors := extractGroupVersionsFromApiResourceError(log, tt.apiResourceError)
 				apiResources = lo.Filter(apiResources, func(apiResource *metav1.APIResourceList, _ int) bool {
 					gv, _ := schema.ParseGroupVersion(apiResource.GroupVersion)
 					return !errors[gv]
@@ -151,7 +149,7 @@ func TestController_HappyPath(t *testing.T) {
 						delete(objectsData, k)
 					}
 				}
-				mockDiscovery.EXPECT().ServerGroupsAndResources().Return([]*metav1.APIGroup{}, apiResources, tt.err).AnyTimes()
+				mockDiscovery.EXPECT().ServerGroupsAndResources().Return([]*metav1.APIGroup{}, apiResources, tt.apiResourceError).AnyTimes()
 			}
 			var invocations int64
 
@@ -163,7 +161,7 @@ func TestController_HappyPath(t *testing.T) {
 					require.Equal(t, clusterID, d.ClusterID)
 					require.Equal(t, "1.21+", d.ClusterVersion)
 					require.True(t, d.FullSnapshot)
-					require.Len(t, d.Items, tt.objectCount)
+					require.Len(t, d.Items, tt.expectedReceivedObjectsCount)
 
 					var actualValues []string
 					for _, item := range d.Items {
@@ -228,7 +226,7 @@ func TestController_HappyPath(t *testing.T) {
 
 func TestController_ApiResourcesErrorProcessing(t *testing.T) {
 	err := fmt.Errorf("unable to retrieve the complete list of server APIs: external.metrics.k8s.io/v1beta1: stale GroupVersion discovery: external.metrics.k8s.io/v1beta1,external.metrics.k8s.io/v2beta2: stale GroupVersion discovery: external.metrics.k8s.io/v2beta2")
-	val := processApiResourcesError(logrus.New(), err)
+	val := extractGroupVersionsFromApiResourceError(logrus.New(), err)
 	require.Len(t, val, 2)
 	require.True(t, val[schema.GroupVersion{
 		Group:   "external.metrics.k8s.io",

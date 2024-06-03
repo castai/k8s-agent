@@ -265,7 +265,7 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 		_, apiResourceLists, err := c.discovery.ServerGroupsAndResources()
 		if err != nil {
 			c.log.Warnf("Error when getting server resources: %v", err.Error())
-			resourcesInError := processApiResourcesError(c.log, err)
+			resourcesInError := extractGroupVersionsFromApiResourceError(c.log, err)
 			for i, informer := range tryConditionalInformers {
 				tryConditionalInformers[i].isResourceInError = resourcesInError[informer.resource.GroupVersion()]
 			}
@@ -477,10 +477,8 @@ func (c *Controller) informerIsAllowedToAccessResource(ctx context.Context, name
 func (c *Controller) Start(done <-chan struct{}) {
 	c.informerFactory.Start(done)
 }
-func processApiResourcesError(log logrus.FieldLogger, err error) map[schema.GroupVersion]bool {
+func extractGroupVersionsFromApiResourceError(log logrus.FieldLogger, err error) map[schema.GroupVersion]bool {
 	cleanedString := strings.Split(err.Error(), "unable to retrieve the complete list of server APIs: ")[1]
-
-	// Split the string by comma
 	paths := strings.Split(cleanedString, ",")
 
 	result := make(map[schema.GroupVersion]bool)
