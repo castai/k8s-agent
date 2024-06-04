@@ -83,6 +83,11 @@ GKE_LOCATION=your-cluster-location
 ```
 note, when using zonal `GKE_REGION` and `GKE_LOCATION` is often the same, i.e. `europe-west3-a`
 
+If you want to test changes with existing cluster already onboarded to CAST AI console, you can set environment variable 
+
+```text
+STATIC_CLUSTER_ID=your-cluster-id
+```
 
 #### Issues
 
