@@ -279,7 +279,7 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 			}
 			apiResourceListForGroupVersion := getAPIResourceListByGroupVersion(informer.resource.GroupVersion().String(), apiResourceLists)
 			if !isResourceAvailable(informer.apiType, apiResourceListForGroupVersion) {
-				c.log.Warnf("Skipping conditional informer name: %v, because API resource is not available",
+				c.log.Infof("Skipping conditional informer name: %v, because API resource is not available",
 					informer.Name(),
 				)
 				continue
