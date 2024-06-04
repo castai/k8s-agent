@@ -81,12 +81,13 @@ type Controller struct {
 
 type conditionalInformer struct {
 	// if empty it means all namespaces
-	namespace       string
-	resource        schema.GroupVersionResource
-	apiType         reflect.Type
-	informerFactory func() cache.SharedIndexInformer
-	permissionVerbs []string
-	isApplied       bool
+	namespace         string
+	resource          schema.GroupVersionResource
+	apiType           reflect.Type
+	informerFactory   func() cache.SharedIndexInformer
+	permissionVerbs   []string
+	isApplied         bool
+	isResourceInError bool
 }
 
 func (i *conditionalInformer) Name() string {
@@ -261,19 +262,24 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 	tryConditionalInformers := conditionalInformers
 
 	if err := wait.PollUntilContextCancel(ctx, 2*time.Minute, true, func(ctx context.Context) (done bool, err error) {
-		apiResourceLists := fetchAPIResourceLists(c.discovery, c.log)
-		if apiResourceLists == nil {
-			return false, nil
+		_, apiResourceLists, err := c.discovery.ServerGroupsAndResources()
+		if err != nil {
+			c.log.Warnf("Error when getting server resources: %v", err.Error())
+			resourcesInError := extractGroupVersionsFromApiResourceError(c.log, err)
+			for i, informer := range tryConditionalInformers {
+				tryConditionalInformers[i].isResourceInError = resourcesInError[informer.resource.GroupVersion()]
+			}
 		}
 		c.log.Infof("Cluster API server is available, trying to start conditional informers")
-
 		for i, informer := range tryConditionalInformers {
-			if informer.isApplied {
+			if informer.isApplied || informer.isResourceInError {
+				// reset error so we can try again
+				tryConditionalInformers[i].isResourceInError = false
 				continue
 			}
 			apiResourceListForGroupVersion := getAPIResourceListByGroupVersion(informer.resource.GroupVersion().String(), apiResourceLists)
 			if !isResourceAvailable(informer.apiType, apiResourceListForGroupVersion) {
-				c.log.Warnf("Skipping conditional informer name: %v, because API resource is not available",
+				c.log.Infof("Skipping conditional informer name: %v, because API resource is not available",
 					informer.Name(),
 				)
 				continue
@@ -470,6 +476,22 @@ func (c *Controller) informerIsAllowedToAccessResource(ctx context.Context, name
 
 func (c *Controller) Start(done <-chan struct{}) {
 	c.informerFactory.Start(done)
+}
+func extractGroupVersionsFromApiResourceError(log logrus.FieldLogger, err error) map[schema.GroupVersion]bool {
+	cleanedString := strings.Split(err.Error(), "unable to retrieve the complete list of server APIs: ")[1]
+	paths := strings.Split(cleanedString, ",")
+
+	result := make(map[schema.GroupVersion]bool)
+	for _, path := range paths {
+		apiPath := strings.Split(path, ":")[0]
+		gv, e := schema.ParseGroupVersion(apiPath)
+		if e != nil {
+			log.Errorf("Error when unmarshalling group version: %v", e)
+			continue
+		}
+		result[gv] = true
+	}
+	return result
 }
 
 func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Controller, f informers.SharedInformerFactory, df dynamicinformer.DynamicSharedInformerFactory, metricsClient versioned.Interface, logger logrus.FieldLogger) []conditionalInformer {
