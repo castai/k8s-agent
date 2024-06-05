@@ -10,11 +10,12 @@ import (
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 type Config struct {
 	Log        Log    `mapstructure:"log"`
-	Mode       Mode   `mapstructure:"mode"`
 	API        API    `mapstructure:"api"`
 	Kubeconfig string `mapstructure:"kubeconfig"`
 
@@ -38,13 +39,10 @@ type Config struct {
 	SelfPod         Pod    `mapstructure:"self_pod"`
 }
 
-type Mode string
-
 const (
-	ModeAgent   Mode = "agent"
-	ModeMonitor Mode = "monitor"
-
 	DefaultAPINodeLifecycleDiscoveryEnabled = true
+
+	LogExporterSendTimeout = 15 * time.Second
 )
 
 type TLS struct {
@@ -52,7 +50,8 @@ type TLS struct {
 }
 
 type Log struct {
-	Level int `mapstructure:"level"`
+	Level                 int           `mapstructure:"level"`
+	ExporterSenderTimeout time.Duration `mapstructure:"exporter_timeout"`
 }
 
 type Pod struct {
@@ -102,9 +101,7 @@ type OpenShift struct {
 }
 
 type Static struct {
-	SkipClusterRegistration bool   `mapstructure:"skip_cluster_registration"`
-	ClusterID               string `mapstructure:"cluster_id"`
-	OrganizationID          string `mapstructure:"organization_id"`
+	ClusterID string `mapstructure:"cluster_id"`
 }
 
 type Controller struct {
@@ -136,8 +133,6 @@ func Get() Config {
 	if cfg != nil {
 		return *cfg
 	}
-
-	viper.SetDefault("mode", ModeAgent)
 
 	viper.SetDefault("controller.interval", 15*time.Second)
 	viper.SetDefault("controller.prep_timeout", 10*time.Minute)
@@ -172,6 +167,9 @@ func Get() Config {
 
 	if cfg.Log.Level == 0 {
 		cfg.Log.Level = int(logrus.InfoLevel)
+	}
+	if cfg.Log.ExporterSenderTimeout == 0 {
+		cfg.Log.ExporterSenderTimeout = LogExporterSendTimeout
 	}
 
 	if cfg.API.Key == "" {
@@ -248,6 +246,25 @@ func Get() Config {
 	return *cfg
 }
 
+func (c *Config) RetrieveKubeConfig(log logrus.FieldLogger) (*rest.Config, error) {
+	kubeconfig, err := kubeConfigFromPath(cfg.Kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+
+	if kubeconfig != nil {
+		log.Debug("using kubeconfig from env variables")
+		return kubeconfig, nil
+	}
+
+	inClusterConfig, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, err
+	}
+	log.Debug("using in cluster kubeconfig")
+	return inClusterConfig, nil
+}
+
 // Reset is used only for unit testing to reset configuration and rebind variables.
 func Reset() {
 	cfg = nil
@@ -259,4 +276,22 @@ func required(variable string) {
 
 func requiredWhenDiscoveryDisabled(variable string) {
 	panic(fmt.Errorf("env variable %s is required when discovery is disabled", variable))
+}
+
+func kubeConfigFromPath(kubepath string) (*rest.Config, error) {
+	if kubepath == "" {
+		return nil, nil
+	}
+
+	data, err := os.ReadFile(kubepath)
+	if err != nil {
+		return nil, fmt.Errorf("reading kubeconfig at %s: %w", kubepath, err)
+	}
+
+	restConfig, err := clientcmd.RESTConfigFromKubeConfig(data)
+	if err != nil {
+		return nil, fmt.Errorf("building rest config from kubeconfig at %s: %w", kubepath, err)
+	}
+
+	return restConfig, nil
 }
