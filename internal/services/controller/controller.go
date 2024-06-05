@@ -102,13 +102,14 @@ func CollectSingleSnapshot(ctx context.Context,
 	clusterID string,
 	clientset kubernetes.Interface,
 	dynamicClient dynamic.Interface,
+	metricsClient versioned.Interface,
 	cfg *config.Controller,
 	v version.Interface) (*castai.Delta, error) {
 	f := informers.NewSharedInformerFactory(clientset, 0)
 	df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
 
 	defaultInformers := getDefaultInformers(f)
-	conditionalInformers := getConditionalInformers(clientset, cfg, f, df, nil, log)
+	conditionalInformers := getConditionalInformers(clientset, cfg, f, df, metricsClient, log)
 
 	informerContext, informerCancel := context.WithCancel(ctx)
 	defer informerCancel()

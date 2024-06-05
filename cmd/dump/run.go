@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/metrics/pkg/client/clientset/versioned"
 
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller"
@@ -23,6 +24,8 @@ func run(ctx context.Context) error {
 	logger.SetLevel(logrus.Level(cfg.Log.Level))
 	log := logger.WithField("version", ctx.Value("agentVersion").(*config.AgentVersion).Version)
 
+	log.Infof("starting dump of cluster snapshot")
+
 	restconfig, err := cfg.RetrieveKubeConfig(log)
 	if err != nil {
 		return err
@@ -31,6 +34,11 @@ func run(ctx context.Context) error {
 	clientset, err := kubernetes.NewForConfig(restconfig)
 	if err != nil {
 		return err
+	}
+
+	metricsClient, err := versioned.NewForConfig(restconfig)
+	if err != nil {
+		return fmt.Errorf("initializing metrics client: %w", err)
 	}
 
 	dynamicClient, err := dynamic.NewForConfig(restconfig)
@@ -58,7 +66,7 @@ func run(ctx context.Context) error {
 
 	log = log.WithField("k8s_version", v.Full())
 
-	delta, err := controller.CollectSingleSnapshot(ctx, log, clusterID, clientset, dynamicClient, cfg.Controller, v)
+	delta, err := controller.CollectSingleSnapshot(ctx, log, clusterID, clientset, dynamicClient, metricsClient, cfg.Controller, v)
 	if err != nil {
 		return err
 	}
@@ -75,6 +83,8 @@ func run(ctx context.Context) error {
 	if err := json.NewEncoder(output).Encode(delta); err != nil {
 		return err
 	}
+
+	log.Infof("completed dump of cluster snapshot")
 
 	return nil
 }
