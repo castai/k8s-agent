@@ -74,7 +74,7 @@ func init() {
 	rootCmd.PersistentFlags().String("clusterId", "", "Cluster ID")
 	viper.BindPFlag("static.cluster_id", rootCmd.PersistentFlags().Lookup("clusterid"))
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Path to agent config file")
 
 	rootCmd.AddCommand(agent.NewCmd())
 	rootCmd.AddCommand(monitor.NewCmd())
