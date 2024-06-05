@@ -172,13 +172,6 @@ func Get() Config {
 		cfg.Log.ExporterSenderTimeout = LogExporterSendTimeout
 	}
 
-	if cfg.API.Key == "" {
-		required("API_KEY")
-	}
-	if cfg.API.URL == "" {
-		required("API_URL")
-	}
-
 	if !strings.HasPrefix(cfg.API.URL, "https://") && !strings.HasPrefix(cfg.API.URL, "http://") {
 		cfg.API.URL = fmt.Sprintf("https://%s", cfg.API.URL)
 	}
