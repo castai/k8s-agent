@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/sirupsen/logrus"
@@ -15,6 +16,12 @@ import (
 
 func run(ctx context.Context) error {
 	cfg := config.Get()
+	if cfg.API.Key == "" {
+		return errors.New("env variable \"API_KEY\" is required")
+	}
+	if cfg.API.URL == "" {
+		return errors.New("env variable \"API_URL\" is required")
+	}
 
 	remoteLogger := logrus.New()
 	remoteLogger.SetLevel(logrus.Level(cfg.Log.Level))
