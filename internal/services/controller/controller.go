@@ -97,6 +97,59 @@ func (i *conditionalInformer) Name() string {
 	return i.resource.String()
 }
 
+func CollectSingleSnapshot(ctx context.Context,
+	log logrus.FieldLogger,
+	clusterID string,
+	clientset kubernetes.Interface,
+	dynamicClient dynamic.Interface,
+	metricsClient versioned.Interface,
+	cfg *config.Controller,
+	v version.Interface) (*castai.Delta, error) {
+	f := informers.NewSharedInformerFactory(clientset, 0)
+	df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
+
+	defaultInformers := getDefaultInformers(f)
+	conditionalInformers := getConditionalInformers(clientset, cfg, f, df, metricsClient, log)
+
+	informerContext, informerCancel := context.WithCancel(ctx)
+	defer informerCancel()
+	queue := workqueue.NewNamed("castai-agent")
+	f.Start(informerContext.Done())
+	_, err, handledConditionalInformers := startConditionalInformers(informerContext, log, conditionalInformers, clientset.Discovery(), queue, clientset.AuthorizationV1().SelfSubjectAccessReviews())
+	if err != nil {
+		return nil, err
+	}
+
+	handledInformers := map[string]*custominformers.HandledInformer{}
+	for typ, i := range defaultInformers {
+		handledInformers[typ.String()] = custominformers.NewHandledInformer(log, queue, i.informer, typ, i.filters)
+	}
+	for typ, i := range handledConditionalInformers {
+		handledInformers[typ] = i
+	}
+
+	err = waitInformersSync(ctx, log, handledInformers)
+	if err != nil {
+		return nil, err
+	}
+
+	d := delta.New(log, clusterID, v.Full())
+	for queue.Len() > 0 {
+		i, _ := queue.Get()
+		di, ok := i.(*delta.Item)
+		if !ok {
+			queue.Done(i)
+			log.Errorf("expected queue item to be of type %T but got %T", &delta.Item{}, i)
+			continue
+		}
+
+		d.Add(di)
+		queue.Done(i)
+	}
+
+	return d.ToCASTAIRequest(), nil
+}
+
 func New(
 	log logrus.FieldLogger,
 	clientset kubernetes.Interface,
@@ -178,27 +231,10 @@ func (c *Controller) Run(ctx context.Context) error {
 
 	c.triggerRestart = cancel
 
-	syncs := make([]cache.InformerSynced, 0, len(c.informers))
-	for objType, informer := range c.informers {
-		objType := objType
-		informer := informer
-		syncs = append(syncs, func() bool {
-			hasSynced := informer.HasSynced()
-			if !hasSynced {
-				c.log.Infof("Informer cache for %v has not been synced.", objType)
-			}
-
-			return hasSynced
-		})
+	err := waitInformersSync(ctx, c.log, c.informers)
+	if err != nil {
+		return err
 	}
-
-	waitStartedAt := time.Now()
-	c.log.Info("waiting for informers cache to sync")
-	if !cache.WaitForCacheSync(ctx.Done(), syncs...) {
-		c.log.Error("failed to sync")
-		return fmt.Errorf("failed to wait for cache sync")
-	}
-	c.log.Infof("informers cache synced after %v", time.Since(waitStartedAt))
 
 	go func() {
 		const dur = 15 * time.Second
@@ -262,54 +298,66 @@ func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, c
 	tryConditionalInformers := conditionalInformers
 
 	if err := wait.PollUntilContextCancel(ctx, 2*time.Minute, true, func(ctx context.Context) (done bool, err error) {
-		_, apiResourceLists, err := c.discovery.ServerGroupsAndResources()
-		if err != nil {
-			c.log.Warnf("Error when getting server resources: %v", err.Error())
-			resourcesInError := extractGroupVersionsFromApiResourceError(c.log, err)
-			for i, informer := range tryConditionalInformers {
-				tryConditionalInformers[i].isResourceInError = resourcesInError[informer.resource.GroupVersion()]
-			}
-		}
-		c.log.Infof("Cluster API server is available, trying to start conditional informers")
-		for i, informer := range tryConditionalInformers {
-			if informer.isApplied || informer.isResourceInError {
-				// reset error so we can try again
-				tryConditionalInformers[i].isResourceInError = false
-				continue
-			}
-			apiResourceListForGroupVersion := getAPIResourceListByGroupVersion(informer.resource.GroupVersion().String(), apiResourceLists)
-			if !isResourceAvailable(informer.apiType, apiResourceListForGroupVersion) {
-				c.log.Infof("Skipping conditional informer name: %v, because API resource is not available",
-					informer.Name(),
-				)
-				continue
-			}
-
-			if !c.informerHasAccess(ctx, informer) {
-				c.log.Warnf("Skipping conditional informer name: %v, because required access is not available",
-					informer.Name(),
-				)
-				continue
-			}
-
-			c.log.Infof("Starting conditional informer for %v", informer.Name())
-			tryConditionalInformers[i].isApplied = true
-
-			handledInformer := custominformers.NewHandledInformer(c.log, c.queue, informer.informerFactory(), informer.apiType, nil)
-
-			go handledInformer.Run(ctx.Done())
-		}
-
-		filterNotAppliedConditionInformers := lo.Filter(tryConditionalInformers, func(informer conditionalInformer, _ int) bool {
-			return !informer.isApplied
-		})
-		if len(filterNotAppliedConditionInformers) > 0 {
-			return false, nil
-		}
-		return true, nil
+		done, err, _ = startConditionalInformers(ctx, c.log, tryConditionalInformers, c.discovery, c.queue, c.selfSubjectAccessReview)
+		return done, err
 	}); err != nil && !errors.Is(err, context.Canceled) {
 		c.log.Errorf("error when waiting for server resources: %v", err)
 	}
+}
+
+func startConditionalInformers(ctx context.Context,
+	log logrus.FieldLogger,
+	conditionalInformers []conditionalInformer,
+	discovery discovery.DiscoveryInterface,
+	queue workqueue.Interface,
+	selfSubjectAccessReview authorizationtypev1.SelfSubjectAccessReviewInterface) (bool, error, map[string]*custominformers.HandledInformer) {
+	_, apiResourceLists, err := discovery.ServerGroupsAndResources()
+	if err != nil {
+		log.Warnf("Error when getting server resources: %v", err.Error())
+		resourcesInError := extractGroupVersionsFromApiResourceError(log, err)
+		for i, informer := range conditionalInformers {
+			conditionalInformers[i].isResourceInError = resourcesInError[informer.resource.GroupVersion()]
+		}
+	}
+	log.Infof("Cluster API server is available, trying to start conditional informers")
+	handledInformers := make(map[string]*custominformers.HandledInformer)
+	for i, informer := range conditionalInformers {
+		if informer.isApplied || informer.isResourceInError {
+			// reset error so we can try again
+			conditionalInformers[i].isResourceInError = false
+			continue
+		}
+		apiResourceListForGroupVersion := getAPIResourceListByGroupVersion(informer.resource.GroupVersion().String(), apiResourceLists)
+		if !isResourceAvailable(informer.apiType, apiResourceListForGroupVersion) {
+			log.Infof("Skipping conditional informer name: %v, because API resource is not available",
+				informer.Name(),
+			)
+			continue
+		}
+
+		if !informerHasAccess(ctx, informer, selfSubjectAccessReview, log) {
+			log.Warnf("Skipping conditional informer name: %v, because required access is not available",
+				informer.Name(),
+			)
+			continue
+		}
+
+		log.Infof("Starting conditional informer for %v", informer.Name())
+		conditionalInformers[i].isApplied = true
+
+		handledInformer := custominformers.NewHandledInformer(log, queue, informer.informerFactory(), informer.apiType, nil)
+		handledInformers[informer.apiType.String()] = handledInformer
+
+		go handledInformer.Run(ctx.Done())
+	}
+
+	filterNotAppliedConditionInformers := lo.Filter(conditionalInformers, func(informer conditionalInformer, _ int) bool {
+		return !informer.isApplied
+	})
+	if len(filterNotAppliedConditionInformers) > 0 {
+		return false, nil, handledInformers
+	}
+	return true, nil, handledInformers
 }
 
 // collectInitialSnapshot is used to add a time buffer to collect the initial snapshot which is larger than periodic
@@ -440,14 +488,14 @@ func (c *Controller) debugQueueContent(maxItems int) string {
 	return content
 }
 
-func (c *Controller) informerHasAccess(ctx context.Context, informer conditionalInformer) bool {
+func informerHasAccess(ctx context.Context, informer conditionalInformer, selfSubjectAccessReview authorizationtypev1.SelfSubjectAccessReviewInterface, log logrus.FieldLogger) bool {
 	// Check if allowed to access all resources with the wildcard "*" verb
-	if access := c.informerIsAllowedToAccessResource(ctx, informer.namespace, "*", informer, informer.resource.Group); access.Status.Allowed {
+	if access := informerIsAllowedToAccessResource(ctx, informer.namespace, "*", informer, informer.resource.Group, selfSubjectAccessReview, log); access.Status.Allowed {
 		return true
 	}
 
 	for _, verb := range informer.permissionVerbs {
-		access := c.informerIsAllowedToAccessResource(ctx, informer.namespace, verb, informer, informer.resource.Group)
+		access := informerIsAllowedToAccessResource(ctx, informer.namespace, verb, informer, informer.resource.Group, selfSubjectAccessReview, log)
 		if !access.Status.Allowed {
 			return false
 		}
@@ -455,8 +503,8 @@ func (c *Controller) informerHasAccess(ctx context.Context, informer conditional
 	return true
 }
 
-func (c *Controller) informerIsAllowedToAccessResource(ctx context.Context, namespace, verb string, informer conditionalInformer, groupName string) *authorizationv1.SelfSubjectAccessReview {
-	access, err := c.selfSubjectAccessReview.Create(ctx, &authorizationv1.SelfSubjectAccessReview{
+func informerIsAllowedToAccessResource(ctx context.Context, namespace, verb string, informer conditionalInformer, groupName string, selfSubjectAccessReview authorizationtypev1.SelfSubjectAccessReviewInterface, log logrus.FieldLogger) *authorizationv1.SelfSubjectAccessReview {
+	access, err := selfSubjectAccessReview.Create(ctx, &authorizationv1.SelfSubjectAccessReview{
 		Spec: authorizationv1.SelfSubjectAccessReviewSpec{
 			ResourceAttributes: &authorizationv1.ResourceAttributes{
 				Namespace: namespace,
@@ -468,10 +516,35 @@ func (c *Controller) informerIsAllowedToAccessResource(ctx context.Context, name
 	}, metav1.CreateOptions{})
 
 	if err != nil {
-		c.log.Warnf("Error when getting server resources: %v", err.Error())
+		log.Warnf("Error when getting server resources: %v", err.Error())
 		return &authorizationv1.SelfSubjectAccessReview{}
 	}
 	return access
+}
+
+func waitInformersSync(ctx context.Context, log logrus.FieldLogger, informers map[string]*custominformers.HandledInformer) error {
+	syncs := make([]cache.InformerSynced, 0, len(informers))
+	for objType, informer := range informers {
+		objType := objType
+		informer := informer
+		syncs = append(syncs, func() bool {
+			hasSynced := informer.SharedInformer.HasSynced()
+			if !hasSynced {
+				log.Infof("Informer cache for %v has not been synced.", objType)
+			}
+
+			return hasSynced
+		})
+	}
+
+	waitStartedAt := time.Now()
+	log.Info("waiting for informers cache to sync")
+	if !cache.WaitForCacheSync(ctx.Done(), syncs...) {
+		log.Error("failed to sync")
+		return fmt.Errorf("failed to wait for cache sync")
+	}
+	log.Infof("informers cache synced after %v", time.Since(waitStartedAt))
+	return nil
 }
 
 func (c *Controller) Start(done <-chan struct{}) {
