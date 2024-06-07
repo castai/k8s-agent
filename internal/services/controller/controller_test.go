@@ -203,6 +203,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 				agentVersion,
 				NewHealthzProvider(defaultHealthzCfg, log),
 				fakeSelfSubjectAccessReviewsClient,
+				"castai-agent",
 			)
 
 			if mockDiscovery != nil {
@@ -349,6 +350,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 		agentVersion,
 		NewHealthzProvider(defaultHealthzCfg, log),
 		clientset.AuthorizationV1().SelfSubjectAccessReviews(),
+		"castai-agent",
 	)
 
 	ctrl.Start(ctx.Done())
