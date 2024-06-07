@@ -104,11 +104,13 @@ func CollectSingleSnapshot(ctx context.Context,
 	dynamicClient dynamic.Interface,
 	metricsClient versioned.Interface,
 	cfg *config.Controller,
-	v version.Interface) (*castai.Delta, error) {
+	v version.Interface,
+	castwareNamespace string,
+) (*castai.Delta, error) {
 	f := informers.NewSharedInformerFactory(clientset, 0)
 	df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
 
-	defaultInformers := getDefaultInformers(f, "")
+	defaultInformers := getDefaultInformers(f, castwareNamespace)
 	conditionalInformers := getConditionalInformers(clientset, cfg, f, df, metricsClient, log)
 
 	informerContext, informerCancel := context.WithCancel(ctx)
