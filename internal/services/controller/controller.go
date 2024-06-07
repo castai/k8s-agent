@@ -104,11 +104,13 @@ func CollectSingleSnapshot(ctx context.Context,
 	dynamicClient dynamic.Interface,
 	metricsClient versioned.Interface,
 	cfg *config.Controller,
-	v version.Interface) (*castai.Delta, error) {
+	v version.Interface,
+	castwareNamespace string,
+) (*castai.Delta, error) {
 	f := informers.NewSharedInformerFactory(clientset, 0)
 	df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
 
-	defaultInformers := getDefaultInformers(f)
+	defaultInformers := getDefaultInformers(f, castwareNamespace)
 	conditionalInformers := getConditionalInformers(clientset, cfg, f, df, metricsClient, log)
 
 	informerContext, informerCancel := context.WithCancel(ctx)
@@ -163,6 +165,7 @@ func New(
 	agentVersion *config.AgentVersion,
 	healthzProvider *HealthzProvider,
 	selfSubjectAccessReview authorizationtypev1.SelfSubjectAccessReviewInterface,
+	castwareNamespace string,
 ) *Controller {
 	healthzProvider.Initializing()
 
@@ -172,7 +175,7 @@ func New(
 	df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
 	discovery := clientset.Discovery()
 
-	defaultInformers := getDefaultInformers(f)
+	defaultInformers := getDefaultInformers(f, castwareNamespace)
 	conditionalInformers := getConditionalInformers(clientset, cfg, f, df, metricsClient, log)
 
 	handledInformers := map[string]*custominformers.HandledInformer{}
@@ -687,7 +690,7 @@ type defaultInformer struct {
 	filters  filters.Filters
 }
 
-func getDefaultInformers(f informers.SharedInformerFactory) map[reflect.Type]defaultInformer {
+func getDefaultInformers(f informers.SharedInformerFactory, castwareNamespace string) map[reflect.Type]defaultInformer {
 	return map[reflect.Type]defaultInformer{
 		reflect.TypeOf(&corev1.Node{}):                  {informer: f.Core().V1().Nodes().Informer()},
 		reflect.TypeOf(&corev1.Pod{}):                   {informer: f.Core().V1().Pods().Informer()},
@@ -695,12 +698,42 @@ func getDefaultInformers(f informers.SharedInformerFactory) map[reflect.Type]def
 		reflect.TypeOf(&corev1.PersistentVolumeClaim{}): {informer: f.Core().V1().PersistentVolumeClaims().Informer()},
 		reflect.TypeOf(&corev1.ReplicationController{}): {informer: f.Core().V1().ReplicationControllers().Informer()},
 		reflect.TypeOf(&corev1.Namespace{}):             {informer: f.Core().V1().Namespaces().Informer()},
-		reflect.TypeOf(&appsv1.Deployment{}):            {informer: f.Apps().V1().Deployments().Informer()},
-		reflect.TypeOf(&appsv1.ReplicaSet{}):            {informer: f.Apps().V1().ReplicaSets().Informer()},
-		reflect.TypeOf(&appsv1.DaemonSet{}):             {informer: f.Apps().V1().DaemonSets().Informer()},
-		reflect.TypeOf(&appsv1.StatefulSet{}):           {informer: f.Apps().V1().StatefulSets().Informer()},
-		reflect.TypeOf(&storagev1.StorageClass{}):       {informer: f.Storage().V1().StorageClasses().Informer()},
-		reflect.TypeOf(&batchv1.Job{}):                  {informer: f.Batch().V1().Jobs().Informer()},
+		reflect.TypeOf(&appsv1.Deployment{}): {
+			informer: f.Apps().V1().Deployments().Informer(),
+			filters: filters.Filters{
+				{
+					func(e castai.EventType, obj interface{}) bool {
+						deployment, ok := obj.(*appsv1.Deployment)
+						if !ok {
+							return false
+						}
+
+						return deployment.Namespace == castwareNamespace ||
+							(deployment.Spec.Replicas != nil && *deployment.Spec.Replicas > 0 && deployment.Status.Replicas > 0)
+					},
+				},
+			},
+		},
+		reflect.TypeOf(&appsv1.ReplicaSet{}): {
+			informer: f.Apps().V1().ReplicaSets().Informer(),
+			filters: filters.Filters{
+				{
+					func(e castai.EventType, obj interface{}) bool {
+						replicaSet, ok := obj.(*appsv1.ReplicaSet)
+						if !ok {
+							return false
+						}
+
+						return replicaSet.Namespace == castwareNamespace ||
+							(replicaSet.Spec.Replicas != nil && *replicaSet.Spec.Replicas > 0 && replicaSet.Status.Replicas > 0)
+					},
+				},
+			},
+		},
+		reflect.TypeOf(&appsv1.DaemonSet{}):       {informer: f.Apps().V1().DaemonSets().Informer()},
+		reflect.TypeOf(&appsv1.StatefulSet{}):     {informer: f.Apps().V1().StatefulSets().Informer()},
+		reflect.TypeOf(&storagev1.StorageClass{}): {informer: f.Storage().V1().StorageClasses().Informer()},
+		reflect.TypeOf(&batchv1.Job{}):            {informer: f.Batch().V1().Jobs().Informer()},
 		reflect.TypeOf(&corev1.Service{}): {
 			informer: f.Core().V1().Services().Informer(),
 			filters: filters.Filters{
@@ -725,15 +758,6 @@ func createEventInformer(f informers.SharedInformerFactory, v version.Interface,
 			listOptions(options, v)
 		})
 	})
-}
-
-func fetchAPIResourceLists(client discovery.DiscoveryInterface, log logrus.FieldLogger) []*metav1.APIResourceList {
-	_, apiResourceLists, err := client.ServerGroupsAndResources()
-	if err != nil {
-		log.Warnf("Error when getting server resources: %v", err.Error())
-		return nil
-	}
-	return apiResourceLists
 }
 
 func getAPIResourceListByGroupVersion(groupVersion string, apiResourceLists []*metav1.APIResourceList) *metav1.APIResourceList {
