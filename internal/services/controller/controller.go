@@ -44,6 +44,7 @@ import (
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
+	"castai-agent/internal/services/controller/crd"
 	"castai-agent/internal/services/controller/delta"
 	"castai-agent/internal/services/controller/handlers/filters"
 	"castai-agent/internal/services/controller/handlers/filters/autoscalerevents"
@@ -666,6 +667,14 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
 				return df.ForResource(argorollouts.RolloutGVR).Informer()
+			},
+		},
+		{
+			resource:        crd.RecommendationGVR,
+			apiType:         reflect.TypeOf(&crd.Recommendation{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(crd.RecommendationGVR).Informer()
 			},
 		},
 	}
