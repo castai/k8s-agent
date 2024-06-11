@@ -1,8 +1,5 @@
 package crd
 
-// This is copied from
-// https://github.com/castai/workload-autoscaler/blob/main/api/v1/recommendation_types.go
-
 import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

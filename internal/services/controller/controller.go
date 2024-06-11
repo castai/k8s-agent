@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"castai-agent/pkg/crd"
 	datadoghqv1alpha1 "github.com/DataDog/extendeddaemonset/api/v1alpha1"
 	argorollouts "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	karpenterCoreAlpha "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
@@ -52,6 +51,7 @@ import (
 	custominformers "castai-agent/internal/services/controller/informers"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/internal/services/version"
+	"castai-agent/pkg/crd"
 	"castai-agent/pkg/labels"
 )
 

@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	crd "castai-agent/pkg/crd"
 	datadoghqv1alpha1 "github.com/DataDog/extendeddaemonset/api/v1alpha1"
 	argorollouts "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	karpenterCoreAlpha "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
@@ -48,6 +47,7 @@ import (
 	mock_discovery "castai-agent/internal/services/controller/mock/discovery"
 	mock_types "castai-agent/internal/services/providers/types/mock"
 	mock_version "castai-agent/internal/services/version/mock"
+	"castai-agent/pkg/crd"
 	"castai-agent/pkg/labels"
 )
 
