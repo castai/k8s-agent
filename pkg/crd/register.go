@@ -12,7 +12,7 @@ var GroupVersion = schema.GroupVersion{Group: "autoscaling.cast.ai", Version: "v
 // SchemeGroupVersion is the group version used to register these objects
 var SchemeGroupVersion = schema.GroupVersion{Group: "autoscaling.cast.ai", Version: "v1"}
 
-var RecommendationGVR = SchemeGroupVersion.WithResource("Recommendation")
+var RecommendationGVR = SchemeGroupVersion.WithResource("recommendations")
 
 // Register types with the SchemeBuilder
 var (

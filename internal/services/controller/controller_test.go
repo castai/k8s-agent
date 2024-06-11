@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	crd "castai-agent/pkg/crd"
 	datadoghqv1alpha1 "github.com/DataDog/extendeddaemonset/api/v1alpha1"
 	argorollouts "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	karpenterCoreAlpha "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
@@ -72,18 +73,18 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
-			expectedReceivedObjectsCount: 14,
+			expectedReceivedObjectsCount: 15,
 		},
 		"when fetching api resources produces multiple errors should exclude those resources": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 12,
+			expectedReceivedObjectsCount: 13,
 		},
 		"when fetching api resources produces single error should exclude that resource": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 13,
+			expectedReceivedObjectsCount: 14,
 		},
 	}
 
@@ -96,6 +97,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			utilruntime.Must(karpenter.SchemeBuilder.AddToScheme(scheme))
 			utilruntime.Must(datadoghqv1alpha1.SchemeBuilder.AddToScheme(scheme))
 			utilruntime.Must(argorollouts.SchemeBuilder.AddToScheme(scheme))
+			utilruntime.Must(crd.SchemeBuilder.AddToScheme(scheme))
 
 			mockctrl := gomock.NewController(t)
 			castaiclient := mock_castai.NewMockClient(mockctrl)
@@ -533,8 +535,23 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 
 	rolloutData, err := delta.Encode(rollout)
 	require.NoError(t, err)
+
+	recommendation := &crd.Recommendation{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Recommendation",
+			APIVersion: crd.GroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      crd.RecommendationGVR.Resource,
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+
+	recommendationData, err := delta.Encode(recommendation)
+	require.NoError(t, err)
+
 	clientset := fake.NewSimpleClientset(node, pod, cfgMap, pdb, hpa, csi)
-	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, provisioners, machines, awsNodeTemplates, nodePools, nodeClaims, ec2NodeClasses, datadogExtendedDSReplicaSet, rollout)
+	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, provisioners, machines, awsNodeTemplates, nodePools, nodeClaims, ec2NodeClasses, datadogExtendedDSReplicaSet, rollout, recommendation)
 	clientset.Fake.Resources = []*metav1.APIResourceList{
 		{
 			GroupVersion: autoscalingv1.SchemeGroupVersion.String(),
@@ -668,6 +685,17 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 				},
 			},
 		},
+		{
+			GroupVersion: crd.RecommendationGVR.GroupVersion().String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group:   crd.RecommendationGVR.Group,
+					Name:    crd.RecommendationGVR.Resource,
+					Version: crd.RecommendationGVR.Version,
+					Verbs:   []string{"get", "list", "watch"},
+				},
+			},
+		},
 	}
 	objects := make(map[string]*json.RawMessage)
 	objects["Node"] = nodeData
@@ -684,6 +712,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 	objects["EC2NodeClass"] = ec2NodeClassesData
 	objects["ExtendedDaemonSetReplicaSet"] = datadogExtendedDSReplicaSetData
 	objects["Rollout"] = rolloutData
+	objects["Recommendation"] = recommendationData
 
 	return objects, clientset, dynamicClient
 }
