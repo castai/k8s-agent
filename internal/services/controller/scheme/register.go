@@ -1,6 +1,7 @@
 package scheme
 
 import (
+	"castai-agent/pkg/crd"
 	datadoghqv1alpha1 "github.com/DataDog/extendeddaemonset/api/v1alpha1"
 	argorollouts "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	karpenterCoreAlpha "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
@@ -16,8 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
-
-	"castai-agent/internal/services/controller/crd"
 )
 
 var Scheme = runtime.NewScheme()

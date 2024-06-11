@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"castai-agent/pkg/crd"
 	datadoghqv1alpha1 "github.com/DataDog/extendeddaemonset/api/v1alpha1"
 	argorollouts "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	karpenterCoreAlpha "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
@@ -44,7 +45,6 @@ import (
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
-	"castai-agent/internal/services/controller/crd"
 	"castai-agent/internal/services/controller/delta"
 	"castai-agent/internal/services/controller/handlers/filters"
 	"castai-agent/internal/services/controller/handlers/filters/autoscalerevents"

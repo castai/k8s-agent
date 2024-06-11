@@ -6,17 +6,7 @@ package crd
 import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"sigs.k8s.io/controller-runtime/pkg/scheme"
 )
-
-// GroupVersion is the group and version used to register these objects
-var GroupVersion = schema.GroupVersion{Group: "autoscaling.cast.ai", Version: "v1"}
-
-// SchemeGroupVersion is the group version used to register these objects
-var SchemeGroupVersion = schema.GroupVersion{Group: "autoscaling.cast.ai", Version: "v1"}
-
-var RecommendationGVR = SchemeGroupVersion.WithResource("Recommendation")
 
 type TargetRef struct {
 	Kind       string `json:"kind"`
@@ -41,6 +31,7 @@ type RecommendationSpec struct {
 type RecommendationStatus struct {
 }
 
+// +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // Recommendation is the Schema for the recommendations API
@@ -52,15 +43,11 @@ type Recommendation struct {
 	Status RecommendationStatus `json:"status,omitempty"`
 }
 
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
 // RecommendationList contains a list of Recommendation
 type RecommendationList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Recommendation `json:"items"`
 }
-
-// Register types with the SchemeBuilder
-var (
-	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
-	AddToScheme   = SchemeBuilder.AddToScheme
-)
