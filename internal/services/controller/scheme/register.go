@@ -17,7 +17,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
 
-	"castai-agent/pkg/crd"
+	"castai-agent/internal/services/controller/crd"
 )
 
 var Scheme = runtime.NewScheme()
