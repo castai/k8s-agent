@@ -10,6 +10,6 @@ linters-settings:
       - default
       - prefix(castai-agent)
 
-run:
-  skip-dirs:
+issues:
+  exclude-dirs:
     - mock
