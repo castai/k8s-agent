@@ -291,7 +291,7 @@ func (c *Controller) Run(ctx context.Context) error {
 			}
 			// Since Mutex.TryLock() acquires a lock on success,
 			// release it immediately to allow the new sending goroutine to do its job.
-			c.sendMu.Unlock()
+			defer c.sendMu.Unlock()
 			c.send(ctx)
 		}, c.cfg.Interval, ctx.Done())
 		return nil
@@ -438,8 +438,6 @@ func (c *Controller) processItem(i interface{}) {
 func (c *Controller) send(ctx context.Context) {
 	c.deltaMu.Lock()
 	defer c.deltaMu.Unlock()
-	c.sendMu.Lock()
-	defer c.sendMu.Unlock()
 
 	nodesByName := map[string]*corev1.Node{}
 	var nodes []*corev1.Node
