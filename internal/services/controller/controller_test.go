@@ -539,7 +539,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 	recommendation := &crd.Recommendation{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Recommendation",
-			APIVersion: crd.GroupVersion.String(),
+			APIVersion: crd.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      crd.RecommendationGVR.Resource,
