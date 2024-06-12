@@ -336,8 +336,7 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 							sentFirstTickNotification.Store(true)
 						}
 						time.Sleep(sendDuration)
-						gotSends.Add(1)
-						if gotSends.Load() == tc.wantSends {
+						if gotSends.Add(1) == tc.wantSends {
 							lastSentAt = time.Now()
 						}
 						wg.Done()
