@@ -307,7 +307,8 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 
 			pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "pod1"}}
 			_, err := delta.Encode(pod)
-			require.NoError(t, err)
+			r := require.New(t)
+			r.NoError(err)
 
 			clientset := fake.NewSimpleClientset()
 			metricsClient := metrics_fake.NewSimpleClientset()
@@ -348,7 +349,7 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 			castaiclient.EXPECT().ExchangeAgentTelemetry(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 				Return(&castai.AgentTelemetryResponse{}, nil).
 				Do(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
-					require.Equalf(t, "1.2.3", req.AgentVersion, "got request: %+v", req)
+					r.Equalf("1.2.3", req.AgentVersion, "got request: %+v", req)
 				})
 
 			log.SetLevel(logrus.DebugLevel)
@@ -375,14 +376,14 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 			ctrl.Start(ctx.Done())
 
 			go func() {
-				require.NoError(t, ctrl.Run(ctx))
+				r.NoError(ctrl.Run(ctx))
 			}()
 			wg.Wait()
 
-			require.Equal(t, tc.wantSends, gotSends.Load(), "sends don't match, failing at: %s", time.Now())
+			r.Equal(tc.wantSends, gotSends.Load(), "sends don't match, failing at: %s", time.Now())
 			elapsed := lastSentAt.Sub(firstTickAt)
 			deadline := tc.checkAfter
-			require.LessOrEqualf(t, elapsed, deadline, "elapsed time is greater than deadline: %s > %s", elapsed, deadline)
+			r.LessOrEqualf(elapsed, deadline, "elapsed time is greater than deadline: %s > %s", elapsed, deadline)
 
 			wait.Until(func() {
 				if gotSends.Load() == int64(len(tc.sendDurations)) {
