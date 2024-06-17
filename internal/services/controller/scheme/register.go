@@ -16,6 +16,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
+
+	"castai-agent/internal/services/controller/crd"
 )
 
 var Scheme = runtime.NewScheme()
@@ -33,6 +35,7 @@ var builder = runtime.SchemeBuilder{
 	karpenter.SchemeBuilder.AddToScheme,
 	datadoghqv1alpha1.SchemeBuilder.AddToScheme,
 	argorollouts.SchemeBuilder.AddToScheme,
+	crd.AddToScheme,
 }
 
 func init() {
