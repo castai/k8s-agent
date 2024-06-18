@@ -71,6 +71,9 @@ type Controller struct {
 	delta   *delta.Delta
 	deltaMu sync.Mutex
 
+	// sendMu ensures that only one goroutine can send deltas
+	sendMu sync.Mutex
+
 	triggerRestart func()
 
 	agentVersion    *config.AgentVersion
@@ -280,7 +283,16 @@ func (c *Controller) Run(ctx context.Context) error {
 		c.healthzProvider.Initialized()
 
 		c.log.Infof("sending cluster deltas every %s", c.cfg.Interval)
-		wait.Until(func() {
+
+		wait.NonSlidingUntil(func() {
+			// Check if another goroutine is trying to send deltas.
+			if !c.sendMu.TryLock() {
+				// If it is, don't try to send deltas on this turn to avoid a backlog of sends.
+				return
+			}
+			// Since Mutex.TryLock() acquires a lock on success,
+			// release it immediately to allow the new sending goroutine to do its job.
+			defer c.sendMu.Unlock()
 			c.send(ctx)
 		}, c.cfg.Interval, ctx.Done())
 		return nil
