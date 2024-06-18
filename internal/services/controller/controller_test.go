@@ -819,7 +819,6 @@ func TestCollectSingleSnapshot(t *testing.T) {
 
 	version.EXPECT().Full().Return("1.21+")
 
-	var names []string
 	var objs []runtime.Object
 	for i := range 10000 {
 		name := fmt.Sprintf("pod-%d", i)
@@ -828,7 +827,6 @@ func TestCollectSingleSnapshot(t *testing.T) {
 				Name: name,
 			},
 		})
-		names = append(names, name)
 	}
 
 	clientset := fake.NewSimpleClientset(objs...)
@@ -846,14 +844,14 @@ func TestCollectSingleSnapshot(t *testing.T) {
 	)
 	r.NoError(err)
 	r.NotNil(snapshot)
-	r.Len(snapshot.Items, len(names))
+	r.Len(snapshot.Items, len(objs))
 
-	var actualNames []string
+	var pods []*v1.Pod
 	for _, item := range snapshot.Items {
 		r.Equal("Pod", item.Kind)
 		p := &v1.Pod{}
 		r.NoError(json.Unmarshal(*item.Data, p))
-		actualNames = append(actualNames, p.Name)
+		pods = append(pods, p)
 	}
-	r.ElementsMatch(names, actualNames)
+	r.ElementsMatch(objs, pods)
 }
