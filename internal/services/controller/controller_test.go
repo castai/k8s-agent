@@ -810,3 +810,48 @@ func TestDefaultInformers_MatchFilters(t *testing.T) {
 		})
 	}
 }
+
+func TestCollectSingleSnapshot(t *testing.T) {
+	r := require.New(t)
+
+	mockctrl := gomock.NewController(t)
+	version := mock_version.NewMockInterface(mockctrl)
+
+	version.EXPECT().Full().Return("1.21+")
+
+	var objs []runtime.Object
+	for i := range 10000 {
+		name := fmt.Sprintf("pod-%d", i)
+		objs = append(objs, &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: name,
+			},
+		})
+	}
+
+	clientset := fake.NewSimpleClientset(objs...)
+
+	snapshot, err := CollectSingleSnapshot(
+		context.Background(),
+		logrus.New(),
+		"123",
+		clientset,
+		dynamic_fake.NewSimpleDynamicClient(runtime.NewScheme()),
+		metrics_fake.NewSimpleClientset(),
+		&config.Controller{},
+		version,
+		"",
+	)
+	r.NoError(err)
+	r.NotNil(snapshot)
+	r.Len(snapshot.Items, len(objs))
+
+	var pods []*v1.Pod
+	for _, item := range snapshot.Items {
+		r.Equal("Pod", item.Kind)
+		p := &v1.Pod{}
+		r.NoError(json.Unmarshal(*item.Data, p))
+		pods = append(pods, p)
+	}
+	r.ElementsMatch(objs, pods)
+}
