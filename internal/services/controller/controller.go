@@ -139,6 +139,16 @@ func CollectSingleSnapshot(ctx context.Context,
 		return nil, err
 	}
 
+	for _, informer := range handledInformers {
+		for _, item := range informer.GetStore().List() {
+			informer.Handler.OnAdd(item, true)
+		}
+	}
+
+	// Shutdown the queue to stop background handler processing from keep adding items to the queue.
+	queue.ShutDownWithDrain()
+	informerCancel()
+
 	d := delta.New(log, clusterID, v.Full())
 	for queue.Len() > 0 {
 		i, _ := queue.Get()
@@ -152,6 +162,8 @@ func CollectSingleSnapshot(ctx context.Context,
 		d.Add(di)
 		queue.Done(i)
 	}
+
+	log.Debugf("synced %d items", len(d.Cache))
 
 	return d.ToCASTAIRequest(), nil
 }
