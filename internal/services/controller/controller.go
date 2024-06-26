@@ -392,8 +392,13 @@ func startConditionalInformers(ctx context.Context,
 
 // collectInitialSnapshot is used to add a time buffer to collect the initial snapshot which is larger than periodic
 // delta because it contains a significant portion of the Kubernetes state.
-func collectInitialSnapshot(ctx context.Context, log logrus.FieldLogger,
-	informers map[string]*custominformers.HandledInformer, queue workqueue.Interface, prepTimeout time.Duration) error {
+func collectInitialSnapshot(
+	ctx context.Context,
+	log logrus.FieldLogger,
+	informers map[string]*custominformers.HandledInformer,
+	queue workqueue.Interface,
+	prepTimeout time.Duration,
+) error {
 	log.Info("collecting initial cluster snapshot")
 
 	startedAt := time.Now()
