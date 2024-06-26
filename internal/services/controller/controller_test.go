@@ -990,7 +990,9 @@ func TestCollectSingleSnapshot(t *testing.T) {
 		clientset,
 		dynamic_fake.NewSimpleDynamicClient(runtime.NewScheme()),
 		metrics_fake.NewSimpleClientset(),
-		&config.Controller{},
+		&config.Controller{
+			PrepTimeout: 10 * time.Second,
+		},
 		version,
 		"",
 	)
