@@ -161,6 +161,14 @@ func Get() Config {
 		}
 	}
 
+	if apiKeyFile := os.Getenv("API_KEY_FILE"); apiKeyFile != "" {
+		buf, err := os.ReadFile(apiKeyFile)
+		if err != nil {
+			panic(fmt.Errorf("unable to read api key file: %v", err))
+		}
+		cfg.API.Key = string(buf)
+	}
+
 	if err := viper.Unmarshal(&cfg); err != nil {
 		panic(fmt.Errorf("parsing configuration: %v", err))
 	}
