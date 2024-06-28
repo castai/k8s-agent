@@ -13,6 +13,7 @@ import (
 	"castai-agent/internal/services/providers/eks"
 	"castai-agent/internal/services/providers/gke"
 	"castai-agent/internal/services/providers/kops"
+	"castai-agent/internal/services/providers/kwok"
 	"castai-agent/internal/services/providers/openshift"
 	"castai-agent/internal/services/providers/types"
 )
@@ -45,6 +46,10 @@ func GetProvider(ctx context.Context, log logrus.FieldLogger, discoveryService d
 
 	if cfg.Provider == openshift.Name {
 		return openshift.New(discoveryService, dyno), nil
+	}
+
+	if cfg.Provider == "kwok" {
+		return kwok.New(log.WithField("provider", "kwok"))
 	}
 
 	return nil, fmt.Errorf("unknown provider %q", cfg.Provider)
