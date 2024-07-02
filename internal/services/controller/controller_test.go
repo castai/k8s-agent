@@ -129,6 +129,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			log.SetLevel(logrus.DebugLevel)
 
 			version.EXPECT().Full().Return("1.21+").MaxTimes(3)
+			agentVersion := &config.AgentVersion{Version: "1.2.3"}
 
 			clusterID := uuid.New()
 			var mockDiscovery *mock_discovery.MockDiscoveryInterface
@@ -166,6 +167,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 
 					require.Equal(t, clusterID, d.ClusterID)
 					require.Equal(t, "1.21+", d.ClusterVersion)
+					require.Equal(t, "1.2.3", d.AgentVersion)
 					require.True(t, d.FullSnapshot)
 					require.Len(t, d.Items, tt.expectedReceivedObjectsCount)
 
@@ -181,7 +183,6 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 					return nil
 				})
 
-			agentVersion := &config.AgentVersion{Version: "1.2.3"}
 			castaiclient.EXPECT().ExchangeAgentTelemetry(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 				Return(&castai.AgentTelemetryResponse{}, nil).
 				Do(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
@@ -415,6 +416,8 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 
 	version.EXPECT().Full().Return("1.21+").MaxTimes(3)
 
+	agentVersion := &config.AgentVersion{Version: "1.2.3"}
+
 	clusterID := uuid.New()
 	log := logrus.New()
 
@@ -428,6 +431,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 
 			require.Equal(t, clusterID, d.ClusterID)
 			require.Equal(t, "1.21+", d.ClusterVersion)
+			require.Equal(t, "1.2.3", d.AgentVersion)
 			require.True(t, d.FullSnapshot)
 			require.Len(t, d.Items, 0)
 
@@ -445,6 +449,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 
 			require.Equal(t, clusterID, d.ClusterID)
 			require.Equal(t, "1.21+", d.ClusterVersion)
+			require.Equal(t, "1.2.3", d.AgentVersion)
 			require.False(t, d.FullSnapshot)
 			require.Len(t, d.Items, 1)
 
@@ -469,6 +474,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 
 			require.Equal(t, clusterID, d.ClusterID)
 			require.Equal(t, "1.21+", d.ClusterVersion)
+			require.Equal(t, "1.2.3", d.AgentVersion)
 			require.False(t, d.FullSnapshot)
 			require.Len(t, d.Items, 1)
 
@@ -482,7 +488,6 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 			return nil
 		})
 
-	agentVersion := &config.AgentVersion{Version: "1.2.3"}
 	castaiclient.EXPECT().ExchangeAgentTelemetry(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 		Return(&castai.AgentTelemetryResponse{}, nil).
 		Do(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
