@@ -973,8 +973,14 @@ func TestCollectSingleSnapshot(t *testing.T) {
 
 	mockctrl := gomock.NewController(t)
 	version := mock_version.NewMockInterface(mockctrl)
+	ctx := context.Background()
 
 	version.EXPECT().Full().Return("1.21+")
+	ctx = context.WithValue(ctx, "agentVersion", &config.AgentVersion{
+		GitCommit: "test",
+		GitRef:    "test",
+		Version:   "test",
+	})
 
 	var objs []runtime.Object
 	for i := range 10000 {
@@ -989,7 +995,7 @@ func TestCollectSingleSnapshot(t *testing.T) {
 	clientset := fake.NewSimpleClientset(objs...)
 
 	snapshot, err := CollectSingleSnapshot(
-		context.Background(),
+		ctx,
 		logrus.New(),
 		"123",
 		clientset,
