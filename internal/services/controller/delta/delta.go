@@ -16,11 +16,12 @@ import (
 
 // New initializes the Delta struct which is used to collect cluster deltas, debounce them and map to CAST AI
 // requests.
-func New(log logrus.FieldLogger, clusterID, clusterVersion string) *Delta {
+func New(log logrus.FieldLogger, clusterID, clusterVersion, agentVersion string) *Delta {
 	return &Delta{
 		log:            log,
 		clusterID:      clusterID,
 		clusterVersion: clusterVersion,
+		agentVersion:   agentVersion,
 		FullSnapshot:   true,
 		Cache:          map[string]*Item{},
 	}
@@ -32,6 +33,7 @@ type Delta struct {
 	log            logrus.FieldLogger
 	clusterID      string
 	clusterVersion string
+	agentVersion   string
 	FullSnapshot   bool
 	Cache          map[string]*Item
 }
@@ -95,6 +97,7 @@ func (d *Delta) ToCASTAIRequest() *castai.Delta {
 	return &castai.Delta{
 		ClusterID:      d.clusterID,
 		ClusterVersion: d.clusterVersion,
+		AgentVersion:   d.agentVersion,
 		FullSnapshot:   d.FullSnapshot,
 		Items:          items,
 	}

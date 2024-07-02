@@ -16,6 +16,7 @@ import (
 func TestDelta(t *testing.T) {
 	clusterID := uuid.New().String()
 	version := "1.18"
+	agentVersion := "1.2.3"
 
 	pod1 := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "a"}}
 	pod1Updated := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "a", Labels: map[string]string{"a": "b"}}}
@@ -159,7 +160,7 @@ func TestDelta(t *testing.T) {
 	for _, test := range tests {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
-			d := New(logrus.New(), clusterID, version)
+			d := New(logrus.New(), clusterID, version, agentVersion)
 
 			for _, item := range test.items {
 				d.Add(item)
@@ -169,6 +170,7 @@ func TestDelta(t *testing.T) {
 
 			require.Equal(t, clusterID, got.ClusterID)
 			require.Equal(t, version, got.ClusterVersion)
+			require.Equal(t, agentVersion, got.AgentVersion)
 			require.True(t, got.FullSnapshot)
 			require.Equal(t, len(test.expected.Items), len(got.Items))
 			for _, expectedItem := range test.expected.Items {

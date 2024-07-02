@@ -141,7 +141,9 @@ func CollectSingleSnapshot(ctx context.Context,
 
 	defer queue.ShutDown()
 
-	d := delta.New(log, clusterID, v.Full())
+	agentVersion := ctx.Value("agentVersion").(*config.AgentVersion)
+
+	d := delta.New(log, clusterID, v.Full(), agentVersion.Version)
 	go func() {
 		for {
 			i, _ := queue.Get()
@@ -231,7 +233,7 @@ func New(
 		castaiclient:            castaiclient,
 		provider:                provider,
 		cfg:                     cfg,
-		delta:                   delta.New(log, clusterID, v.Full()),
+		delta:                   delta.New(log, clusterID, v.Full(), agentVersion.Version),
 		queue:                   queue,
 		informers:               handledInformers,
 		agentVersion:            agentVersion,

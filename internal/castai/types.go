@@ -86,6 +86,7 @@ type AgentTelemetryResponse struct {
 type Delta struct {
 	ClusterID       string       `json:"clusterId"`
 	ClusterVersion  string       `json:"clusterVersion"`
+	AgentVersion    string       `json:"agentVersion"`
 	FullSnapshot    bool         `json:"fullSnapshot"`
 	Items           []*DeltaItem `json:"items"`
 	ContinuityToken string       `json:"continuityToken"`
