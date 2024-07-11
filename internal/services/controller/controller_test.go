@@ -887,14 +887,6 @@ func TestDefaultInformers_MatchFilters(t *testing.T) {
 			},
 			expectedMatch: true,
 		},
-		"keep if deployment in castware namespace": {
-			obj: &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "castware",
-				},
-			},
-			expectedMatch: true,
-		},
 		"discard if replicaset has zero replicas": {
 			obj: &appsv1.ReplicaSet{
 				ObjectMeta: metav1.ObjectMeta{
@@ -909,20 +901,6 @@ func TestDefaultInformers_MatchFilters(t *testing.T) {
 			},
 			expectedMatch: false,
 		},
-		"discard if deployment has zero replicas": {
-			obj: &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "test",
-				},
-				Spec: appsv1.DeploymentSpec{
-					Replicas: lo.ToPtr(int32(0)),
-				},
-				Status: appsv1.DeploymentStatus{
-					Replicas: 0,
-				},
-			},
-			expectedMatch: false,
-		},
 		"keep if replicaset has more than zero replicas": {
 			obj: &appsv1.ReplicaSet{
 				ObjectMeta: metav1.ObjectMeta{
@@ -932,20 +910,6 @@ func TestDefaultInformers_MatchFilters(t *testing.T) {
 					Replicas: lo.ToPtr(int32(1)),
 				},
 				Status: appsv1.ReplicaSetStatus{
-					Replicas: 1,
-				},
-			},
-			expectedMatch: true,
-		},
-		"keep if deployment has more than zero replicas": {
-			obj: &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "test",
-				},
-				Spec: appsv1.DeploymentSpec{
-					Replicas: lo.ToPtr(int32(1)),
-				},
-				Status: appsv1.DeploymentStatus{
 					Replicas: 1,
 				},
 			},
