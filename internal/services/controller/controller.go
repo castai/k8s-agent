@@ -741,22 +741,7 @@ func getDefaultInformers(f informers.SharedInformerFactory, castwareNamespace st
 		reflect.TypeOf(&corev1.PersistentVolumeClaim{}): {informer: f.Core().V1().PersistentVolumeClaims().Informer()},
 		reflect.TypeOf(&corev1.ReplicationController{}): {informer: f.Core().V1().ReplicationControllers().Informer()},
 		reflect.TypeOf(&corev1.Namespace{}):             {informer: f.Core().V1().Namespaces().Informer()},
-		reflect.TypeOf(&appsv1.Deployment{}): {
-			informer: f.Apps().V1().Deployments().Informer(),
-			filters: filters.Filters{
-				{
-					func(e castai.EventType, obj interface{}) bool {
-						deployment, ok := obj.(*appsv1.Deployment)
-						if !ok {
-							return false
-						}
-
-						return deployment.Namespace == castwareNamespace ||
-							(deployment.Spec.Replicas != nil && *deployment.Spec.Replicas > 0 && deployment.Status.Replicas > 0)
-					},
-				},
-			},
-		},
+		reflect.TypeOf(&appsv1.Deployment{}):            {informer: f.Apps().V1().Deployments().Informer()},
 		reflect.TypeOf(&appsv1.ReplicaSet{}): {
 			informer: f.Apps().V1().ReplicaSets().Informer(),
 			filters: filters.Filters{
