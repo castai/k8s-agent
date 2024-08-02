@@ -100,6 +100,11 @@ func TestProvider_IsSpot(t *testing.T) {
 			expected: true,
 		},
 		{
+			name:     "gke karpenter spot node",
+			node:     &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{labels.KarpenterCapacityType: labels.ValueKarpenterCapacityTypeSpot}}},
+			expected: true,
+		},
+		{
 			name:     "on demand node",
 			node:     &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{}}},
 			expected: false,

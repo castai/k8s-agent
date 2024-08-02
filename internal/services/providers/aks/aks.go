@@ -11,6 +11,7 @@ import (
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/providers/aks/metadata"
 	"castai-agent/internal/services/providers/types"
+	"castai-agent/pkg/labels"
 )
 
 type Provider struct {
@@ -92,14 +93,25 @@ func (p *Provider) FilterSpot(_ context.Context, nodes []*corev1.Node) ([]*corev
 	var ret []*corev1.Node
 
 	for _, node := range nodes {
-		if val, ok := node.ObjectMeta.Labels["kubernetes.azure.com/scalesetpriority"]; !ok || val != "spot" {
-			continue
+		if isSpot(node) {
+			ret = append(ret, node)
 		}
 
-		ret = append(ret, node)
 	}
 
 	return ret, nil
+}
+
+func isSpot(node *corev1.Node) bool {
+	if val, ok := node.ObjectMeta.Labels["kubernetes.azure.com/scalesetpriority"]; ok && val == "spot" {
+		return true
+	}
+
+	if val, ok := node.ObjectMeta.Labels[labels.KarpenterCapacityType]; ok && val == labels.ValueKarpenterCapacityTypeSpot {
+		return true
+	}
+
+	return false
 }
 
 func (p *Provider) Name() string {

@@ -15,6 +15,7 @@ import (
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/internal/services/providers/types"
+	"castai-agent/pkg/labels"
 )
 
 func TestProvider_RegisterCluster(t *testing.T) {
@@ -62,6 +63,21 @@ func TestProvider_IsSpot(t *testing.T) {
 
 		node := &v1.Node{
 			ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{SpotLabelKey: SpotLabelVal}},
+		}
+
+		got, err := p.FilterSpot(context.Background(), []*v1.Node{node})
+
+		require.NoError(t, err)
+		require.Equal(t, []*v1.Node{node}, got)
+	})
+
+	t.Run("spot instance karpenter label", func(t *testing.T) {
+		p := &Provider{
+			log: logrus.New(),
+		}
+
+		node := &v1.Node{
+			ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{labels.KarpenterCapacityType: labels.ValueKarpenterCapacityTypeSpot}},
 		}
 
 		got, err := p.FilterSpot(context.Background(), []*v1.Node{node})

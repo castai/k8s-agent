@@ -112,6 +112,10 @@ func isSpot(node *corev1.Node) bool {
 		return true
 	}
 
+	if val, ok := node.Labels[labels.KarpenterCapacityType]; ok && val == labels.ValueKarpenterCapacityTypeSpot {
+		return true
+	}
+
 	return false
 }
 
