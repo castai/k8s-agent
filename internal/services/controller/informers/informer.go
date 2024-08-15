@@ -30,9 +30,11 @@ func NewHandledInformer(
 	informer cache.SharedInformer,
 	handledType reflect.Type,
 	filters filters.Filters,
+	additionalTransformers ...transformers.Transformer,
 ) *HandledInformer {
 	log = log.WithField("informer", handledType.String())
-	handler := handlers.NewHandler(log, queue, handledType, filters, defaultTransformers)
+	transformers := append(defaultTransformers, additionalTransformers...)
+	handler := handlers.NewHandler(log, queue, handledType, filters, transformers)
 	informer.AddEventHandler(handler)
 
 	return &HandledInformer{

@@ -111,6 +111,8 @@ type Controller struct {
 	HealthySnapshotIntervalLimit   time.Duration `mapstructure:"healthy_snapshot_interval_limit"`
 	InitializationTimeoutExtension time.Duration `mapstructure:"initialization_timeout_extension"`
 	ConfigMapNamespaces            []string      `mapstructure:"config_map_namespaces"`
+	RemoveAnnotationsPrefixes      []string      `mapstructure:"remove_annotations_prefixes"`
+	AnnotationsMaxLength           string        `mapstructure:"annotations_max_length"`
 }
 
 type LeaderElectionConfig struct {

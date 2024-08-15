@@ -49,6 +49,8 @@ import (
 	"castai-agent/internal/services/controller/handlers/filters"
 	"castai-agent/internal/services/controller/handlers/filters/autoscalerevents"
 	"castai-agent/internal/services/controller/handlers/filters/oomevents"
+	"castai-agent/internal/services/controller/handlers/transformers"
+	"castai-agent/internal/services/controller/handlers/transformers/annotations"
 	custominformers "castai-agent/internal/services/controller/informers"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/internal/services/version"
@@ -116,19 +118,20 @@ func CollectSingleSnapshot(ctx context.Context,
 
 	defaultInformers := getDefaultInformers(f, castwareNamespace)
 	conditionalInformers := getConditionalInformers(clientset, cfg, f, df, metricsClient, log)
+	additionalTransformers := createAdditionalTransformers(cfg)
 
 	informerContext, informerCancel := context.WithCancel(ctx)
 	defer informerCancel()
 	queue := workqueue.NewNamed("castai-agent")
 	f.Start(informerContext.Done())
-	_, err, handledConditionalInformers := startConditionalInformers(informerContext, log, conditionalInformers, clientset.Discovery(), queue, clientset.AuthorizationV1().SelfSubjectAccessReviews())
+	_, err, handledConditionalInformers := startConditionalInformers(informerContext, log, conditionalInformers, clientset.Discovery(), queue, clientset.AuthorizationV1().SelfSubjectAccessReviews(), additionalTransformers)
 	if err != nil {
 		return nil, err
 	}
 
 	handledInformers := map[string]*custominformers.HandledInformer{}
 	for typ, i := range defaultInformers {
-		handledInformers[typ.String()] = custominformers.NewHandledInformer(log, queue, i.informer, typ, i.filters)
+		handledInformers[typ.String()] = custominformers.NewHandledInformer(log, queue, i.informer, typ, i.filters, additionalTransformers...)
 	}
 	for typ, i := range handledConditionalInformers {
 		handledInformers[typ] = i
@@ -197,10 +200,11 @@ func New(
 
 	defaultInformers := getDefaultInformers(f, castwareNamespace)
 	conditionalInformers := getConditionalInformers(clientset, cfg, f, df, metricsClient, log)
+	additionalTransformers := createAdditionalTransformers(cfg)
 
 	handledInformers := map[string]*custominformers.HandledInformer{}
 	for typ, i := range defaultInformers {
-		handledInformers[typ.String()] = custominformers.NewHandledInformer(log, queue, i.informer, typ, i.filters)
+		handledInformers[typ.String()] = custominformers.NewHandledInformer(log, queue, i.informer, typ, i.filters, additionalTransformers...)
 	}
 
 	eventType := reflect.TypeOf(&corev1.Event{})
@@ -214,6 +218,7 @@ func New(
 				autoscalerevents.Filter,
 			},
 		},
+		additionalTransformers...,
 	)
 	handledInformers[fmt.Sprintf("%s:oom", eventType)] = custominformers.NewHandledInformer(
 		log,
@@ -225,6 +230,7 @@ func New(
 				oomevents.Filter,
 			},
 		},
+		additionalTransformers...,
 	)
 
 	return &Controller{
@@ -314,7 +320,10 @@ func (c *Controller) Run(ctx context.Context) error {
 		return nil
 	})
 
-	go c.startConditionalInformersWithWatcher(ctx, c.conditionalInformers)
+	go func() {
+		additionalTransformers := createAdditionalTransformers(c.cfg)
+		c.startConditionalInformersWithWatcher(ctx, c.conditionalInformers, additionalTransformers)
+	}()
 
 	go func() {
 		<-ctx.Done()
@@ -326,11 +335,11 @@ func (c *Controller) Run(ctx context.Context) error {
 	return g.Wait()
 }
 
-func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, conditionalInformers []conditionalInformer) {
+func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, conditionalInformers []conditionalInformer, additionalTransformers []transformers.Transformer) {
 	tryConditionalInformers := conditionalInformers
 
 	if err := wait.PollUntilContextCancel(ctx, 2*time.Minute, true, func(ctx context.Context) (done bool, err error) {
-		done, err, _ = startConditionalInformers(ctx, c.log, tryConditionalInformers, c.discovery, c.queue, c.selfSubjectAccessReview)
+		done, err, _ = startConditionalInformers(ctx, c.log, tryConditionalInformers, c.discovery, c.queue, c.selfSubjectAccessReview, additionalTransformers)
 		return done, err
 	}); err != nil && !errors.Is(err, context.Canceled) {
 		c.log.Errorf("error when waiting for server resources: %v", err)
@@ -342,7 +351,9 @@ func startConditionalInformers(ctx context.Context,
 	conditionalInformers []conditionalInformer,
 	discovery discovery.DiscoveryInterface,
 	queue workqueue.Interface,
-	selfSubjectAccessReview authorizationtypev1.SelfSubjectAccessReviewInterface) (bool, error, map[string]*custominformers.HandledInformer) {
+	selfSubjectAccessReview authorizationtypev1.SelfSubjectAccessReviewInterface,
+	additionalTransformers []transformers.Transformer,
+) (bool, error, map[string]*custominformers.HandledInformer) {
 	_, apiResourceLists, err := discovery.ServerGroupsAndResources()
 	if err != nil {
 		log.Warnf("Error when getting server resources: %v", err.Error())
@@ -377,7 +388,7 @@ func startConditionalInformers(ctx context.Context,
 		log.Infof("Starting conditional informer for %v", informer.Name())
 		conditionalInformers[i].isApplied = true
 
-		handledInformer := custominformers.NewHandledInformer(log, queue, informer.informerFactory(), informer.apiType, nil)
+		handledInformer := custominformers.NewHandledInformer(log, queue, informer.informerFactory(), informer.apiType, nil, additionalTransformers...)
 		handledInformers[informer.apiType.String()] = handledInformer
 
 		go handledInformer.Run(ctx.Done())
@@ -806,4 +817,10 @@ func isResourceAvailable(kind reflect.Type, apiResourceList *metav1.APIResourceL
 		}
 	}
 	return false
+}
+
+func createAdditionalTransformers(cfg *config.Controller) []transformers.Transformer {
+	return []transformers.Transformer{
+		annotations.NewTransformer(cfg.RemoveAnnotationsPrefixes, cfg.AnnotationsMaxLength),
+	}
 }
