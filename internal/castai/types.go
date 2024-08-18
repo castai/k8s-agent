@@ -7,6 +7,11 @@ import (
 	"github.com/google/uuid"
 )
 
+type KWOKParams struct {
+	ClusterName string `json:"clusterName"`
+	Region      string `json:"region"`
+	AccountID   string `json:"accountId"`
+}
 type EKSParams struct {
 	ClusterName string `json:"clusterName"`
 	Region      string `json:"region"`
@@ -44,6 +49,7 @@ type OpenshiftParams struct {
 type RegisterClusterRequest struct {
 	ID        uuid.UUID        `json:"id"`
 	Name      string           `json:"name"`
+	KWOK      *KWOKParams      `json:"kwok"`
 	EKS       *EKSParams       `json:"eks"`
 	GKE       *GKEParams       `json:"gke"`
 	KOPS      *KOPSParams      `json:"kops"`
