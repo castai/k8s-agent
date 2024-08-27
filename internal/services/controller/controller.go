@@ -25,7 +25,9 @@ import (
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -720,6 +722,54 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
 				return df.ForResource(crd.RecommendationGVR).Informer()
+			},
+		},
+		{
+			resource:        networkingv1.SchemeGroupVersion.WithResource("ingresses"),
+			apiType:         reflect.TypeOf(&networkingv1.Ingress{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Networking().V1().Ingresses().Informer()
+			},
+		},
+		{
+			resource:        networkingv1.SchemeGroupVersion.WithResource("networkpolicies"),
+			apiType:         reflect.TypeOf(&networkingv1.NetworkPolicy{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Networking().V1().NetworkPolicies().Informer()
+			},
+		},
+		{
+			resource:        rbacv1.SchemeGroupVersion.WithResource("roles"),
+			apiType:         reflect.TypeOf(&rbacv1.Role{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Rbac().V1().Roles().Informer()
+			},
+		},
+		{
+			resource:        rbacv1.SchemeGroupVersion.WithResource("rolebindings"),
+			apiType:         reflect.TypeOf(&rbacv1.RoleBinding{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Rbac().V1().RoleBindings().Informer()
+			},
+		},
+		{
+			resource:        rbacv1.SchemeGroupVersion.WithResource("clusterroles"),
+			apiType:         reflect.TypeOf(&rbacv1.ClusterRole{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Rbac().V1().ClusterRoles().Informer()
+			},
+		},
+		{
+			resource:        rbacv1.SchemeGroupVersion.WithResource("clusterrolebindings"),
+			apiType:         reflect.TypeOf(&rbacv1.ClusterRoleBinding{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Rbac().V1().ClusterRoleBindings().Informer()
 			},
 		},
 	}
