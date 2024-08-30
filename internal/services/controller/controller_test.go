@@ -27,7 +27,9 @@ import (
 	authorizationv1 "k8s.io/api/authorization/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	v1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -74,18 +76,18 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
-			expectedReceivedObjectsCount: 15,
+			expectedReceivedObjectsCount: 21,
 		},
 		"when fetching api resources produces multiple errors should exclude those resources": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 13,
+			expectedReceivedObjectsCount: 19,
 		},
 		"when fetching api resources produces single error should exclude that resource": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 14,
+			expectedReceivedObjectsCount: 20,
 		},
 	}
 
@@ -707,7 +709,56 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 	recommendationData, err := delta.Encode(recommendation)
 	require.NoError(t, err)
 
-	clientset := fake.NewSimpleClientset(node, pod, cfgMap, pdb, hpa, csi)
+	ingress := &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "ingress"},
+	}
+	ingressData, err := delta.Encode(ingress)
+	require.NoError(t, err)
+
+	netpolicy := &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "netpolicy"},
+	}
+	netpolicyData, err := delta.Encode(netpolicy)
+	require.NoError(t, err)
+
+	role := &rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "role"},
+	}
+	roleData, err := delta.Encode(role)
+	require.NoError(t, err)
+
+	roleBinding := &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "rolebinding"},
+	}
+	roleBindingData, err := delta.Encode(roleBinding)
+	require.NoError(t, err)
+
+	clusterRole := &rbacv1.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "clusterrole"},
+	}
+	clusterRoleData, err := delta.Encode(clusterRole)
+	require.NoError(t, err)
+
+	clusterRoleBinding := &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "clusterrolebinding"},
+	}
+	clusterRoleBindingData, err := delta.Encode(clusterRoleBinding)
+	require.NoError(t, err)
+
+	clientset := fake.NewSimpleClientset(
+		node,
+		pod,
+		cfgMap,
+		pdb,
+		hpa,
+		csi,
+		ingress,
+		netpolicy,
+		role,
+		roleBinding,
+		clusterRole,
+		clusterRoleBinding,
+	)
 	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, provisioners, machines, awsNodeTemplates, nodePools, nodeClaims, ec2NodeClasses, datadogExtendedDSReplicaSet, rollout, recommendation)
 	clientset.Fake.Resources = []*metav1.APIResourceList{
 		{
@@ -853,6 +904,52 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 				},
 			},
 		},
+		{
+			GroupVersion: networkingv1.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group: "v1",
+					Name:  "ingress",
+					Kind:  "Ingress",
+					Verbs: []string{"get", "list", "watch"},
+				},
+				{
+					Group: "v1",
+					Name:  "networkpolicies",
+					Kind:  "NetworkPolicy",
+					Verbs: []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
+			GroupVersion: rbacv1.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group: "v1",
+					Name:  "roles",
+					Kind:  "Role",
+					Verbs: []string{"get", "list", "watch"},
+				},
+				{
+					Group: "v1",
+					Name:  "rolebindings",
+					Kind:  "RoleBinding",
+					Verbs: []string{"get", "list", "watch"},
+				},
+				{
+					Group: "v1",
+					Name:  "clusterroles",
+					Kind:  "ClusterRole",
+					Verbs: []string{"get", "list", "watch"},
+				},
+				{
+					Group: "v1",
+					Name:  "clusterrolebindings",
+					Kind:  "ClusterRoleBinding",
+					Verbs: []string{"get", "list", "watch"},
+				},
+			},
+		},
 	}
 	objects := make(map[string]*json.RawMessage)
 	objects["Node"] = nodeData
@@ -870,6 +967,12 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 	objects["ExtendedDaemonSetReplicaSet"] = datadogExtendedDSReplicaSetData
 	objects["Rollout"] = rolloutData
 	objects["Recommendation"] = recommendationData
+	objects["Ingress"] = ingressData
+	objects["NetworkPolicy"] = netpolicyData
+	objects["Role"] = roleData
+	objects["RoleBinding"] = roleBindingData
+	objects["ClusterRole"] = clusterRoleData
+	objects["ClusterRoleBinding"] = clusterRoleBindingData
 
 	return objects, clientset, dynamicClient
 }

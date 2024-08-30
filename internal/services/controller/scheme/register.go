@@ -11,7 +11,9 @@ import (
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -36,6 +38,8 @@ var builder = runtime.SchemeBuilder{
 	datadoghqv1alpha1.SchemeBuilder.AddToScheme,
 	argorollouts.SchemeBuilder.AddToScheme,
 	crd.AddToScheme,
+	networkingv1.AddToScheme,
+	rbacv1.AddToScheme,
 }
 
 func init() {
