@@ -69,6 +69,23 @@ jobs:
           username: _json_key
           password: ${{ secrets.ARTIFACT_BUILDER_JSON_KEY }}
 
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        if: ${{ github.event_name == 'pull_request' }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push pr
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          push: true
+          platforms: linux/arm64,linux/amd64
+          tags: ghcr.io/castai/k8s-agent:${{ github.sha }}
+
       - name: Build and push main
         if: github.event_name != 'release'
         uses: docker/build-push-action@v3
@@ -142,3 +159,9 @@ jobs:
           files: |
             bin/castai-agent-amd64
             bin/castai-agent-arm64
+
+      - name: Summary
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          echo "**Pushed docker images:**" >> $GITHUB_STEP_SUMMARY
+          echo "ghcr.io/castai/k8s-agent:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
