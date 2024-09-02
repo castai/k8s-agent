@@ -38,6 +38,18 @@ jobs:
         if: github.event_name == 'release'
         run: echo "RELEASE_TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
 
+      - name: Get merge request latest commit
+        id: parse-commit
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          msg=$(git show -s --format=%s)
+          echo "head_commit_message=${msg}" >> $GITHUB_ENV
+
+      - name: Secret Scanning
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
+
       - name: Build Go binary amd64
         run: go build -ldflags "-s -w -X main.GitCommit=$GITHUB_SHA -X main.GitRef=$GITHUB_REF -X main.Version=${RELEASE_TAG:-commit-$GITHUB_SHA}" -o bin/castai-agent-amd64 .
         env:
@@ -56,14 +68,14 @@ jobs:
         run: go test -race ./...
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to Google Artifact Registry
         if: github.event_name == 'release'
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: us-docker.pkg.dev
           username: _json_key
@@ -84,7 +96,7 @@ jobs:
           context: .
           push: true
           platforms: linux/arm64,linux/amd64
-          tags: ghcr.io/castai/k8s-agent:${{ github.sha }}
+          tags: ghcr.io/castai/k8s-agent:${{ env.head_commit_sha }}
 
       - name: Build and push main
         if: github.event_name != 'release'
