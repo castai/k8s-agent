@@ -39,11 +39,12 @@ jobs:
         run: echo "RELEASE_TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
 
       - name: Get merge request latest commit
-        id: parse-commit
         if: ${{ github.event_name == 'pull_request' }}
+        id: parse-commit-sha
         run: |
-          msg=$(git show -s --format=%s)
-          echo "head_commit_message=${msg}" >> $GITHUB_ENV
+          head=$(git rev-parse HEAD)
+          echo "head_commit_sha=${head}" >> $GITHUB_ENV
+          echo "Head commit sha ${head}"
 
       - name: Secret Scanning
         uses: trufflesecurity/trufflehog@main
