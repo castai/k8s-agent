@@ -54,6 +54,7 @@ import (
 	"castai-agent/internal/services/controller/handlers/transformers"
 	"castai-agent/internal/services/controller/handlers/transformers/annotations"
 	custominformers "castai-agent/internal/services/controller/informers"
+	"castai-agent/internal/services/memorypressure"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/internal/services/version"
 	"castai-agent/pkg/labels"
@@ -308,7 +309,7 @@ func (c *Controller) Run(ctx context.Context) error {
 
 		c.log.Infof("sending cluster deltas every %s", c.cfg.Interval)
 
-		wait.NonSlidingUntil(func() {
+		sendDeltas := func() {
 			// Check if another goroutine is trying to send deltas.
 			if !c.sendMu.TryLock() {
 				// If it is, don't try to send deltas on this turn to avoid a backlog of sends.
@@ -318,7 +319,14 @@ func (c *Controller) Run(ctx context.Context) error {
 			// release it immediately to allow the new sending goroutine to do its job.
 			defer c.sendMu.Unlock()
 			c.send(ctx)
-		}, c.cfg.Interval, ctx.Done())
+		}
+		mempr := memorypressure.MemoryPressure{
+			Ctx:      ctx,
+			Interval: c.cfg.MemoryPressureInterval,
+			Log:      c.log,
+		}
+		go mempr.OnMemoryPressure(sendDeltas)
+		wait.NonSlidingUntil(sendDeltas, c.cfg.Interval, ctx.Done())
 		return nil
 	})
 
