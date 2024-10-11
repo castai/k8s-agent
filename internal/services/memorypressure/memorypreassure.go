@@ -43,3 +43,4 @@ func (mp *MemoryPressure) OnMemoryPressure(f func()) {
 			}
 		}
 	}
+}
