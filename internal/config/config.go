@@ -115,6 +115,12 @@ type Controller struct {
 	ConfigMapNamespaces            []string      `mapstructure:"config_map_namespaces"`
 	RemoveAnnotationsPrefixes      []string      `mapstructure:"remove_annotations_prefixes"`
 	AnnotationsMaxLength           string        `mapstructure:"annotations_max_length"`
+
+	// DisabledInformers contains a list of informers to disable,
+	// for example:
+	//	*v1.Event:oom,*v1.Deployment
+	// Note that appsv1 is referenced as v1 and the asterisk (*)
+	DisabledInformers []string `mapstructure:"disabled_informers"`
 }
 
 type LeaderElectionConfig struct {

@@ -207,34 +207,44 @@ func New(
 
 	handledInformers := map[string]*custominformers.HandledInformer{}
 	for typ, i := range defaultInformers {
-		handledInformers[typ.String()] = custominformers.NewHandledInformer(log, queue, i.informer, typ, i.filters, additionalTransformers...)
+		name := typ.String()
+		if !informerEnabled(cfg, name) {
+			continue
+		}
+		handledInformers[name] = custominformers.NewHandledInformer(log, queue, i.informer, typ, i.filters, additionalTransformers...)
 	}
 
 	eventType := reflect.TypeOf(&corev1.Event{})
-	handledInformers[fmt.Sprintf("%s:autoscaler", eventType)] = custominformers.NewHandledInformer(
-		log,
-		queue,
-		createEventInformer(f, v, autoscalerevents.ListOpts),
-		eventType,
-		filters.Filters{
-			{
-				autoscalerevents.Filter,
+	autoscalerEvents := fmt.Sprintf("%s:autoscaler", eventType)
+	if informerEnabled(cfg, autoscalerEvents) {
+		handledInformers[autoscalerEvents] = custominformers.NewHandledInformer(
+			log,
+			queue,
+			createEventInformer(f, v, autoscalerevents.ListOpts),
+			eventType,
+			filters.Filters{
+				{
+					autoscalerevents.Filter,
+				},
 			},
-		},
-		additionalTransformers...,
-	)
-	handledInformers[fmt.Sprintf("%s:oom", eventType)] = custominformers.NewHandledInformer(
-		log,
-		queue,
-		createEventInformer(f, v, oomevents.ListOpts),
-		eventType,
-		filters.Filters{
-			{
-				oomevents.Filter,
+			additionalTransformers...,
+		)
+	}
+	oomEvents := fmt.Sprintf("%s:oom", eventType)
+	if informerEnabled(cfg, oomEvents) {
+		handledInformers[oomEvents] = custominformers.NewHandledInformer(
+			log,
+			queue,
+			createEventInformer(f, v, oomevents.ListOpts),
+			eventType,
+			filters.Filters{
+				{
+					oomevents.Filter,
+				},
 			},
-		},
-		additionalTransformers...,
-	)
+			additionalTransformers...,
+		)
+	}
 
 	return &Controller{
 		log:                     log,
@@ -343,6 +353,10 @@ func (c *Controller) Run(ctx context.Context) error {
 	c.pollQueueUntilShutdown()
 
 	return g.Wait()
+}
+
+func informerEnabled(cfg *config.Controller, name string) bool {
+	return !lo.Contains(cfg.DisabledInformers, name)
 }
 
 func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, conditionalInformers []conditionalInformer, additionalTransformers []transformers.Transformer) {
