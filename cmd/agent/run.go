@@ -39,8 +39,10 @@ func run(ctx context.Context) error {
 		return errors.New("env variable \"API_URL\" is required")
 	}
 
+	textFormatter := logrus.TextFormatter{FullTimestamp: true}
 	remoteLogger := logrus.New()
 	remoteLogger.SetLevel(logrus.Level(cfg.Log.Level))
+	remoteLogger.SetFormatter(&textFormatter)
 	log := remoteLogger.WithField("version", ctx.Value("agentVersion").(*config.AgentVersion).Version)
 
 	localLog := logrus.New()
