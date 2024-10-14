@@ -4,13 +4,12 @@ import (
 	"context"
 	_ "net/http/pprof"
 
+	"github.com/KimMachineGun/automemlimit/memlimit"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	"castai-agent/cmd"
 	"castai-agent/internal/config"
-
-	"github.com/KimMachineGun/automemlimit/memlimit"
 )
 
 func init() {
