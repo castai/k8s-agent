@@ -25,6 +25,9 @@ type MemoryPressure struct {
 // the GOMEMLIMIT, it will execute f.
 // This function is intended to be executed on a separate goroutine.
 func (mp *MemoryPressure) OnMemoryPressure(f func()) {
+	if mp.Interval <= 0 {
+		return
+	}
 	ticker := time.NewTicker(mp.Interval)
 	var m runtime.MemStats
 	for {
