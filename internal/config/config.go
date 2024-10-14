@@ -50,8 +50,9 @@ type TLS struct {
 }
 
 type Log struct {
-	Level                 int           `mapstructure:"level"`
-	ExporterSenderTimeout time.Duration `mapstructure:"exporter_timeout"`
+	Level                 int            `mapstructure:"level"`
+	ExporterSenderTimeout time.Duration  `mapstructure:"exporter_timeout"`
+	PrintMemoryUsageEvery *time.Duration `mapstructure:"print_memory_usage_every"`
 }
 
 type Pod struct {
@@ -106,6 +107,7 @@ type Static struct {
 
 type Controller struct {
 	Interval                       time.Duration `mapstructure:"interval"`
+	MemoryPressureInterval         time.Duration `mapstructure:"memory_pressure_interval"`
 	PrepTimeout                    time.Duration `mapstructure:"prep_timeout"`
 	InitialSleepDuration           time.Duration `mapstructure:"initial_sleep_duration"`
 	HealthySnapshotIntervalLimit   time.Duration `mapstructure:"healthy_snapshot_interval_limit"`
@@ -138,6 +140,7 @@ func Get() Config {
 
 	viper.SetDefault("controller.interval", 15*time.Second)
 	viper.SetDefault("controller.prep_timeout", 10*time.Minute)
+	viper.SetDefault("controller.memory_pressure_interval", 3*time.Second)
 	viper.SetDefault("controller.initial_sleep_duration", 30*time.Second)
 	viper.SetDefault("controller.healthy_snapshot_interval_limit", 12*time.Minute)
 	viper.SetDefault("controller.initialization_timeout_extension", 5*time.Minute)

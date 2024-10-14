@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/samber/lo"
@@ -47,6 +48,27 @@ func run(ctx context.Context) error {
 
 	loggingConfig := castailog.Config{
 		SendTimeout: cfg.Log.ExporterSenderTimeout,
+	}
+
+	if cfg.Log.PrintMemoryUsageEvery != nil {
+		go func() {
+			timer := time.NewTicker(*cfg.Log.PrintMemoryUsageEvery)
+			for {
+				select {
+				case <-timer.C:
+					var m runtime.MemStats
+					runtime.ReadMemStats(&m)
+					log.WithFields(logrus.Fields{
+						"Alloc_MiB":      m.Alloc / 1024 / 1024,
+						"TotalAlloc_MiB": m.TotalAlloc / 1024 / 1024,
+						"Sys_MiB":        m.Sys / 1024 / 1024,
+						"NumGC":          m.NumGC,
+					}).Infof("memory usage")
+				case <-ctx.Done():
+					break
+				}
+			}
+		}()
 	}
 
 	restyClient, err := castai.NewDefaultRestyClient()
