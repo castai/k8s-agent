@@ -44,6 +44,13 @@ func run(ctx context.Context) error {
 	remoteLogger.SetLevel(logrus.Level(cfg.Log.Level))
 	remoteLogger.SetFormatter(&textFormatter)
 	log := remoteLogger.WithField("version", ctx.Value("agentVersion").(*config.AgentVersion).Version)
+	if podName := os.Getenv("SELF_POD_NAME"); podName != "" {
+		log = log.WithField("component_pod_name", podName)
+	}
+
+	if nodeName := os.Getenv("SELF_POD_NODE"); nodeName != "" {
+		log = log.WithField("component_node_name", nodeName)
+	}
 
 	localLog := logrus.New()
 	localLog.SetLevel(logrus.DebugLevel)
