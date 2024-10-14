@@ -582,21 +582,25 @@ func informerIsAllowedToAccessResource(ctx context.Context, namespace, verb stri
 }
 
 func waitInformersSync(ctx context.Context, log logrus.FieldLogger, informers map[string]*custominformers.HandledInformer) error {
+	waitStartedAt := time.Now()
 	syncs := make([]cache.InformerSynced, 0, len(informers))
+	syncCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	for objType, informer := range informers {
 		objType := objType
 		informer := informer
+		logC := throttleLog(syncCtx, log, objType, waitStartedAt, 5*time.Second)
 		syncs = append(syncs, func() bool {
 			hasSynced := informer.SharedInformer.HasSynced()
-			if !hasSynced {
-				log.Infof("Informer cache for %v has not been synced.", objType)
+			// By default, `cache.WaitForCacheSync` will poll every 100ms,
+			// so we deduplicate the log messages via unbuffered channel.
+			select {
+			case logC <- hasSynced:
 			}
-
 			return hasSynced
 		})
 	}
 
-	waitStartedAt := time.Now()
 	log.Info("waiting for informers cache to sync")
 	if !cache.WaitForCacheSync(ctx.Done(), syncs...) {
 		log.Error("failed to sync")
@@ -604,6 +608,28 @@ func waitInformersSync(ctx context.Context, log logrus.FieldLogger, informers ma
 	}
 	log.Infof("informers cache synced after %v", time.Since(waitStartedAt))
 	return nil
+}
+
+func throttleLog(ctx context.Context, log logrus.FieldLogger, objType string, waitStartedAt time.Time, window time.Duration) chan bool {
+	logC := make(chan bool)
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case synced := <-logC:
+				if !synced {
+					log.Infof("Informer cache for %v has not been synced after %v", objType, time.Since(waitStartedAt))
+				} else {
+					log.Infof("Informer cache for %v synced after %v", objType, time.Since(waitStartedAt))
+				}
+				time.Sleep(window)
+			}
+		}
+	}()
+
+	return logC
 }
 
 func (c *Controller) Start(done <-chan struct{}) {
