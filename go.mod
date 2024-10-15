@@ -1,13 +1,13 @@
 module castai-agent
 
-go 1.22.4
+go 1.22.8
 
 require (
 	cloud.google.com/go/compute/metadata v0.2.3
 	github.com/DataDog/extendeddaemonset v0.9.0-rc.3
 	github.com/KimMachineGun/automemlimit v0.6.1
 	github.com/argoproj/argo-rollouts v1.6.4
-	github.com/aws/aws-sdk-go v1.46.7
+	github.com/aws/aws-sdk-go v1.47.7
 	github.com/aws/karpenter v0.32.0
 	github.com/aws/karpenter-core v0.32.0
 	github.com/fsnotify/fsnotify v1.6.0
