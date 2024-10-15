@@ -48,7 +48,7 @@ func (v *Version) Full() string {
 		return strings.TrimPrefix(v.v.GitVersion, "v")
 	}
 	// We should rarely, if ever, have empty GitVersion, but this is just in case
-	return v.v.Major + "." + v.v.Minor
+	return v.v.Major + "." + v.v.Minor + ".0"
 }
 
 func (v *Version) MinorInt() int {
