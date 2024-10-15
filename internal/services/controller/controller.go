@@ -72,6 +72,10 @@ type Controller struct {
 	discovery       discovery.DiscoveryInterface
 	metricsClient   versioned.Interface
 	informerFactory informers.SharedInformerFactory
+	// independentInformers are not handled by informerFactory.
+	// Initial use-case for them are Event informers:
+	// they need independent ListOptions
+	independentInformers map[string]cache.SharedIndexInformer
 
 	delta   *delta.Delta
 	deltaMu sync.Mutex
@@ -197,8 +201,9 @@ func New(
 
 	queue := workqueue.NewNamed("castai-agent")
 
-	f := informers.NewSharedInformerFactory(clientset, 0)
-	df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
+	defaultResync := 0 * time.Second
+	f := informers.NewSharedInformerFactory(clientset, defaultResync)
+	df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, defaultResync)
 	discovery := clientset.Discovery()
 
 	defaultInformers := getDefaultInformers(f, castwareNamespace)
@@ -206,6 +211,7 @@ func New(
 	additionalTransformers := createAdditionalTransformers(cfg)
 
 	handledInformers := map[string]*custominformers.HandledInformer{}
+	independentInformers := map[string]cache.SharedIndexInformer{}
 	for typ, i := range defaultInformers {
 		name := typ.String()
 		if !informerEnabled(cfg, name) {
@@ -217,10 +223,12 @@ func New(
 	eventType := reflect.TypeOf(&corev1.Event{})
 	autoscalerEvents := fmt.Sprintf("%s:autoscaler", eventType)
 	if informerEnabled(cfg, autoscalerEvents) {
+		informer := createEventInformer(clientset, defaultResync, v, autoscalerevents.ListOpts)
+		independentInformers[autoscalerEvents] = informer
 		handledInformers[autoscalerEvents] = custominformers.NewHandledInformer(
 			log,
 			queue,
-			createEventInformer(f, v, autoscalerevents.ListOpts),
+			informer,
 			eventType,
 			filters.Filters{
 				{
@@ -232,10 +240,12 @@ func New(
 	}
 	oomEvents := fmt.Sprintf("%s:oom", eventType)
 	if informerEnabled(cfg, oomEvents) {
+		informer := createEventInformer(clientset, defaultResync, v, oomevents.ListOpts)
+		independentInformers[oomEvents] = informer
 		handledInformers[oomEvents] = custominformers.NewHandledInformer(
 			log,
 			queue,
-			createEventInformer(f, v, oomevents.ListOpts),
+			informer,
 			eventType,
 			filters.Filters{
 				{
@@ -255,6 +265,7 @@ func New(
 		delta:                   delta.New(log, clusterID, v.Full(), agentVersion.Version),
 		queue:                   queue,
 		informers:               handledInformers,
+		independentInformers:    independentInformers,
 		agentVersion:            agentVersion,
 		healthzProvider:         healthzProvider,
 		metricsClient:           metricsClient,
@@ -648,6 +659,9 @@ func throttleLog(ctx context.Context, log logrus.FieldLogger, objType string, wa
 
 func (c *Controller) Start(done <-chan struct{}) {
 	c.informerFactory.Start(done)
+	for _, informer := range c.independentInformers {
+		go informer.Run(done)
+	}
 }
 func extractGroupVersionsFromApiResourceError(log logrus.FieldLogger, err error) map[schema.GroupVersion]bool {
 	cleanedString := strings.Split(err.Error(), "unable to retrieve the complete list of server APIs: ")[1]
@@ -889,11 +903,12 @@ func getDefaultInformers(f informers.SharedInformerFactory, castwareNamespace st
 	}
 }
 
-func createEventInformer(f informers.SharedInformerFactory, v version.Interface, listOptions func(*metav1.ListOptions, version.Interface)) cache.SharedIndexInformer {
-	return f.InformerFor(&corev1.Event{}, func(client kubernetes.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-		return v1.NewFilteredEventInformer(client, corev1.NamespaceAll, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, func(options *metav1.ListOptions) {
-			listOptions(options, v)
-		})
+// createEventInformer creates a new event informer with the given list options.
+// We can't use sharedInformerFactory because it would reuse the first registered ListOptions
+// for all the informers.
+func createEventInformer(client kubernetes.Interface, resyncPeriod time.Duration, v version.Interface, listOptions func(*metav1.ListOptions, version.Interface)) cache.SharedIndexInformer {
+	return v1.NewFilteredEventInformer(client, corev1.NamespaceAll, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, func(options *metav1.ListOptions) {
+		listOptions(options, v)
 	})
 }
 
