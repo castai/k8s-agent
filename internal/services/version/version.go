@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/version"
@@ -43,6 +44,10 @@ type Version struct {
 }
 
 func (v *Version) Full() string {
+	if v.v.GitVersion != "" {
+		return strings.TrimPrefix(v.v.GitVersion, "v")
+	}
+	// We should rarely, if ever, have empty GitVersion, but this is just in case
 	return v.v.Major + "." + v.v.Minor
 }
 
