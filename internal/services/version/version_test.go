@@ -15,9 +15,10 @@ import (
 
 func Test(t *testing.T) {
 	v := version.Info{
-		Major:     "1",
-		Minor:     "21+",
-		GitCommit: "2812f9fb0003709fc44fc34166701b377020f1c9",
+		Major:      "1",
+		Minor:      "21+",
+		GitVersion: "v1.21.0",
+		GitCommit:  "2812f9fb0003709fc44fc34166701b377020f1c9",
 	}
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, err := json.Marshal(v)
@@ -39,6 +40,6 @@ func Test(t *testing.T) {
 	}
 
 	require.NoError(t, err)
-	require.Equal(t, "1.21+", got.Full())
+	require.Equal(t, "1.21.0", got.Full())
 	require.Equal(t, 21, got.MinorInt())
 }
