@@ -84,6 +84,7 @@ func NewDefaultRestyClient() (*resty.Client, error) {
 	if host := cfg.HostHeaderOverride; host != "" {
 		restyClient.Header.Set("Host", host)
 	}
+	addUA(restyClient.Header)
 
 	return restyClient, nil
 }
@@ -210,7 +211,8 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 	req.Header.Set(headerContentEncoding, "gzip")
 	req.Header.Set(headerAPIKey, cfg.Key)
 	req.Header.Set(headerContinuityToken, c.continuityToken)
-	req.Header.Set(headerUserAgent, fmt.Sprintf("castai-agent/%s", config.VersionInfo.Version))
+	addUA(req.Header)
+
 	if host := cfg.HostHeaderOverride; host != "" {
 		req.Header.Set("Host", host)
 	}
@@ -320,4 +322,12 @@ func (c *client) ExchangeAgentTelemetry(ctx context.Context, clusterID string, r
 	}
 
 	return body, nil
+}
+
+func addUA(header http.Header) {
+	version := "unknown"
+	if vi := config.VersionInfo; vi != nil {
+		version = vi.Version
+	}
+	header.Set(headerUserAgent, fmt.Sprintf("castai-agent/%s", version))
 }
