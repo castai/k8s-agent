@@ -62,8 +62,12 @@ type Pod struct {
 }
 
 type API struct {
-	Key string `mapstructure:"key"`
-	URL string `mapstructure:"url"`
+	Key                   string        `mapstructure:"key"`
+	URL                   string        `mapstructure:"url"`
+	HostHeaderOverride    string        `mapstructure:"host_header_override"`
+	Timeout               time.Duration `mapstructure:"timeout"`
+	DeltaReadTimeout      time.Duration `mapstructure:"delta_read_timeout"`
+	TotalSendDeltaTimeout time.Duration `mapstructure:"total_send_delta_timeout"`
 }
 
 type EKS struct {
@@ -143,6 +147,10 @@ func Get() Config {
 	if cfg != nil {
 		return *cfg
 	}
+
+	viper.SetDefault("api.timeout", 10*time.Second)
+	viper.SetDefault("api.delta_read_timeout", 2*time.Minute)
+	viper.SetDefault("api.total_send_delta_timeout", 5*time.Minute)
 
 	viper.SetDefault("controller.interval", 15*time.Second)
 	viper.SetDefault("controller.prep_timeout", 10*time.Minute)

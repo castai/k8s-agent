@@ -43,7 +43,7 @@ func run(ctx context.Context) error {
 	remoteLogger := logrus.New()
 	remoteLogger.SetLevel(logrus.Level(cfg.Log.Level))
 	remoteLogger.SetFormatter(&textFormatter)
-	log := remoteLogger.WithField("version", ctx.Value("agentVersion").(*config.AgentVersion).Version)
+	log := remoteLogger.WithField("version", config.VersionInfo.Version)
 	if podName := os.Getenv("SELF_POD_NAME"); podName != "" {
 		log = log.WithField("component_pod_name", podName)
 	}
@@ -112,7 +112,7 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 	ctx, ctxCancel := context.WithCancel(ctx)
 	defer ctxCancel()
 
-	agentVersion := ctx.Value("agentVersion").(*config.AgentVersion)
+	agentVersion := config.VersionInfo
 
 	// buffer will allow for all senders to push, even though we will only read first error and cancel context after it;
 	// all errors from exitCh are logged

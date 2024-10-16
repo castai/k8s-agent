@@ -151,7 +151,7 @@ func CollectSingleSnapshot(ctx context.Context,
 
 	defer queue.ShutDown()
 
-	agentVersion := ctx.Value("agentVersion").(*config.AgentVersion)
+	agentVersion := config.VersionInfo
 
 	d := delta.New(log, clusterID, v.Full(), agentVersion.Version)
 	go func() {

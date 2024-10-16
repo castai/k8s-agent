@@ -2,6 +2,8 @@ package config
 
 import "fmt"
 
+var VersionInfo *AgentVersion
+
 type AgentVersion struct {
 	GitCommit, GitRef, Version string
 }

@@ -25,7 +25,7 @@ func run(ctx context.Context) error {
 
 	remoteLogger := logrus.New()
 	remoteLogger.SetLevel(logrus.Level(cfg.Log.Level))
-	log := remoteLogger.WithField("version", ctx.Value("agentVersion").(*config.AgentVersion).Version)
+	log := remoteLogger.WithField("version", config.VersionInfo.Version)
 
 	localLog := logrus.New()
 	localLog.SetLevel(logrus.DebugLevel)
