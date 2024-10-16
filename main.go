@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	_ "net/http/pprof"
 
 	"github.com/KimMachineGun/automemlimit/memlimit"
@@ -30,12 +29,11 @@ var (
 )
 
 func main() {
-
 	ctx := signals.SetupSignalHandler()
-	ctx = context.WithValue(ctx, "agentVersion", &config.AgentVersion{
+	config.VersionInfo = &config.AgentVersion{
 		GitCommit: GitCommit,
 		GitRef:    GitRef,
 		Version:   Version,
-	})
+	}
 	cmd.Execute(ctx)
 }

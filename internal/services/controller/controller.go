@@ -151,9 +151,12 @@ func CollectSingleSnapshot(ctx context.Context,
 
 	defer queue.ShutDown()
 
-	agentVersion := ctx.Value("agentVersion").(*config.AgentVersion)
+	agentVersion := "unknown"
+	if vi := config.VersionInfo; vi != nil {
+		agentVersion = vi.Version
+	}
 
-	d := delta.New(log, clusterID, v.Full(), agentVersion.Version)
+	d := delta.New(log, clusterID, v.Full(), agentVersion)
 	go func() {
 		for {
 			i, _ := queue.Get()
@@ -649,7 +652,11 @@ func throttleLog(ctx context.Context, log logrus.FieldLogger, objType string, wa
 				} else {
 					log.Infof("Informer cache for %v synced after %v", objType, time.Since(waitStartedAt))
 				}
-				time.Sleep(window)
+				select {
+				case <-time.After(window):
+				case <-ctx.Done():
+					return
+				}
 			}
 		}
 	}()
