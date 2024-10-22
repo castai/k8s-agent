@@ -3,12 +3,12 @@ package delta
 import (
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"time"
 
 	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/services/controller/scheme"
@@ -40,8 +40,16 @@ type Delta struct {
 
 // Add will add an Item to the Delta Cache. It will debounce the objects.
 func (d *Delta) Add(i *Item) {
+	if len(i.kind) == 0 {
+		gvk, err := determineObjectGVK(i.Obj)
+		if err != nil {
+			d.log.Errorf("failed to determine Object kind: %v", err)
+			return
+		}
+		i.kind = gvk.Kind
+	}
 
-	key := keyObject(i.Obj)
+	key := itemCacheKey(i)
 
 	if other, ok := d.Cache[key]; ok && other.event == castai.EventAdd && i.event == castai.EventUpdate {
 		i.event = castai.EventAdd
@@ -54,8 +62,8 @@ func (d *Delta) Add(i *Item) {
 	}
 }
 
-func keyObject(obj Object) string {
-	return fmt.Sprintf("%s::%s/%s", reflect.TypeOf(obj).String(), obj.GetNamespace(), obj.GetName())
+func itemCacheKey(i *Item) string {
+	return fmt.Sprintf("%s::%s/%s", i.kind, i.Obj.GetNamespace(), i.Obj.GetName())
 }
 
 // Clear resets the Delta Cache and sets FullSnapshot to false. Should be called after ToCASTAIRequest is successfully
@@ -75,20 +83,9 @@ func (d *Delta) ToCASTAIRequest() *castai.Delta {
 			d.log.Errorf("failed to encode %T: %v", i.Obj, err)
 			continue
 		}
-
-		kinds, _, err := scheme.Scheme.ObjectKinds(i.Obj)
-		if err != nil {
-			d.log.Errorf("failed to find Object %T kind: %v", i.Obj, err)
-			continue
-		}
-		if len(kinds) == 0 || kinds[0].Kind == "" {
-			d.log.Errorf("unknown Object kind for Object %T", i.Obj)
-			continue
-		}
-
 		items = append(items, &castai.DeltaItem{
 			Event:     i.event,
-			Kind:      kinds[0].Kind,
+			Kind:      i.kind,
 			Data:      data,
 			CreatedAt: time.Now().UTC(),
 		})
@@ -113,6 +110,26 @@ func Encode(obj interface{}) (*json.RawMessage, error) {
 	return &o, nil
 }
 
+func determineObjectGVK(obj runtime.Object) (schema.GroupVersionKind, error) {
+	// If the object contains its TypeMeta, it is expected to be the most accurate value.
+	gvk := obj.GetObjectKind().GroupVersionKind()
+	if !gvk.Empty() {
+		return gvk, nil
+	}
+
+	// Some structured objects have their TypeMeta stripped. In that case, it's only possible to look this information based on the runtime type.
+	kinds, _, err := scheme.Scheme.ObjectKinds(obj)
+	if err != nil {
+		return schema.GroupVersionKind{}, fmt.Errorf("failed to find Object %T kind: %v", obj, err)
+	}
+	if len(kinds) == 0 || len(kinds[0].Kind) == 0 {
+		return schema.GroupVersionKind{}, fmt.Errorf("unknown Object kind for Object %T", obj)
+	}
+	// Typically runtime types resolve to a single GVK combination but if it has multiple, at this point there is no way to
+	// determine which was the original one. We are just picking the first one and hoping it works out.
+	return kinds[0], nil
+}
+
 type Object interface {
 	runtime.Object
 	metav1.Object
@@ -128,4 +145,5 @@ func NewItem(event castai.EventType, obj Object) *Item {
 type Item struct {
 	Obj   Object
 	event castai.EventType
+	kind  string
 }
