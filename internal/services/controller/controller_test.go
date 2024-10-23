@@ -32,6 +32,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -61,6 +62,13 @@ var defaultHealthzCfg = config.Config{Controller: &config.Controller{
 	HealthySnapshotIntervalLimit:   10 * time.Minute,
 	InitializationTimeoutExtension: 5 * time.Minute,
 }}
+
+type sampleObject struct {
+	GV       schema.GroupVersion
+	Kind     string
+	Resource string
+	Data     *json.RawMessage
+}
 
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(
@@ -145,19 +153,12 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 				})
 
 				// filter expected data based on available resources
-				for k := range objectsData {
-					kLowerCased := strings.ToLower(k)
-					found := false
-					for _, resource := range apiResources {
-						if strings.Contains(resource.APIResources[0].Name, kLowerCased) {
-							found = true
-							break
-						}
-					}
-					if !found {
-						delete(objectsData, k)
-					}
-				}
+				objectsData = lo.Filter(objectsData, func(obj sampleObject, _ int) bool {
+					_, found := lo.Find(apiResources, func(r *metav1.APIResourceList) bool {
+						return r.APIResources[0].Name == obj.Resource
+					})
+					return found
+				})
 				mockDiscovery.EXPECT().ServerGroupsAndResources().Return([]*metav1.APIGroup{}, apiResources, tt.apiResourceError).AnyTimes()
 			}
 			var invocations int64
@@ -171,15 +172,19 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 					require.Equal(t, "1.21+", d.ClusterVersion)
 					require.Equal(t, "1.2.3", d.AgentVersion)
 					require.True(t, d.FullSnapshot)
-					require.Len(t, d.Items, tt.expectedReceivedObjectsCount)
+					require.Equal(t, tt.expectedReceivedObjectsCount, len(d.Items), "number of items in delta")
 
-					var actualValues []string
-					for _, item := range d.Items {
-						actualValues = append(actualValues, fmt.Sprintf("%s-%s-%v", item.Event, item.Kind, item.Data))
-					}
-
-					for k, v := range objectsData {
-						require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, k, v))
+					for _, expected := range objectsData {
+						expectedGVString := expected.GV.String()
+						actual, found := lo.Find(d.Items, func(item *castai.DeltaItem) bool {
+							return item.Event == castai.EventAdd &&
+								item.Kind == expected.Kind &&
+								item.Data != nil &&
+								strings.Contains(string(*item.Data), expectedGVString) // Hacky but OK given this is for testing purposes.
+						})
+						require.True(t, found)
+						require.NotNil(t, actual.Data)
+						require.JSONEq(t, string(*expected.Data), string(*actual.Data))
 					}
 
 					return nil
@@ -191,7 +196,16 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 					require.Equalf(t, "1.2.3", req.AgentVersion, "got request: %+v", req)
 				})
 
-			node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node1", Labels: map[string]string{}}}
+			node := &v1.Node{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Node",
+					APIVersion: v1.SchemeGroupVersion.String(),
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "node1",
+					Labels: map[string]string{},
+				},
+			}
 			provider.EXPECT().FilterSpot(gomock.Any(), []*v1.Node{node}).Return([]*v1.Node{node}, nil)
 
 			ctrl := New(
@@ -408,7 +422,16 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "pod1"}}
+	pod := &v1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Pod",
+			APIVersion: v1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "pod1",
+		},
+	}
 	podData, err := delta.Encode(pod)
 	require.NoError(t, err)
 
@@ -455,12 +478,12 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 			require.False(t, d.FullSnapshot)
 			require.Len(t, d.Items, 1)
 
-			var actualValues []string
-			for _, item := range d.Items {
-				actualValues = append(actualValues, fmt.Sprintf("%s-%s-%v", item.Event, item.Kind, item.Data))
-			}
-
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Pod", podData))
+			actualItem, found := lo.Find(d.Items, func(item *castai.DeltaItem) bool {
+				return item.Event == castai.EventAdd && item.Kind == "Pod"
+			})
+			require.True(t, found)
+			require.NotNil(t, actualItem.Data)
+			require.JSONEq(t, string(*podData), string(*actualItem.Data))
 
 			err := clientset.CoreV1().Pods("default").Delete(ctx, pod.Name, metav1.DeleteOptions{})
 			require.NoError(t, err)
@@ -480,12 +503,12 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 			require.False(t, d.FullSnapshot)
 			require.Len(t, d.Items, 1)
 
-			var actualValues []string
-			for _, item := range d.Items {
-				actualValues = append(actualValues, fmt.Sprintf("%s-%s-%v", item.Event, item.Kind, item.Data))
-			}
-
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventDelete, "Pod", podData))
+			actualItem, found := lo.Find(d.Items, func(item *castai.DeltaItem) bool {
+				return item.Event == castai.EventDelete && item.Kind == "Pod"
+			})
+			require.True(t, found)
+			require.NotNil(t, actualItem.Data)
+			require.JSONEq(t, string(*podData), string(*actualItem.Data))
 
 			return nil
 		})
@@ -530,7 +553,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 	}, 10*time.Millisecond, ctx.Done())
 }
 
-func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]*json.RawMessage, *fake.Clientset, *dynamic_fake.FakeDynamicClient) {
+func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObject, *fake.Clientset, *dynamic_fake.FakeDynamicClient) {
 	provisionersGvr := karpenterCoreAlpha.SchemeGroupVersion.WithResource("provisioners")
 	machinesGvr := karpenterCoreAlpha.SchemeGroupVersion.WithResource("machines")
 	awsNodeTemplatesGvr := karpenterAlpha.SchemeGroupVersion.WithResource("awsnodetemplates")
@@ -539,24 +562,53 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 	ec2NodeClassesGvr := karpenter.SchemeGroupVersion.WithResource("ec2nodeclasses")
 	datadogExtendedDSReplicaSetsGvr := datadoghqv1alpha1.GroupVersion.WithResource("extendeddaemonsetreplicasets")
 
-	node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node1", Labels: map[string]string{}}}
+	node := &v1.Node{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Node",
+			APIVersion: v1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node1", Labels: map[string]string{},
+		},
+	}
 	expectedNode := node.DeepCopy()
 	expectedNode.Labels[labels.CastaiFakeSpot] = "true"
 	nodeData, err := delta.Encode(expectedNode)
 	require.NoError(t, err)
 
-	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "pod1"}}
+	pod := &v1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Pod",
+			APIVersion: v1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault, Name: "pod1",
+		},
+	}
 	podData, err := delta.Encode(pod)
 	require.NoError(t, err)
 
 	cfgMap := &v1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "cfg1"},
-		Data:       map[string]string{"field1": "value1"},
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ConfigMap",
+			APIVersion: v1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "cfg1",
+		},
+		Data: map[string]string{
+			"field1": "value1",
+		},
 	}
 	cfgMapData, err := delta.Encode(cfgMap)
 	require.NoError(t, err)
 
 	pdb := &policyv1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodDisruptionBudget",
+			APIVersion: policyv1.SchemeGroupVersion.String(),
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "poddisruptionbudgets",
 			Namespace: v1.NamespaceDefault,
@@ -566,6 +618,10 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 	require.NoError(t, err)
 
 	hpa := &autoscalingv1.HorizontalPodAutoscaler{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "HorizontalPodAutoscaler",
+			APIVersion: autoscalingv1.SchemeGroupVersion.String(),
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "horizontalpodautoscalers",
 			Namespace: v1.NamespaceDefault,
@@ -575,6 +631,10 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 	require.NoError(t, err)
 
 	csi := &storagev1.CSINode{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "CSINode",
+			APIVersion: storagev1.SchemeGroupVersion.String(),
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "csinodes",
 			Namespace: v1.NamespaceDefault,
@@ -710,37 +770,79 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 	require.NoError(t, err)
 
 	ingress := &networkingv1.Ingress{
-		ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "ingress"},
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Ingress",
+			APIVersion: networkingv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "ingress",
+		},
 	}
 	ingressData, err := delta.Encode(ingress)
 	require.NoError(t, err)
 
 	netpolicy := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "netpolicy"},
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "NetworkPolicy",
+			APIVersion: networkingv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "netpolicy",
+		},
 	}
 	netpolicyData, err := delta.Encode(netpolicy)
 	require.NoError(t, err)
 
 	role := &rbacv1.Role{
-		ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "role"},
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Role",
+			APIVersion: rbacv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "role",
+		},
 	}
 	roleData, err := delta.Encode(role)
 	require.NoError(t, err)
 
 	roleBinding := &rbacv1.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "rolebinding"},
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "RoleBinding",
+			APIVersion: rbacv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "rolebinding",
+		},
 	}
 	roleBindingData, err := delta.Encode(roleBinding)
 	require.NoError(t, err)
 
 	clusterRole := &rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "clusterrole"},
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ClusterRole",
+			APIVersion: rbacv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "clusterrole",
+		},
 	}
 	clusterRoleData, err := delta.Encode(clusterRole)
 	require.NoError(t, err)
 
 	clusterRoleBinding := &rbacv1.ClusterRoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "clusterrolebinding"},
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ClusterRoleBinding",
+			APIVersion: rbacv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "clusterrolebinding",
+		},
 	}
 	clusterRoleBindingData, err := delta.Encode(clusterRoleBinding)
 	require.NoError(t, err)
@@ -951,28 +1053,136 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 			},
 		},
 	}
-	objects := make(map[string]*json.RawMessage)
-	objects["Node"] = nodeData
-	objects["Pod"] = podData
-	objects["ConfigMap"] = cfgMapData
-	objects["PodDisruptionBudget"] = pdbData
-	objects["HorizontalPodAutoscaler"] = hpaData
-	objects["CSINode"] = csiData
-	objects["Provisioner"] = provisionersData
-	objects["Machine"] = machinesData
-	objects["AWSNodeTemplate"] = awsNodeTemplatesData
-	objects["NodePool"] = nodePoolsData
-	objects["NodeClaim"] = nodeClaimsData
-	objects["EC2NodeClass"] = ec2NodeClassesData
-	objects["ExtendedDaemonSetReplicaSet"] = datadogExtendedDSReplicaSetData
-	objects["Rollout"] = rolloutData
-	objects["Recommendation"] = recommendationData
-	objects["Ingress"] = ingressData
-	objects["NetworkPolicy"] = netpolicyData
-	objects["Role"] = roleData
-	objects["RoleBinding"] = roleBindingData
-	objects["ClusterRole"] = clusterRoleData
-	objects["ClusterRoleBinding"] = clusterRoleBindingData
+	objects := []sampleObject{
+		{
+			GV:       v1.SchemeGroupVersion,
+			Kind:     "Node",
+			Resource: "nodes",
+			Data:     nodeData,
+		},
+		{
+			GV:       v1.SchemeGroupVersion,
+			Kind:     "Pod",
+			Resource: "pods",
+			Data:     podData,
+		},
+		{
+			GV:       v1.SchemeGroupVersion,
+			Kind:     "ConfigMap",
+			Resource: "configmaps",
+			Data:     cfgMapData,
+		},
+		{
+			GV:       policyv1.SchemeGroupVersion,
+			Kind:     "PodDisruptionBudget",
+			Resource: "poddisruptionbudgets",
+			Data:     pdbData,
+		},
+		{
+			GV:       autoscalingv1.SchemeGroupVersion,
+			Kind:     "HorizontalPodAutoscaler",
+			Resource: "horizontalpodautoscalers",
+			Data:     hpaData,
+		},
+		{
+			GV:       storagev1.SchemeGroupVersion,
+			Kind:     "CSINode",
+			Resource: "csinodes",
+			Data:     csiData,
+		},
+		{
+			GV:       provisionersGvr.GroupVersion(),
+			Kind:     "Provisioner",
+			Resource: provisionersGvr.Resource,
+			Data:     provisionersData,
+		},
+		{
+			GV:       machinesGvr.GroupVersion(),
+			Kind:     "Machine",
+			Resource: machinesGvr.Resource,
+			Data:     machinesData,
+		},
+		{
+			GV:       awsNodeTemplatesGvr.GroupVersion(),
+			Kind:     "AWSNodeTemplate",
+			Resource: awsNodeTemplatesGvr.Resource,
+			Data:     awsNodeTemplatesData,
+		},
+		{
+			GV:       nodePoolsGvr.GroupVersion(),
+			Kind:     "NodePool",
+			Resource: nodePoolsGvr.Resource,
+			Data:     nodePoolsData,
+		},
+		{
+			GV:       nodeClaimsGvr.GroupVersion(),
+			Kind:     "NodeClaim",
+			Resource: nodeClaimsGvr.Resource,
+			Data:     nodeClaimsData,
+		},
+		{
+			GV:       ec2NodeClassesGvr.GroupVersion(),
+			Kind:     "EC2NodeClass",
+			Resource: ec2NodeClassesGvr.Resource,
+			Data:     ec2NodeClassesData,
+		},
+		{
+			GV:       datadogExtendedDSReplicaSetsGvr.GroupVersion(),
+			Kind:     "ExtendedDaemonSetReplicaSet",
+			Resource: datadogExtendedDSReplicaSetsGvr.Resource,
+			Data:     datadogExtendedDSReplicaSetData,
+		},
+		{
+			GV:       argorollouts.RolloutGVR.GroupVersion(),
+			Kind:     "Rollout",
+			Resource: argorollouts.RolloutGVR.Resource,
+			Data:     rolloutData,
+		},
+		{
+			GV:       crd.RecommendationGVR.GroupVersion(),
+			Kind:     "Recommendation",
+			Resource: crd.RecommendationGVR.Resource,
+			Data:     recommendationData,
+		},
+		{
+			GV:       networkingv1.SchemeGroupVersion,
+			Kind:     "Ingress",
+			Resource: "ingresses",
+			Data:     ingressData,
+		},
+		{
+			GV:       networkingv1.SchemeGroupVersion,
+			Kind:     "NetworkPolicy",
+			Resource: "networkpolicies",
+			Data:     netpolicyData,
+		},
+		{
+			GV:       rbacv1.SchemeGroupVersion,
+			Kind:     "Role",
+			Resource: "roles",
+			Data:     roleData,
+		},
+		{
+			GV:       rbacv1.SchemeGroupVersion,
+			Kind:     "RoleBinding",
+			Resource: "rolebindings",
+			Data:     roleBindingData,
+		},
+		{
+			GV:       rbacv1.SchemeGroupVersion,
+			Kind:     "ClusterRole",
+			Resource: "clusterroles",
+			Data:     clusterRoleData,
+		},
+		{
+			GV:       rbacv1.SchemeGroupVersion,
+			Kind:     "ClusterRoleBinding",
+			Resource: "clusterrolebindings",
+			Data:     clusterRoleBindingData,
+		},
+	}
+	// There are a lot of manually entered samples. Running some sanity checks to ensure they don't contain basic errors.
+	verifySampleObjectsAreValid(t, objects)
 
 	return objects, clientset, dynamicClient
 }
@@ -1053,6 +1263,10 @@ func TestCollectSingleSnapshot(t *testing.T) {
 	for i := range 10000 {
 		name := fmt.Sprintf("pod-%d", i)
 		objs = append(objs, &v1.Pod{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "Pod",
+				APIVersion: v1.SchemeGroupVersion.String(),
+			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name: name,
 			},
@@ -1086,4 +1300,20 @@ func TestCollectSingleSnapshot(t *testing.T) {
 		pods = append(pods, p)
 	}
 	r.ElementsMatch(objs, pods)
+}
+
+func verifySampleObjectsAreValid(t *testing.T, objects []sampleObject) {
+	for _, obj := range objects {
+		require.NotNil(t, obj.Data)
+
+		var data unstructured.Unstructured
+		err := json.Unmarshal(*obj.Data, &data)
+		require.NoError(t, err)
+
+		gvk := data.GroupVersionKind()
+		require.False(t, gvk.Empty())
+		require.Equal(t, obj.GV.Group, gvk.Group)
+		require.Equal(t, obj.GV.Version, gvk.Version)
+		require.Equal(t, obj.Kind, gvk.Kind)
+	}
 }
