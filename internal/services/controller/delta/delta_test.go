@@ -5,10 +5,13 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	"castai-agent/internal/castai"
 )
@@ -18,10 +21,49 @@ func TestDelta(t *testing.T) {
 	version := "1.18"
 	agentVersion := "1.2.3"
 
-	pod1 := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "a"}}
-	pod1Updated := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "a", Labels: map[string]string{"a": "b"}}}
+	unrecognisedResource := &FakeUnrecognisedResource{}
 
-	pod2 := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "b"}}
+	pod1 := &v1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Pod",
+			APIVersion: v1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "a",
+		},
+	}
+	pod1Updated := &v1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Pod",
+			APIVersion: v1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "a",
+			Labels: map[string]string{
+				"a": "b",
+			},
+		},
+	}
+	pod1WithoutKind := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "a",
+		},
+	}
+	pod1Unstructured := asUnstructuredObject(t, pod1)
+
+	pod2 := &v1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Pod",
+			APIVersion: v1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "b",
+		},
+	}
 
 	tests := []struct {
 		name     string
@@ -59,6 +101,54 @@ func TestDelta(t *testing.T) {
 						Data:  mustEncode(t, pod2),
 					},
 				},
+			},
+		},
+		{
+			name: "look up missing type information",
+			items: []*Item{
+				NewItem(castai.EventAdd, pod1WithoutKind),
+			},
+			expected: &castai.Delta{
+				ClusterID:      clusterID,
+				ClusterVersion: version,
+				FullSnapshot:   true,
+				Items: []*castai.DeltaItem{
+					{
+						Event: castai.EventAdd,
+						Kind:  "Pod",
+						Data:  mustEncode(t, pod1WithoutKind),
+					},
+				},
+			},
+		},
+		{
+			name: "look up missing type information",
+			items: []*Item{
+				NewItem(castai.EventAdd, pod1Unstructured),
+			},
+			expected: &castai.Delta{
+				ClusterID:      clusterID,
+				ClusterVersion: version,
+				FullSnapshot:   true,
+				Items: []*castai.DeltaItem{
+					{
+						Event: castai.EventAdd,
+						Kind:  "Pod",
+						Data:  mustEncode(t, pod1Unstructured),
+					},
+				},
+			},
+		},
+		{
+			name: "debounce: ignore items without kind",
+			items: []*Item{
+				NewItem(castai.EventAdd, unrecognisedResource),
+			},
+			expected: &castai.Delta{
+				ClusterID:      clusterID,
+				ClusterVersion: version,
+				FullSnapshot:   true,
+				Items:          []*castai.DeltaItem{},
 			},
 		},
 		{
@@ -180,6 +270,17 @@ func TestDelta(t *testing.T) {
 	}
 }
 
+var _ = (Object)(&FakeUnrecognisedResource{})
+
+type FakeUnrecognisedResource struct {
+	metav1.TypeMeta
+	metav1.ObjectMeta
+}
+
+func (*FakeUnrecognisedResource) DeepCopyObject() runtime.Object {
+	panic("not implemented")
+}
+
 func mustEncode(t *testing.T, obj interface{}) *json.RawMessage {
 	data, err := Encode(obj)
 	require.NoError(t, err)
@@ -187,10 +288,16 @@ func mustEncode(t *testing.T, obj interface{}) *json.RawMessage {
 }
 
 func requireContains(t *testing.T, actual []*castai.DeltaItem, expected *castai.DeltaItem) {
-	for _, di := range actual {
-		if di.Kind == expected.Kind && di.Event == expected.Event && string(*di.Data) == string(*expected.Data) {
-			return
-		}
-	}
-	require.Failf(t, "failed", "expected %s to contain %s", actual, expected)
+	_, found := lo.Find(actual, func(di *castai.DeltaItem) bool {
+		return di.Event == expected.Event && di.Kind == expected.Kind && string(*di.Data) == string(*expected.Data)
+	})
+	require.Truef(t, found, "expected %s to contain %s", actual, expected)
+}
+
+func asUnstructuredObject(t *testing.T, obj runtime.Object) *unstructured.Unstructured {
+	bytes, err := json.Marshal(obj)
+	require.NoError(t, err)
+	var out unstructured.Unstructured
+	err = json.Unmarshal(bytes, &out)
+	return &out
 }
