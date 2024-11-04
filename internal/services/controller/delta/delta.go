@@ -1,10 +1,8 @@
 package delta
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -25,8 +23,7 @@ func New(log logrus.FieldLogger, clusterID, clusterVersion, agentVersion string)
 		clusterVersion: clusterVersion,
 		agentVersion:   agentVersion,
 		FullSnapshot:   true,
-		CacheLegacy:    map[string]*Item{},
-		CacheModern:    map[string]*Item{},
+		Cache:          map[string]*Item{},
 	}
 }
 
@@ -38,18 +35,12 @@ type Delta struct {
 	clusterVersion string
 	agentVersion   string
 	FullSnapshot   bool
-	CacheLegacy    map[string]*Item
-	CacheModern    map[string]*Item
+	Cache          map[string]*Item
 }
 
 // Add will add an Item to the Delta Cache. It will debounce the objects.
 func (d *Delta) Add(i *Item) {
-	d.addToLegacy(i)
-	d.addToModern(i)
-}
-
-func (d *Delta) addToModern(i *Item) {
-	cache := d.CacheModern
+	cache := d.Cache
 
 	if len(i.kind) == 0 {
 		gvk, err := determineObjectGVK(i.Obj)
@@ -73,26 +64,6 @@ func (d *Delta) addToModern(i *Item) {
 	}
 }
 
-func (d *Delta) addToLegacy(i *Item) {
-	cache := d.CacheLegacy
-
-	key := keyObject(i.Obj)
-
-	if other, ok := cache[key]; ok && other.event == castai.EventAdd && i.event == castai.EventUpdate {
-		i.event = castai.EventAdd
-		cache[key] = i
-	} else if ok && other.event == castai.EventDelete && (i.event == castai.EventAdd || i.event == castai.EventUpdate) {
-		i.event = castai.EventUpdate
-		cache[key] = i
-	} else {
-		cache[key] = i
-	}
-}
-
-func keyObject(obj Object) string {
-	return fmt.Sprintf("%s::%s/%s", reflect.TypeOf(obj).String(), obj.GetNamespace(), obj.GetName())
-}
-
 func itemCacheKey(i *Item) string {
 	return fmt.Sprintf("%s::%s/%s", i.kind, i.Obj.GetNamespace(), i.Obj.GetName())
 }
@@ -101,22 +72,14 @@ func itemCacheKey(i *Item) string {
 // delivered.
 func (d *Delta) Clear() {
 	d.FullSnapshot = false
-	d.CacheLegacy = map[string]*Item{}
-	d.CacheModern = map[string]*Item{}
+	d.Cache = map[string]*Item{}
 }
 
 // ToCASTAIRequest maps the collected Delta Cache to the castai.Delta type.
 func (d *Delta) ToCASTAIRequest() *castai.Delta {
-	resultLegacy := d.toCASTAIRequestLegacy()
-	resultModern := d.toCASTAIRequestModern()
-	logMismatches(d.log, resultLegacy, resultModern)
-	return resultLegacy
-}
-
-func (d *Delta) toCASTAIRequestModern() *castai.Delta {
 	var items []*castai.DeltaItem
 
-	for _, i := range d.CacheModern {
+	for _, i := range d.Cache {
 		data, err := Encode(i.Obj)
 		if err != nil {
 			d.log.Errorf("failed to encode %T: %v", i.Obj, err)
@@ -125,43 +88,6 @@ func (d *Delta) toCASTAIRequestModern() *castai.Delta {
 		items = append(items, &castai.DeltaItem{
 			Event:     i.event,
 			Kind:      i.kind,
-			Data:      data,
-			CreatedAt: time.Now().UTC(),
-		})
-	}
-
-	return &castai.Delta{
-		ClusterID:      d.clusterID,
-		ClusterVersion: d.clusterVersion,
-		AgentVersion:   d.agentVersion,
-		FullSnapshot:   d.FullSnapshot,
-		Items:          items,
-	}
-}
-
-func (d *Delta) toCASTAIRequestLegacy() *castai.Delta {
-	var items []*castai.DeltaItem
-
-	for _, i := range d.CacheLegacy {
-		data, err := Encode(i.Obj)
-		if err != nil {
-			d.log.Errorf("failed to encode %T: %v", i.Obj, err)
-			continue
-		}
-
-		kinds, _, err := scheme.Scheme.ObjectKinds(i.Obj)
-		if err != nil {
-			d.log.Errorf("failed to find Object %T kind: %v", i.Obj, err)
-			continue
-		}
-		if len(kinds) == 0 || kinds[0].Kind == "" {
-			d.log.Errorf("unknown Object kind for Object %T", i.Obj)
-			continue
-		}
-
-		items = append(items, &castai.DeltaItem{
-			Event:     i.event,
-			Kind:      kinds[0].Kind,
 			Data:      data,
 			CreatedAt: time.Now().UTC(),
 		})
@@ -204,48 +130,6 @@ func determineObjectGVK(obj runtime.Object) (schema.GroupVersionKind, error) {
 	// Typically runtime types resolve to a single GVK combination but if it has multiple, at this point there is no way to
 	// determine which was the original one. We are just picking the first one and hoping it works out.
 	return kinds[0], nil
-}
-
-func logMismatches(log logrus.FieldLogger, legacy *castai.Delta, modern *castai.Delta) {
-	if len(legacy.Items) != len(modern.Items) {
-		log.Warnf("delta_modern number of items mismatch: %d legacy.Items vs %d modern.Items", len(legacy.Items), len(modern.Items))
-	}
-
-	checkLegacy := toChecksumMap(legacy)
-	checkModern := toChecksumMap(modern)
-
-	for key, _ := range checkLegacy {
-		if checkModern[key] == nil {
-			log.Warnf("delta_modern item mismatch: legacy list has item that is missing from modern list: %s", key)
-		}
-		delete(checkLegacy, key)
-		delete(checkModern, key)
-	}
-
-	for key, _ := range checkModern {
-		if checkLegacy[key] == nil {
-			log.Warnf("delta_modern item mismatch: modern list has item that is missing from legacy list: %s", key)
-		}
-		delete(checkLegacy, key)
-		delete(checkModern, key)
-	}
-}
-
-func toChecksumMap(delta *castai.Delta) map[string]*castai.DeltaItem {
-	out := map[string]*castai.DeltaItem{}
-	for _, i := range delta.Items {
-		var hash string
-		if i.Data != nil {
-			hash = sha256hash(*i.Data)
-		}
-		key := fmt.Sprintf("%s-%s-%s", i.Event, i.Kind, hash)
-		out[key] = i
-	}
-	return out
-}
-
-func sha256hash(data []byte) string {
-	return fmt.Sprintf("%x", sha256.Sum256(data))
 }
 
 type Object interface {
