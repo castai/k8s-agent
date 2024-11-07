@@ -13,6 +13,10 @@ import (
 
 	datadoghqv1alpha1 "github.com/DataDog/extendeddaemonset/api/v1alpha1"
 	argorollouts "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
+	karpenterCoreAlpha "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
+	karpenterCore "github.com/aws/karpenter-core/pkg/apis/v1beta1"
+	karpenterAlpha "github.com/aws/karpenter/pkg/apis/v1alpha1"
+	karpenter "github.com/aws/karpenter/pkg/apis/v1beta1"
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
@@ -26,7 +30,6 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/discovery"
@@ -51,7 +54,6 @@ import (
 	"castai-agent/internal/services/controller/handlers/transformers"
 	"castai-agent/internal/services/controller/handlers/transformers/annotations"
 	custominformers "castai-agent/internal/services/controller/informers"
-	"castai-agent/internal/services/controller/knowngv"
 	"castai-agent/internal/services/memorypressure"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/internal/services/version"
@@ -93,9 +95,7 @@ type Controller struct {
 type conditionalInformer struct {
 	// if empty it means all namespaces
 	namespace         string
-	groupVersion      schema.GroupVersion
-	resource          string
-	kind              string
+	resource          schema.GroupVersionResource
 	apiType           reflect.Type
 	informerFactory   func() cache.SharedIndexInformer
 	permissionVerbs   []string
@@ -104,11 +104,10 @@ type conditionalInformer struct {
 }
 
 func (i *conditionalInformer) Name() string {
-	resourceString := i.groupVersion.WithResource(i.resource).String()
 	if i.namespace != "" {
-		return fmt.Sprintf("Namespace:%s %s", i.namespace, resourceString)
+		return fmt.Sprintf("Namespace:%s %s", i.namespace, i.resource.String())
 	}
-	return resourceString
+	return i.resource.String()
 }
 
 func CollectSingleSnapshot(ctx context.Context,
@@ -398,7 +397,7 @@ func startConditionalInformers(ctx context.Context,
 		log.Warnf("Error when getting server resources: %v", err.Error())
 		resourcesInError := extractGroupVersionsFromApiResourceError(log, err)
 		for i, informer := range conditionalInformers {
-			conditionalInformers[i].isResourceInError = resourcesInError[informer.groupVersion]
+			conditionalInformers[i].isResourceInError = resourcesInError[informer.resource.GroupVersion()]
 		}
 	}
 	log.Infof("Cluster API server is available, trying to start conditional informers")
@@ -409,8 +408,8 @@ func startConditionalInformers(ctx context.Context,
 			conditionalInformers[i].isResourceInError = false
 			continue
 		}
-		apiResourceListForGroupVersion := getAPIResourceListByGroupVersion(informer.groupVersion.String(), apiResourceLists)
-		if !isResourceAvailable(informer.kind, apiResourceListForGroupVersion) {
+		apiResourceListForGroupVersion := getAPIResourceListByGroupVersion(informer.resource.GroupVersion().String(), apiResourceLists)
+		if !isResourceAvailable(informer.apiType, apiResourceListForGroupVersion) {
 			log.Infof("Skipping conditional informer name: %v, because API resource is not available",
 				informer.Name(),
 			)
@@ -427,9 +426,8 @@ func startConditionalInformers(ctx context.Context,
 		log.Infof("Starting conditional informer for %v", informer.Name())
 		conditionalInformers[i].isApplied = true
 
-		name := fmt.Sprintf("%s::%s", informer.groupVersion.String(), informer.kind)
 		handledInformer := custominformers.NewHandledInformer(log, queue, informer.informerFactory(), informer.apiType, nil, additionalTransformers...)
-		handledInformers[name] = handledInformer
+		handledInformers[informer.apiType.String()] = handledInformer
 
 		go handledInformer.Run(ctx.Done())
 	}
@@ -579,12 +577,12 @@ func (c *Controller) debugQueueContent(maxItems int) string {
 
 func informerHasAccess(ctx context.Context, informer conditionalInformer, selfSubjectAccessReview authorizationtypev1.SelfSubjectAccessReviewInterface, log logrus.FieldLogger) bool {
 	// Check if allowed to access all resources with the wildcard "*" verb
-	if access := informerIsAllowedToAccessResource(ctx, informer.namespace, "*", informer, informer.groupVersion.Group, selfSubjectAccessReview, log); access.Status.Allowed {
+	if access := informerIsAllowedToAccessResource(ctx, informer.namespace, "*", informer, informer.resource.Group, selfSubjectAccessReview, log); access.Status.Allowed {
 		return true
 	}
 
 	for _, verb := range informer.permissionVerbs {
-		access := informerIsAllowedToAccessResource(ctx, informer.namespace, verb, informer, informer.groupVersion.Group, selfSubjectAccessReview, log)
+		access := informerIsAllowedToAccessResource(ctx, informer.namespace, verb, informer, informer.resource.Group, selfSubjectAccessReview, log)
 		if !access.Status.Allowed {
 			return false
 		}
@@ -599,7 +597,7 @@ func informerIsAllowedToAccessResource(ctx context.Context, namespace, verb stri
 				Namespace: namespace,
 				Verb:      verb,
 				Group:     groupName,
-				Resource:  informer.resource,
+				Resource:  informer.resource.Resource,
 			},
 		},
 	}, metav1.CreateOptions{})
@@ -692,9 +690,7 @@ func extractGroupVersionsFromApiResourceError(log logrus.FieldLogger, err error)
 func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Controller, f informers.SharedInformerFactory, df dynamicinformer.DynamicSharedInformerFactory, metricsClient versioned.Interface, logger logrus.FieldLogger) []conditionalInformer {
 	conditionalInformers := []conditionalInformer{
 		{
-			groupVersion:    policyv1.SchemeGroupVersion,
-			resource:        "poddisruptionbudgets",
-			kind:            "PodDisruptionBudget",
+			resource:        policyv1.SchemeGroupVersion.WithResource("poddisruptionbudgets"),
 			apiType:         reflect.TypeOf(&policyv1.PodDisruptionBudget{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
@@ -702,9 +698,7 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			},
 		},
 		{
-			groupVersion:    storagev1.SchemeGroupVersion,
-			resource:        "csinodes",
-			kind:            "CSINode",
+			resource:        storagev1.SchemeGroupVersion.WithResource("csinodes"),
 			apiType:         reflect.TypeOf(&storagev1.CSINode{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
@@ -712,9 +706,7 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			},
 		},
 		{
-			groupVersion:    autoscalingv1.SchemeGroupVersion,
-			resource:        "horizontalpodautoscalers",
-			kind:            "HorizontalPodAutoscaler",
+			resource:        autoscalingv1.SchemeGroupVersion.WithResource("horizontalpodautoscalers"),
 			apiType:         reflect.TypeOf(&autoscalingv1.HorizontalPodAutoscaler{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
@@ -722,69 +714,55 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			},
 		},
 		{
-			groupVersion:    knowngv.KarpenterCoreV1Alpha5,
-			resource:        "provisioners",
-			kind:            "Provisioner",
-			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
+			resource:        karpenterCoreAlpha.SchemeGroupVersion.WithResource("provisioners"),
+			apiType:         reflect.TypeOf(&karpenterCoreAlpha.Provisioner{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return df.ForResource(knowngv.KarpenterCoreV1Alpha5.WithResource("provisioners")).Informer()
+				return df.ForResource(karpenterCoreAlpha.SchemeGroupVersion.WithResource("provisioners")).Informer()
 			},
 		},
 		{
-			groupVersion:    knowngv.KarpenterCoreV1Alpha5,
-			resource:        "machines",
-			kind:            "Machine",
-			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
+			resource:        karpenterCoreAlpha.SchemeGroupVersion.WithResource("machines"),
+			apiType:         reflect.TypeOf(&karpenterCoreAlpha.Machine{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return df.ForResource(knowngv.KarpenterCoreV1Alpha5.WithResource("machines")).Informer()
+				return df.ForResource(karpenterCoreAlpha.SchemeGroupVersion.WithResource("machines")).Informer()
 			},
 		},
 		{
-			groupVersion:    knowngv.KarpenterV1Alpha1,
-			resource:        "awsnodetemplates",
-			kind:            "AWSNodeTemplate",
-			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
+			resource:        karpenterAlpha.SchemeGroupVersion.WithResource("awsnodetemplates"),
+			apiType:         reflect.TypeOf(&karpenterAlpha.AWSNodeTemplate{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return df.ForResource(knowngv.KarpenterV1Alpha1.WithResource("awsnodetemplates")).Informer()
+				return df.ForResource(karpenterAlpha.SchemeGroupVersion.WithResource("awsnodetemplates")).Informer()
 			},
 		},
 		{
-			groupVersion:    knowngv.KarpenterCoreV1Beta1,
-			resource:        "nodepools",
-			kind:            "NodePool",
-			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
+			resource:        karpenterCore.SchemeGroupVersion.WithResource("nodepools"),
+			apiType:         reflect.TypeOf(&karpenterCore.NodePool{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return df.ForResource(knowngv.KarpenterCoreV1Beta1.WithResource("nodepools")).Informer()
+				return df.ForResource(karpenterCore.SchemeGroupVersion.WithResource("nodepools")).Informer()
 			},
 		},
 		{
-			groupVersion:    knowngv.KarpenterCoreV1Beta1,
-			resource:        "nodeclaims",
-			kind:            "NodeClaim",
-			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
+			resource:        karpenterCore.SchemeGroupVersion.WithResource("nodeclaims"),
+			apiType:         reflect.TypeOf(&karpenterCore.NodeClaim{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return df.ForResource(knowngv.KarpenterCoreV1Beta1.WithResource("nodeclaims")).Informer()
+				return df.ForResource(karpenterCore.SchemeGroupVersion.WithResource("nodeclaims")).Informer()
 			},
 		},
 		{
-			groupVersion:    knowngv.KarpenterV1Beta1,
-			resource:        "ec2nodeclasses",
-			kind:            "EC2NodeClass",
-			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
+			resource:        karpenter.SchemeGroupVersion.WithResource("ec2nodeclasses"),
+			apiType:         reflect.TypeOf(&karpenter.EC2NodeClass{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return df.ForResource(knowngv.KarpenterV1Beta1.WithResource("ec2nodeclasses")).Informer()
+				return df.ForResource(karpenter.SchemeGroupVersion.WithResource("ec2nodeclasses")).Informer()
 			},
 		},
 		{
-			groupVersion:    datadoghqv1alpha1.GroupVersion,
-			resource:        "extendeddaemonsetreplicasets",
-			kind:            "ExtendedDaemonSetReplicaSet",
+			resource:        datadoghqv1alpha1.GroupVersion.WithResource("extendeddaemonsetreplicasets"),
 			apiType:         reflect.TypeOf(&datadoghqv1alpha1.ExtendedDaemonSetReplicaSet{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
@@ -792,9 +770,7 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			},
 		},
 		{
-			groupVersion:    v1beta1.SchemeGroupVersion,
-			resource:        "pods",
-			kind:            "Pod",
+			resource:        v1beta1.SchemeGroupVersion.WithResource("pods"),
 			apiType:         reflect.TypeOf(&v1beta1.PodMetrics{}),
 			permissionVerbs: []string{"get", "list"},
 			informerFactory: func() cache.SharedIndexInformer {
@@ -802,9 +778,7 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			},
 		},
 		{
-			groupVersion:    argorollouts.RolloutGVR.GroupVersion(),
-			resource:        argorollouts.RolloutGVR.Resource,
-			kind:            "Rollout",
+			resource:        argorollouts.RolloutGVR,
 			apiType:         reflect.TypeOf(&argorollouts.Rollout{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
@@ -812,9 +786,7 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			},
 		},
 		{
-			groupVersion:    crd.RecommendationGVR.GroupVersion(),
-			resource:        crd.RecommendationGVR.Resource,
-			kind:            "Recommendation",
+			resource:        crd.RecommendationGVR,
 			apiType:         reflect.TypeOf(&crd.Recommendation{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
@@ -822,9 +794,7 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			},
 		},
 		{
-			groupVersion:    networkingv1.SchemeGroupVersion,
-			resource:        "ingresses",
-			kind:            "Ingress",
+			resource:        networkingv1.SchemeGroupVersion.WithResource("ingresses"),
 			apiType:         reflect.TypeOf(&networkingv1.Ingress{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
@@ -832,9 +802,7 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			},
 		},
 		{
-			groupVersion:    networkingv1.SchemeGroupVersion,
-			resource:        "networkpolicies",
-			kind:            "NetworkPolicy",
+			resource:        networkingv1.SchemeGroupVersion.WithResource("networkpolicies"),
 			apiType:         reflect.TypeOf(&networkingv1.NetworkPolicy{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
@@ -842,9 +810,7 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			},
 		},
 		{
-			groupVersion:    rbacv1.SchemeGroupVersion,
-			resource:        "roles",
-			kind:            "Role",
+			resource:        rbacv1.SchemeGroupVersion.WithResource("roles"),
 			apiType:         reflect.TypeOf(&rbacv1.Role{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
@@ -852,9 +818,7 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			},
 		},
 		{
-			groupVersion:    rbacv1.SchemeGroupVersion,
-			resource:        "rolebindings",
-			kind:            "RoleBinding",
+			resource:        rbacv1.SchemeGroupVersion.WithResource("rolebindings"),
 			apiType:         reflect.TypeOf(&rbacv1.RoleBinding{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
@@ -862,9 +826,7 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			},
 		},
 		{
-			groupVersion:    rbacv1.SchemeGroupVersion,
-			resource:        "clusterroles",
-			kind:            "ClusterRole",
+			resource:        rbacv1.SchemeGroupVersion.WithResource("clusterroles"),
 			apiType:         reflect.TypeOf(&rbacv1.ClusterRole{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
@@ -872,9 +834,7 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			},
 		},
 		{
-			groupVersion:    rbacv1.SchemeGroupVersion,
-			resource:        "clusterrolebindings",
-			kind:            "ClusterRoleBinding",
+			resource:        rbacv1.SchemeGroupVersion.WithResource("clusterrolebindings"),
 			apiType:         reflect.TypeOf(&rbacv1.ClusterRoleBinding{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
@@ -886,9 +846,7 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 	for _, cmNamespace := range cfg.ConfigMapNamespaces {
 		conditionalInformers = append(conditionalInformers, conditionalInformer{
 			namespace:       cmNamespace,
-			groupVersion:    corev1.SchemeGroupVersion,
-			resource:        "configmaps",
-			kind:            "ConfigMap",
+			resource:        corev1.SchemeGroupVersion.WithResource("configmaps"),
 			apiType:         reflect.TypeOf(&corev1.ConfigMap{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
@@ -967,12 +925,14 @@ func getAPIResourceListByGroupVersion(groupVersion string, apiResourceLists []*m
 			return apiResourceList
 		}
 	}
+	// return empty list if not found
 	return &metav1.APIResourceList{}
 }
 
-func isResourceAvailable(kind string, apiResourceList *metav1.APIResourceList) bool {
+func isResourceAvailable(kind reflect.Type, apiResourceList *metav1.APIResourceList) bool {
 	for _, apiResource := range apiResourceList.APIResources {
-		if kind == apiResource.Kind {
+		// apiResource.Kind is, ex.: "PodMetrics", while kind.String() is, ex.: "*v1.PodMetrics"
+		if strings.Contains(kind.String(), apiResource.Kind) {
 			return true
 		}
 	}
