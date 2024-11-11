@@ -180,7 +180,7 @@ func CollectSingleSnapshot(ctx context.Context,
 		return nil, err
 	}
 
-	log.Debugf("synced %d items", len(d.CacheLegacy))
+	log.Debugf("synced %d items", len(d.Cache))
 
 	return d.ToCASTAIRequest(), nil
 }
@@ -514,7 +514,7 @@ func (c *Controller) send(ctx context.Context) {
 	nodesByName := map[string]*corev1.Node{}
 	var nodes []*corev1.Node
 
-	for _, item := range c.delta.CacheLegacy {
+	for _, item := range c.delta.Cache {
 		n, ok := item.Obj.(*corev1.Node)
 		if !ok {
 			continue
