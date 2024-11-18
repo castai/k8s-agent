@@ -41,7 +41,7 @@ import (
 	authorizationtypev1 "k8s.io/client-go/kubernetes/typed/authorization/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
+	metrics_v1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	"k8s.io/metrics/pkg/client/clientset/versioned"
 
 	"castai-agent/internal/castai"
@@ -770,8 +770,8 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			},
 		},
 		{
-			resource:        v1beta1.SchemeGroupVersion.WithResource("pods"),
-			apiType:         reflect.TypeOf(&v1beta1.PodMetrics{}),
+			resource:        metrics_v1beta1.SchemeGroupVersion.WithResource("pods"),
+			apiType:         reflect.TypeOf(&metrics_v1beta1.PodMetrics{}),
 			permissionVerbs: []string{"get", "list"},
 			informerFactory: func() cache.SharedIndexInformer {
 				return custominformers.NewPodMetricsInformer(logger, metricsClient)
