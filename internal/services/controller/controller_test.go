@@ -42,6 +42,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	authfakev1 "k8s.io/client-go/kubernetes/typed/authorization/v1/fake"
 	k8stesting "k8s.io/client-go/testing"
+	metrics_v1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	metrics_fake "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 
 	"castai-agent/internal/castai"
@@ -84,18 +85,18 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
-			expectedReceivedObjectsCount: 21,
+			expectedReceivedObjectsCount: 22,
 		},
 		"when fetching api resources produces multiple errors should exclude those resources": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 19,
+			expectedReceivedObjectsCount: 20,
 		},
 		"when fetching api resources produces single error should exclude that resource": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 20,
+			expectedReceivedObjectsCount: 21,
 		},
 	}
 
@@ -109,12 +110,13 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			utilruntime.Must(datadoghqv1alpha1.SchemeBuilder.AddToScheme(scheme))
 			utilruntime.Must(argorollouts.SchemeBuilder.AddToScheme(scheme))
 			utilruntime.Must(crd.SchemeBuilder.AddToScheme(scheme))
+			utilruntime.Must(metrics_v1beta1.SchemeBuilder.AddToScheme(scheme))
 
 			mockctrl := gomock.NewController(t)
 			castaiclient := mock_castai.NewMockClient(mockctrl)
 			version := mock_version.NewMockInterface(mockctrl)
 			provider := mock_types.NewMockProvider(mockctrl)
-			objectsData, clientset, dynamicClient := loadInitialHappyPathData(t, scheme)
+			objectsData, clientset, dynamicClient, metricsClient := loadInitialHappyPathData(t, scheme)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
@@ -134,7 +136,6 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 				}, nil
 			})
 
-			metricsClient := metrics_fake.NewSimpleClientset()
 			log := logrus.New()
 			log.SetLevel(logrus.DebugLevel)
 
@@ -182,7 +183,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 								item.Data != nil &&
 								strings.Contains(string(*item.Data), expectedGVString) // Hacky but OK given this is for testing purposes.
 						})
-						require.True(t, found)
+						require.Truef(t, found, "missing object for %s %s", expectedGVString, expected.Kind)
 						require.NotNil(t, actual.Data)
 						require.JSONEq(t, string(*expected.Data), string(*actual.Data))
 					}
@@ -553,7 +554,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 	}, 10*time.Millisecond, ctx.Done())
 }
 
-func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObject, *fake.Clientset, *dynamic_fake.FakeDynamicClient) {
+func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObject, *fake.Clientset, *dynamic_fake.FakeDynamicClient, *metrics_fake.Clientset) {
 	provisionersGvr := karpenterCoreAlpha.SchemeGroupVersion.WithResource("provisioners")
 	machinesGvr := karpenterCoreAlpha.SchemeGroupVersion.WithResource("machines")
 	awsNodeTemplatesGvr := karpenterAlpha.SchemeGroupVersion.WithResource("awsnodetemplates")
@@ -615,6 +616,20 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		},
 	}
 	pdbData, err := delta.Encode(pdb)
+	require.NoError(t, err)
+
+	podMetricsResource := metrics_v1beta1.SchemeGroupVersion.WithResource("pods")
+	podMetrics := &metrics_v1beta1.PodMetrics{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodMetrics",
+			APIVersion: metrics_v1beta1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "podmetrics",
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+	podMetricsData, err := delta.Encode(podMetrics)
 	require.NoError(t, err)
 
 	hpa := &autoscalingv1.HorizontalPodAutoscaler{
@@ -862,6 +877,12 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		clusterRoleBinding,
 	)
 	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, provisioners, machines, awsNodeTemplates, nodePools, nodeClaims, ec2NodeClasses, datadogExtendedDSReplicaSet, rollout, recommendation)
+
+	metricsClient := metrics_fake.NewSimpleClientset()
+	// PodMetrics must be added to the tracker using Create method as it allows specifying custom resource. Otherwise heuristics are used and incorrect resource is associated.
+	err = metricsClient.Tracker().Create(podMetricsResource, podMetrics, v1.NamespaceDefault)
+	require.NoError(t, err)
+
 	clientset.Fake.Resources = []*metav1.APIResourceList{
 		{
 			GroupVersion: autoscalingv1.SchemeGroupVersion.String(),
@@ -904,6 +925,17 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 					Name:  "poddisruptionbudgets",
 					Kind:  "PodDisruptionBudget",
 					Verbs: []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
+			GroupVersion: metrics_v1beta1.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group: "metrics.k8s.io",
+					Name:  "pods",
+					Kind:  "PodMetrics",
+					Verbs: []string{"get", "list"},
 				},
 			},
 		},
@@ -1079,6 +1111,12 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Data:     pdbData,
 		},
 		{
+			GV:       metrics_v1beta1.SchemeGroupVersion,
+			Kind:     "PodMetrics",
+			Resource: "pods",
+			Data:     podMetricsData,
+		},
+		{
 			GV:       autoscalingv1.SchemeGroupVersion,
 			Kind:     "HorizontalPodAutoscaler",
 			Resource: "horizontalpodautoscalers",
@@ -1184,7 +1222,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	// There are a lot of manually entered samples. Running some sanity checks to ensure they don't contain basic errors.
 	verifySampleObjectsAreValid(t, objects)
 
-	return objects, clientset, dynamicClient
+	return objects, clientset, dynamicClient, metricsClient
 }
 
 func TestDefaultInformers_MatchFilters(t *testing.T) {
