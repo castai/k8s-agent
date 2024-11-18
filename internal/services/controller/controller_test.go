@@ -183,7 +183,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 								item.Data != nil &&
 								strings.Contains(string(*item.Data), expectedGVString) // Hacky but OK given this is for testing purposes.
 						})
-						require.Truef(t, found, "missing object for %s %s", expectedGVString, expected.Kind)
+						require.Truef(t, found, "missing object for %q %q", expectedGVString, expected.Kind)
 						require.NotNil(t, actual.Data)
 						require.JSONEq(t, string(*expected.Data), string(*actual.Data))
 					}
