@@ -1185,6 +1185,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 func TestDefaultInformers_MatchFilters(t *testing.T) {
 	tests := map[string]struct {
 		obj           runtime.Object
+		eventType     castai.EventType
 		expectedMatch bool
 	}{
 		"keep if replicaset in castware namespace": {
@@ -1193,6 +1194,7 @@ func TestDefaultInformers_MatchFilters(t *testing.T) {
 					Namespace: "castware",
 				},
 			},
+			eventType:     castai.EventAdd,
 			expectedMatch: true,
 		},
 		"discard if replicaset has zero replicas": {
@@ -1207,6 +1209,7 @@ func TestDefaultInformers_MatchFilters(t *testing.T) {
 					Replicas: 0,
 				},
 			},
+			eventType:     castai.EventAdd,
 			expectedMatch: false,
 		},
 		"keep if replicaset has more than zero replicas": {
@@ -1221,6 +1224,16 @@ func TestDefaultInformers_MatchFilters(t *testing.T) {
 					Replicas: 1,
 				},
 			},
+			eventType:     castai.EventAdd,
+			expectedMatch: true,
+		},
+		"keep if delete event": {
+			obj: &appsv1.ReplicaSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test",
+				},
+			},
+			eventType:     castai.EventDelete,
 			expectedMatch: true,
 		},
 	}
@@ -1233,7 +1246,7 @@ func TestDefaultInformers_MatchFilters(t *testing.T) {
 			defaultInformers := getDefaultInformers(f, "castware")
 			objInformer := defaultInformers[reflect.TypeOf(data.obj)]
 
-			match := objInformer.filters.Apply(castai.EventAdd, data.obj)
+			match := objInformer.filters.Apply(data.eventType, data.obj)
 
 			r.Equal(data.expectedMatch, match)
 		})

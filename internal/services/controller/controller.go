@@ -924,7 +924,7 @@ func getDefaultInformers(f informers.SharedInformerFactory, castwareNamespace st
 							return false
 						}
 
-						return replicaSet.Namespace == castwareNamespace ||
+						return e == castai.EventDelete || replicaSet.Namespace == castwareNamespace ||
 							(replicaSet.Spec.Replicas != nil && *replicaSet.Spec.Replicas > 0 && replicaSet.Status.Replicas > 0)
 					},
 				},
