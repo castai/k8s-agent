@@ -48,7 +48,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 				r.NoError(os.Setenv("API_URL", "test"))
 			},
 			discoveryServiceMock: func(t *testing.T, discoveryService *mock_discovery.MockService) {
-				discoveryService.EXPECT().GetClusterID(gomock.Any()).Return(&regReq.ID, nil)
+				discoveryService.EXPECT().GetKubeSystemNamespaceID(gomock.Any()).Return(&regReq.ID, nil)
 				discoveryService.EXPECT().GetCSPAndRegion(gomock.Any()).Return(cloud.Cloud(regReq.Openshift.CSP), regReq.Openshift.Region, nil)
 				discoveryService.EXPECT().GetOpenshiftClusterID(gomock.Any()).Return(regReq.Openshift.InternalID, nil)
 				discoveryService.EXPECT().GetOpenshiftClusterName(gomock.Any()).Return(regReq.Name, nil)
@@ -66,7 +66,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 				r.NoError(os.Setenv("OPENSHIFT_INTERNAL_ID", regReq.Openshift.InternalID))
 			},
 			discoveryServiceMock: func(t *testing.T, discoveryService *mock_discovery.MockService) {
-				discoveryService.EXPECT().GetClusterID(gomock.Any()).Return(&regReq.ID, nil)
+				discoveryService.EXPECT().GetKubeSystemNamespaceID(gomock.Any()).Return(&regReq.ID, nil)
 			},
 		},
 	}

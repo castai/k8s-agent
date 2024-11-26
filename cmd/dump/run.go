@@ -52,7 +52,7 @@ func run(ctx context.Context) error {
 	if cfg.Static != nil && cfg.Static.ClusterID != "" {
 		clusterID = cfg.Static.ClusterID
 	} else {
-		c, err := discoveryService.GetClusterID(ctx)
+		c, err := discoveryService.GetKubeSystemNamespaceID(ctx)
 		if err != nil {
 			return fmt.Errorf("getting cluster ID: %w", err)
 		}
