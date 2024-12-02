@@ -27,6 +27,7 @@ type Config struct {
 	KOPS      *KOPS      `mapstructure:"kops"`
 	AKS       *AKS       `mapstructure:"aks"`
 	OpenShift *OpenShift `mapstructure:"openshift"`
+	Anywhere  *Anywhere  `mapstructure:"anywhere"`
 
 	Static      *Static     `mapstructure:"static"`
 	Controller  *Controller `mapstructure:"controller"`
@@ -107,6 +108,10 @@ type OpenShift struct {
 
 type Static struct {
 	ClusterID string `mapstructure:"cluster_id"`
+}
+
+type Anywhere struct {
+	ClusterName string `mapstructure:"cluster_name"`
 }
 
 type Controller struct {

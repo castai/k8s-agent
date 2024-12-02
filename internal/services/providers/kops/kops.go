@@ -35,7 +35,7 @@ type Provider struct {
 }
 
 func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*types.ClusterRegistration, error) {
-	clusterID, err := p.discoveryService.GetClusterID(ctx)
+	clusterID, err := p.discoveryService.GetKubeSystemNamespaceID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting cluster ID: %w", err)
 	}
