@@ -34,6 +34,8 @@ type Config struct {
 	PprofPort   int         `mapstructure:"pprof.port"`
 	HealthzPort int         `mapstructure:"healthz_port"`
 
+	MetadataStore *MetadataStoreConfig `mapstructure:"metadata_store"`
+
 	LeaderElection LeaderElectionConfig `mapstructure:"leader_election"`
 
 	MonitorMetadata string `mapstructure:"monitor_metadata"`
@@ -110,6 +112,12 @@ type Static struct {
 	ClusterID string `mapstructure:"cluster_id"`
 }
 
+type MetadataStoreConfig struct {
+	Enabled            bool   `mapstructure:"enabled"`
+	ConfigMapNamespace string `mapstructure:"config_map_namespace"`
+	ConfigMapName      string `mapstructure:"config_map_name"`
+}
+
 type Anywhere struct {
 	ClusterName string `mapstructure:"cluster_name"`
 }
@@ -168,6 +176,10 @@ func Get() Config {
 	viper.SetDefault("leader_election.enabled", true)
 	viper.SetDefault("leader_election.lock_name", "agent-leader-election-lock")
 	viper.SetDefault("leader_election.namespace", "castai-agent")
+
+	viper.SetDefault("metadata_store.enabled", false)
+	viper.SetDefault("metadata_store.config_map_name", "castai-agent-metadata")
+	viper.SetDefault("metadata_store.config_map_namespace", "castai-agent")
 
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
