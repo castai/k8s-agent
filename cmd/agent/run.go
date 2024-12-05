@@ -24,6 +24,7 @@ import (
 	"castai-agent/internal/services/controller"
 	"castai-agent/internal/services/controller/scheme"
 	"castai-agent/internal/services/discovery"
+	"castai-agent/internal/services/metadata"
 	"castai-agent/internal/services/monitor"
 	"castai-agent/internal/services/providers"
 	"castai-agent/internal/services/replicas"
@@ -174,6 +175,18 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 		return fmt.Errorf("getting provider: %w", err)
 	}
 
+	metadataStore := metadata.New(clientset, cfg)
+
+	clusterIDChangedHandler := func(clusterID string) {
+		if err := metadataStore.StoreMetadataConfigMap(ctx, &metadata.Metadata{
+			ClusterID: clusterID,
+		}); err != nil {
+			log.Warnf("failed to store metadata in a config map: %v", err)
+		}
+
+		clusterIDChanged(clusterID)
+	}
+
 	log.Data["provider"] = provider.Name()
 	log.Infof("using provider %q", provider.Name())
 
@@ -189,10 +202,10 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 				return fmt.Errorf("registering cluster: %w", err)
 			}
 			clusterID = reg.ClusterID
-			clusterIDChanged(clusterID)
+			clusterIDChangedHandler(clusterID)
 			log.Infof("cluster registered: %v, clusterID: %s", reg, clusterID)
 		} else {
-			clusterIDChanged(clusterID)
+			clusterIDChangedHandler(clusterID)
 			log.Infof("clusterID: %s provided by env variable", clusterID)
 		}
 
