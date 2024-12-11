@@ -31,7 +31,7 @@ type Config struct {
 
 	Static      *Static     `mapstructure:"static"`
 	Controller  *Controller `mapstructure:"controller"`
-	PprofPort   int         `mapstructure:"pprof.port"`
+	PprofPort   int         `mapstructure:"pprof_port"`
 	HealthzPort int         `mapstructure:"healthz_port"`
 
 	MetadataStore *MetadataStoreConfig `mapstructure:"metadata_store"`
