@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"runtime"
@@ -263,7 +262,6 @@ func watchExitErrors(ctx context.Context, log *logrus.Entry, exitCh chan error, 
 func runPProf(cfg config.Config, log *logrus.Entry, exitCh chan error) (closeFunc func()) {
 	log.Infof("starting pprof server on port: %d", cfg.PprofPort)
 	addr := portToServerAddr(cfg.PprofPort)
-	checkPort(addr, "pprof", log)
 	pprofSrv := &http.Server{Addr: addr, Handler: http.DefaultServeMux}
 	closeFn := func() {
 		log.Infof("closing pprof server")
@@ -292,7 +290,6 @@ func runHealthzEndpoints(cfg config.Config, log *logrus.Entry, checks map[string
 		"server": healthz.Ping,
 	}, checks)
 	addr := portToServerAddr(cfg.HealthzPort)
-	checkPort(addr, "healthz", log)
 	healthzSrv := &http.Server{Addr: addr, Handler: &healthz.Handler{Checks: allChecks}}
 	closeFunc := func() {
 		log.Infof("closing healthz server")
@@ -313,16 +310,6 @@ func runHealthzEndpoints(cfg config.Config, log *logrus.Entry, checks map[string
 		}
 	}()
 	return closeFunc
-}
-
-func checkPort(address string, serverName string, log *logrus.Entry) {
-	listener, err := net.Listen("tcp", address)
-	if err != nil {
-		log.Errorf("port required to start %s server is not free, address: %s, error: %v", serverName, address, err)
-		return
-	}
-	defer listener.Close()
-	log.Infof("port required to start %s server is free, address: %s", serverName, address)
 }
 
 func portToServerAddr(port int) string {
