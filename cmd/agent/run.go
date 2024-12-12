@@ -113,13 +113,12 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 	ctx, ctxCancel := context.WithCancel(ctx)
 	defer ctxCancel()
 
-	agentVersion := config.VersionInfo
-
 	// buffer will allow for all senders to push, even though we will only read first error and cancel context after it;
 	// all errors from exitCh are logged
 	exitCh := make(chan error, 10)
 	go watchExitErrors(ctx, log, exitCh, ctxCancel)
 
+	agentVersion := config.VersionInfo
 	log.Infof("running agent version: %v", agentVersion)
 	log.Infof("platform URL: %s", cfg.API.URL)
 
@@ -261,36 +260,54 @@ func watchExitErrors(ctx context.Context, log *logrus.Entry, exitCh chan error, 
 }
 
 func runPProf(cfg config.Config, log *logrus.Entry, exitCh chan error) (closeFunc func()) {
+	log.Infof("starting pprof server on port: %d", cfg.PprofPort)
 	addr := portToServerAddr(cfg.PprofPort)
 	pprofSrv := &http.Server{Addr: addr, Handler: http.DefaultServeMux}
 	closeFn := func() {
+		log.Infof("closing pprof server")
 		if err := pprofSrv.Close(); err != nil {
 			log.Errorf("closing pprof server: %v", err)
 		}
 	}
 
 	go func() {
-		log.Infof("starting pprof server on %s", addr)
-		exitCh <- fmt.Errorf("pprof server: %w", pprofSrv.ListenAndServe())
+		log.Infof("pprof server ready")
+		err := pprofSrv.ListenAndServe()
+		if err != nil {
+			if !errors.Is(err, http.ErrServerClosed) {
+				exitCh <- fmt.Errorf("pprof server: %w", err)
+			} else {
+				log.Warnf("pprof server closed")
+			}
+		}
 	}()
 	return closeFn
 }
 
 func runHealthzEndpoints(cfg config.Config, log *logrus.Entry, checks map[string]healthz.Checker, exitCh chan error) func() {
-	log.Infof("starting healthz on port: %d", cfg.HealthzPort)
+	log.Infof("starting healthz server on port: %d", cfg.HealthzPort)
 	allChecks := lo.Assign(map[string]healthz.Checker{
 		"server": healthz.Ping,
 	}, checks)
-
-	healthzSrv := &http.Server{Addr: portToServerAddr(cfg.HealthzPort), Handler: &healthz.Handler{Checks: allChecks}}
+	addr := portToServerAddr(cfg.HealthzPort)
+	healthzSrv := &http.Server{Addr: addr, Handler: &healthz.Handler{Checks: allChecks}}
 	closeFunc := func() {
+		log.Infof("closing healthz server")
 		if err := healthzSrv.Close(); err != nil {
 			log.Errorf("closing healthz server: %v", err)
 		}
 	}
 
 	go func() {
-		exitCh <- fmt.Errorf("healthz server: %w", healthzSrv.ListenAndServe())
+		log.Infof("healthz server ready")
+		err := healthzSrv.ListenAndServe()
+		if err != nil {
+			if !errors.Is(err, http.ErrServerClosed) {
+				exitCh <- fmt.Errorf("healthz server: %w", err)
+			} else {
+				log.Warnf("healthz server closed")
+			}
+		}
 	}()
 	return closeFunc
 }

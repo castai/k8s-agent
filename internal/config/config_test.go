@@ -18,6 +18,7 @@ func TestConfig(t *testing.T) {
 	require.NoError(t, os.Setenv("EKS_ACCOUNT_ID", "123"))
 	require.NoError(t, os.Setenv("EKS_REGION", "eu-central-1"))
 	require.NoError(t, os.Setenv("EKS_CLUSTER_NAME", "eks"))
+	require.NoError(t, os.Setenv("PPROF_PORT", "6060"))
 
 	cfg := Get()
 
@@ -26,7 +27,7 @@ func TestConfig(t *testing.T) {
 	require.Equal(t, cfg.LeaderElection.Namespace, "castai-agent")
 	require.Equal(t, "abc", cfg.API.Key)
 	require.Equal(t, "https://api.cast.ai", cfg.API.URL)
-
+	require.Equal(t, 6060, cfg.PprofPort)
 	require.Equal(t, "~/.kube/config", cfg.Kubeconfig)
 
 	require.Equal(t, "EKS", cfg.Provider)
