@@ -145,10 +145,12 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 	if err != nil {
 		return err
 	}
+	log.Infof("kube config configured")
 
 	if err := v1beta1.AddToScheme(scheme.Scheme); err != nil {
 		return fmt.Errorf("adding metrics objs to scheme: %w", err)
 	}
+	log.Infof("metrics added to schema")
 
 	restconfig.NegotiatedSerializer = serializer.NewCodecFactory(scheme.Scheme)
 
@@ -156,25 +158,32 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 	if err != nil {
 		return err
 	}
+	log.Infof("kubernetes client initialized")
 
 	metricsClient, err := versioned.NewForConfig(restconfig)
 	if err != nil {
 		return fmt.Errorf("initializing metrics client: %w", err)
 	}
+	log.Infof("metrics client initialized")
 
 	dynamicClient, err := dynamic.NewForConfig(restconfig)
 	if err != nil {
 		return fmt.Errorf("initializing dynamic client: %w", err)
 	}
+	log.Infof("dynamic client initialized")
 
 	discoveryService := discovery.New(clientset, dynamicClient)
+	log.Infof("discovery service initialized")
 
 	provider, err := providers.GetProvider(ctx, log, discoveryService, dynamicClient)
 	if err != nil {
 		return fmt.Errorf("getting provider: %w", err)
 	}
+	log.Data["provider"] = provider.Name()
+	log.Infof("using provider %q", provider.Name())
 
 	metadataStore := metadata.New(clientset, cfg)
+	log.Infof("metadata store initialized")
 
 	clusterIDChangedHandler := func(clusterID string) {
 		if err := metadataStore.StoreMetadataConfigMap(ctx, &metadata.Metadata{
@@ -186,21 +195,23 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 		clusterIDChanged(clusterID)
 	}
 
-	log.Data["provider"] = provider.Name()
-	log.Infof("using provider %q", provider.Name())
-
 	agentLoopFunc := func(ctx context.Context) error {
+		log.Infof("starting agent loop")
 		clusterID := ""
 		if cfg.Static != nil {
+			log.Infof("using static cluster ID")
 			clusterID = cfg.Static.ClusterID
 		}
 
 		if clusterID == "" {
+			log.Infof("starting cluster registration")
 			reg, err := provider.RegisterCluster(ctx, castaiclient)
 			if err != nil {
 				return fmt.Errorf("registering cluster: %w", err)
 			}
+
 			clusterID = reg.ClusterID
+			log.Infof("cluster ID set to %s", clusterID)
 			clusterIDChangedHandler(clusterID)
 			log.Infof("cluster registered: %v, clusterID: %s", reg, clusterID)
 		} else {
@@ -211,7 +222,9 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 		if err := saveMetadata(clusterID, cfg); err != nil {
 			return err
 		}
+		log.Infof("metadata saved")
 
+		log.Infof("starting controller loop")
 		err = controller.Loop(
 			ctx,
 			log,
