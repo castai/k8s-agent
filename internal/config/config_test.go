@@ -37,3 +37,22 @@ func TestConfig(t *testing.T) {
 	require.Equal(t, "eu-central-1", cfg.EKS.Region)
 	require.Equal(t, "eks", cfg.EKS.ClusterName)
 }
+
+func TestConfigWhenProviderIsNotConfigured(t *testing.T) {
+	require.NoError(t, os.Setenv("API_KEY", "abc"))
+	require.NoError(t, os.Setenv("API_URL", "api.cast.ai"))
+	require.NoError(t, os.Setenv("KUBECONFIG", "~/.kube/config"))
+	require.NoError(t, os.Setenv("PPROF_PORT", "6060"))
+
+	cfg := Get()
+
+	require.Equal(t, cfg.HealthzPort, 9876)
+	require.Equal(t, cfg.LeaderElection.LockName, "agent-leader-election-lock")
+	require.Equal(t, cfg.LeaderElection.Namespace, "castai-agent")
+	require.Equal(t, "abc", cfg.API.Key)
+	require.Equal(t, "https://api.cast.ai", cfg.API.URL)
+	require.Equal(t, 6060, cfg.PprofPort)
+	require.Equal(t, "~/.kube/config", cfg.Kubeconfig)
+
+	require.Equal(t, "", cfg.Provider)
+}

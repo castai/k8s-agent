@@ -39,6 +39,9 @@ func run(ctx context.Context) error {
 	if cfg.API.URL == "" {
 		return errors.New("env variable \"API_URL\" is required")
 	}
+	if cfg.Provider == "" {
+		return errors.New("env variable \"PROVIDER\" is required")
+	}
 
 	textFormatter := logrus.TextFormatter{FullTimestamp: true}
 	remoteLogger := logrus.New()
