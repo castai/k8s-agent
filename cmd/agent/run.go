@@ -175,8 +175,10 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 	discoveryService := discovery.New(clientset, dynamicClient)
 	log.Infof("discovery service initialized")
 
+	log.Infof("Provider: ", cfg.Provider)
 	provider, err := providers.GetProvider(ctx, log, discoveryService, dynamicClient)
 	if err != nil {
+		log.Errorf("getting provider failed: %v", err)
 		return fmt.Errorf("getting provider: %w", err)
 	}
 	log.Data["provider"] = provider.Name()

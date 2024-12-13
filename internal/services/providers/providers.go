@@ -21,7 +21,7 @@ import (
 
 func GetProvider(ctx context.Context, log logrus.FieldLogger, discoveryService discovery.Service, dyno dynamic.Interface) (types.Provider, error) {
 	cfg := config.Get()
-
+	log.Infof("getting provider")
 	if cfg.Provider == eks.Name || cfg.EKS != nil {
 		eksProviderLogger := log.WithField("provider", eks.Name)
 		apiNodeLifecycleDiscoveryEnabled := isAPINodeLifecycleDiscoveryEnabled(cfg)
@@ -40,7 +40,6 @@ func GetProvider(ctx context.Context, log logrus.FieldLogger, discoveryService d
 	if cfg.Provider == kops.Name || cfg.KOPS != nil {
 		return kops.New(log.WithField("provider", kops.Name), discoveryService)
 	}
-
 	if cfg.Provider == aks.Name || cfg.AKS != nil {
 		return aks.New(log.WithField("provider", aks.Name))
 	}
@@ -55,7 +54,7 @@ func GetProvider(ctx context.Context, log logrus.FieldLogger, discoveryService d
 	if cfg.Provider == openshift.Name {
 		return openshift.New(discoveryService, dyno), nil
 	}
-
+	log.Errorf("additiona log for unknown provider %q", cfg.Provider)
 	return nil, fmt.Errorf("unknown provider %q", cfg.Provider)
 }
 

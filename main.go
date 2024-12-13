@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	_ "net/http/pprof"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/KimMachineGun/automemlimit/memlimit"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
-	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	"castai-agent/cmd"
 	"castai-agent/internal/config"
@@ -29,11 +33,27 @@ var (
 )
 
 func main() {
-	ctx := signals.SetupSignalHandler()
+	ctx := setupSignalHandler()
 	config.VersionInfo = &config.AgentVersion{
 		GitCommit: GitCommit,
 		GitRef:    GitRef,
 		Version:   Version,
 	}
 	cmd.Execute(ctx)
+}
+
+func setupSignalHandler() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	sigChan := make(chan os.Signal, 1)
+
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		fmt.Println(time.Now(), fmt.Sprintf("Gracefully shutting down..., got signal %s", <-sigChan))
+		fmt.Println(time.Now(), "Cancelling the context")
+		cancel()
+	}()
+
+	return ctx
 }
