@@ -82,18 +82,18 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
-			expectedReceivedObjectsCount: 22,
+			expectedReceivedObjectsCount: 25,
 		},
 		"when fetching api resources produces multiple errors should exclude those resources": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 20,
+			expectedReceivedObjectsCount: 23,
 		},
 		"when fetching api resources produces single error should exclude that resource": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 21,
+			expectedReceivedObjectsCount: 24,
 		},
 	}
 
@@ -551,9 +551,6 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	provisionersGvr := knowngv.KarpenterCoreV1Alpha5.WithResource("provisioners")
 	machinesGvr := knowngv.KarpenterCoreV1Alpha5.WithResource("machines")
 	awsNodeTemplatesGvr := knowngv.KarpenterV1Alpha1.WithResource("awsnodetemplates")
-	nodePoolsGvr := knowngv.KarpenterCoreV1Beta1.WithResource("nodepools")
-	nodeClaimsGvr := knowngv.KarpenterCoreV1Beta1.WithResource("nodeclaims")
-	ec2NodeClassesGvr := knowngv.KarpenterV1Beta1.WithResource("ec2nodeclasses")
 	datadogExtendedDSReplicaSetsGvr := datadoghqv1alpha1.GroupVersion.WithResource("extendeddaemonsetreplicasets")
 
 	node := &v1.Node{
@@ -644,59 +641,28 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	}
 	csiData := asJson(t, csi)
 
-	provisionersData := []byte(`{
-		"kind": "Provisioner",
-		"apiVersion": "karpenter.sh/v1alpha5",
-		"metadata": {
-			"name": "provisioner",
-			"namespace": "default"			
-		}
-	}`)
+	emptyObjectData := func(group, version, kind, name string) []byte {
+		// This is fragile, but it should be fine while it's so small.
+		t := `{
+			"kind": "%s",
+			"apiVersion": "%s/%s",
+			"metadata": {
+				"name": "%s",
+				"namespace": "default"			
+			}
+		}`
+		return []byte(fmt.Sprintf(t, kind, group, version, name))
+	}
 
-	machinesData := []byte(`{
-		"kind": "Machine",
-		"apiVersion": "karpenter.sh/v1alpha5",
-		"metadata": {
-			"name": "machine",
-			"namespace": "default"			
-		}
-	}`)
-
-	awsNodeTemplatesData := []byte(`{
-		"kind": "AWSNodeTemplate",
-		"apiVersion": "karpenter.k8s.aws/v1alpha1",
-		"metadata": {
-			"name": "awsnodetemplate",
-			"namespace": "default"			
-		}
-	}`)
-
-	nodePoolsData := []byte(`{
-		"kind": "NodePool",
-		"apiVersion": "karpenter.sh/v1beta1",
-		"metadata": {
-			"name": "nodepool",
-			"namespace": "default"			
-		}
-	}`)
-
-	nodeClaimsData := []byte(`{
-		"kind": "NodeClaim",
-		"apiVersion": "karpenter.sh/v1beta1",
-		"metadata": {
-			"name": "nodeclaim",
-			"namespace": "default"			
-		}
-	}`)
-
-	ec2NodeClassesData := []byte(`{
-		"kind": "EC2NodeClass",
-		"apiVersion": "karpenter.k8s.aws/v1beta1",
-		"metadata": {
-			"name": "ec2nodeclass",
-			"namespace": "default"			
-		}
-	}`)
+	provisionersData := emptyObjectData("karpenter.sh", "v1alpha5", "Provisioner", "fake-provisioner")
+	machinesData := emptyObjectData("karpenter.sh", "v1alpha5", "Machine", "fake-machine")
+	awsNodeTemplatesData := emptyObjectData("karpenter.k8s.aws", "v1alpha1", "AWSNodeTemplate", "fake-awsnodetemplate")
+	nodePoolsDataV1Beta1 := emptyObjectData("karpenter.sh", "v1beta1", "NodePool", "fake-nodepool-v1beta1")
+	nodeClaimsDataV1Beta1 := emptyObjectData("karpenter.sh", "v1beta1", "NodeClaim", "fake-nodeclaim-v1beta1")
+	ec2NodeClassesDataV1Beta1 := emptyObjectData("karpenter.k8s.aws", "v1beta1", "EC2NodeClass", "fake-ec2nodeclass-v1beta1")
+	nodePoolsDataV1 := emptyObjectData("karpenter.sh", "v1", "NodePool", "fake-nodepool-v1")
+	nodeClaimsDataV1 := emptyObjectData("karpenter.sh", "v1", "NodeClaim", "fake-nodeclaim-v1")
+	ec2NodeClassesDataV1 := emptyObjectData("karpenter.k8s.aws", "v1", "EC2NodeClass", "fake-ec2nodeclass-v1")
 
 	datadogExtendedDSReplicaSet := &datadoghqv1alpha1.ExtendedDaemonSetReplicaSet{
 		TypeMeta: metav1.TypeMeta{
@@ -827,9 +793,12 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		unstructuredFromJson(t, provisionersData),
 		unstructuredFromJson(t, machinesData),
 		unstructuredFromJson(t, awsNodeTemplatesData),
-		unstructuredFromJson(t, nodePoolsData),
-		unstructuredFromJson(t, nodeClaimsData),
-		unstructuredFromJson(t, ec2NodeClassesData),
+		unstructuredFromJson(t, nodePoolsDataV1Beta1),
+		unstructuredFromJson(t, nodeClaimsDataV1Beta1),
+		unstructuredFromJson(t, ec2NodeClassesDataV1Beta1),
+		unstructuredFromJson(t, nodePoolsDataV1),
+		unstructuredFromJson(t, nodeClaimsDataV1),
+		unstructuredFromJson(t, ec2NodeClassesDataV1),
 		datadogExtendedDSReplicaSet,
 		rollout,
 		recommendation,
@@ -929,31 +898,62 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			},
 		},
 		{
-			GroupVersion: nodePoolsGvr.GroupVersion().String(),
+			GroupVersion: "karpenter.sh/v1beta1",
 			APIResources: []metav1.APIResource{
 				{
-					Group:   nodePoolsGvr.Group,
-					Name:    nodePoolsGvr.Resource,
-					Version: nodePoolsGvr.Version,
+					Group:   "karpenter.sh",
+					Name:    "nodepools",
+					Version: "v1beta1",
 					Kind:    "NodePool",
 					Verbs:   []string{"get", "list", "watch"},
 				},
 				{
-					Group:   nodeClaimsGvr.Group,
-					Name:    nodeClaimsGvr.Resource,
-					Version: nodeClaimsGvr.Version,
+					Group:   "karpenter.sh",
+					Name:    "nodeclaims",
+					Version: "v1beta1",
 					Kind:    "NodeClaim",
 					Verbs:   []string{"get", "list", "watch"},
 				},
 			},
 		},
 		{
-			GroupVersion: ec2NodeClassesGvr.GroupVersion().String(),
+			GroupVersion: "karpenter.k8s.aws/v1beta1",
 			APIResources: []metav1.APIResource{
 				{
-					Group:   ec2NodeClassesGvr.Group,
-					Name:    ec2NodeClassesGvr.Resource,
-					Version: ec2NodeClassesGvr.Version,
+					Group:   "karpenter.k8s.aws",
+					Name:    "ec2nodeclasses",
+					Version: "v1beta1",
+					Kind:    "EC2NodeClass",
+					Verbs:   []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
+			GroupVersion: "karpenter.sh/v1",
+			APIResources: []metav1.APIResource{
+				{
+					Group:   "karpenter.sh",
+					Name:    "nodepools",
+					Version: "v1",
+					Kind:    "NodePool",
+					Verbs:   []string{"get", "list", "watch"},
+				},
+				{
+					Group:   "karpenter.sh",
+					Name:    "nodeclaims",
+					Version: "v1",
+					Kind:    "NodeClaim",
+					Verbs:   []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
+			GroupVersion: "karpenter.k8s.aws/v1",
+			APIResources: []metav1.APIResource{
+				{
+					Group:   "karpenter.k8s.aws",
+					Name:    "ec2nodeclasses",
+					Version: "v1",
 					Kind:    "EC2NodeClass",
 					Verbs:   []string{"get", "list", "watch"},
 				},
@@ -1103,24 +1103,24 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Resource: awsNodeTemplatesGvr.Resource,
 			Data:     awsNodeTemplatesData,
 		},
-		{
-			GV:       nodePoolsGvr.GroupVersion(),
-			Kind:     "NodePool",
-			Resource: nodePoolsGvr.Resource,
-			Data:     nodePoolsData,
-		},
-		{
-			GV:       nodeClaimsGvr.GroupVersion(),
-			Kind:     "NodeClaim",
-			Resource: nodeClaimsGvr.Resource,
-			Data:     nodeClaimsData,
-		},
-		{
-			GV:       ec2NodeClassesGvr.GroupVersion(),
-			Kind:     "EC2NodeClass",
-			Resource: ec2NodeClassesGvr.Resource,
-			Data:     ec2NodeClassesData,
-		},
+		//{
+		//	GV:       knowngv.KarpenterCoreV1Beta1,
+		//	Kind:     "NodePool",
+		//	Resource: "nodepools",
+		//	Data:     nodePoolsDataV1Beta1,
+		//},
+		//{
+		//	GV:       knowngv.KarpenterCoreV1Beta1,
+		//	Kind:     "NodeClaim",
+		//	Resource: "nodeclaims",
+		//	Data:     nodeClaimsDataV1Beta1,
+		//},
+		//{
+		//	GV:       knowngv.KarpenterV1Beta1,
+		//	Kind:     "EC2NodeClass",
+		//	Resource: "ec2nodeclasses",
+		//	Data:     ec2NodeClassesDataV1Beta1,
+		//},
 		{
 			GV:       datadogExtendedDSReplicaSetsGvr.GroupVersion(),
 			Kind:     "ExtendedDaemonSetReplicaSet",

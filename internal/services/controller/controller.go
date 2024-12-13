@@ -782,6 +782,36 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			},
 		},
 		{
+			groupVersion:    knowngv.KarpenterCoreV1,
+			resource:        "nodepools",
+			kind:            "NodePool",
+			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(knowngv.KarpenterCoreV1.WithResource("nodepools")).Informer()
+			},
+		},
+		{
+			groupVersion:    knowngv.KarpenterCoreV1,
+			resource:        "nodeclaims",
+			kind:            "NodeClaim",
+			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(knowngv.KarpenterCoreV1.WithResource("nodeclaims")).Informer()
+			},
+		},
+		{
+			groupVersion:    knowngv.KarpenterV1,
+			resource:        "ec2nodeclasses",
+			kind:            "EC2NodeClass",
+			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(knowngv.KarpenterV1.WithResource("ec2nodeclasses")).Informer()
+			},
+		},
+		{
 			groupVersion:    datadoghqv1alpha1.GroupVersion,
 			resource:        "extendeddaemonsetreplicasets",
 			kind:            "ExtendedDaemonSetReplicaSet",
