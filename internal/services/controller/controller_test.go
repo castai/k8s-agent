@@ -1103,24 +1103,24 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Resource: awsNodeTemplatesGvr.Resource,
 			Data:     awsNodeTemplatesData,
 		},
-		//{
-		//	GV:       knowngv.KarpenterCoreV1Beta1,
-		//	Kind:     "NodePool",
-		//	Resource: "nodepools",
-		//	Data:     nodePoolsDataV1Beta1,
-		//},
-		//{
-		//	GV:       knowngv.KarpenterCoreV1Beta1,
-		//	Kind:     "NodeClaim",
-		//	Resource: "nodeclaims",
-		//	Data:     nodeClaimsDataV1Beta1,
-		//},
-		//{
-		//	GV:       knowngv.KarpenterV1Beta1,
-		//	Kind:     "EC2NodeClass",
-		//	Resource: "ec2nodeclasses",
-		//	Data:     ec2NodeClassesDataV1Beta1,
-		//},
+		{
+			GV:       knowngv.KarpenterCoreV1Beta1,
+			Kind:     "NodePool",
+			Resource: "nodepools",
+			Data:     nodePoolsDataV1Beta1,
+		},
+		{
+			GV:       knowngv.KarpenterCoreV1Beta1,
+			Kind:     "NodeClaim",
+			Resource: "nodeclaims",
+			Data:     nodeClaimsDataV1Beta1,
+		},
+		{
+			GV:       knowngv.KarpenterV1Beta1,
+			Kind:     "EC2NodeClass",
+			Resource: "ec2nodeclasses",
+			Data:     ec2NodeClassesDataV1Beta1,
+		},
 		{
 			GV:       datadogExtendedDSReplicaSetsGvr.GroupVersion(),
 			Kind:     "ExtendedDaemonSetReplicaSet",
