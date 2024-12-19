@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,7 +18,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
-	appsv1 "k8s.io/api/apps/v1"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	v1 "k8s.io/api/core/v1"
@@ -34,7 +32,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	dynamic_fake "k8s.io/client-go/dynamic/fake"
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	authfakev1 "k8s.io/client-go/kubernetes/typed/authorization/v1/fake"
 	k8stesting "k8s.io/client-go/testing"
@@ -220,7 +217,6 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 				agentVersion,
 				NewHealthzProvider(defaultHealthzCfg, log),
 				fakeSelfSubjectAccessReviewsClient,
-				"castai-agent",
 			)
 
 			if mockDiscovery != nil {
@@ -382,7 +378,6 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 				agentVersion,
 				NewHealthzProvider(defaultHealthzCfg, log),
 				clientset.AuthorizationV1().SelfSubjectAccessReviews(),
-				"castai-agent",
 			)
 
 			ctrl.Start(ctx.Done())
@@ -531,7 +526,6 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 		agentVersion,
 		NewHealthzProvider(defaultHealthzCfg, log),
 		clientset.AuthorizationV1().SelfSubjectAccessReviews(),
-		"castai-agent",
 	)
 
 	ctrl.Start(ctx.Done())
@@ -1182,77 +1176,6 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	return objects, clientset, dynamicClient, metricsClient
 }
 
-func TestDefaultInformers_MatchFilters(t *testing.T) {
-	tests := map[string]struct {
-		obj           runtime.Object
-		eventType     castai.EventType
-		expectedMatch bool
-	}{
-		"keep if replicaset in castware namespace": {
-			obj: &appsv1.ReplicaSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "castware",
-				},
-			},
-			eventType:     castai.EventAdd,
-			expectedMatch: true,
-		},
-		"discard if replicaset has zero replicas": {
-			obj: &appsv1.ReplicaSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "test",
-				},
-				Spec: appsv1.ReplicaSetSpec{
-					Replicas: lo.ToPtr(int32(0)),
-				},
-				Status: appsv1.ReplicaSetStatus{
-					Replicas: 0,
-				},
-			},
-			eventType:     castai.EventAdd,
-			expectedMatch: false,
-		},
-		"keep if replicaset has more than zero replicas": {
-			obj: &appsv1.ReplicaSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "test",
-				},
-				Spec: appsv1.ReplicaSetSpec{
-					Replicas: lo.ToPtr(int32(1)),
-				},
-				Status: appsv1.ReplicaSetStatus{
-					Replicas: 1,
-				},
-			},
-			eventType:     castai.EventAdd,
-			expectedMatch: true,
-		},
-		"keep if delete event": {
-			obj: &appsv1.ReplicaSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "test",
-				},
-			},
-			eventType:     castai.EventDelete,
-			expectedMatch: true,
-		},
-	}
-
-	for name, data := range tests {
-		t.Run(name, func(t *testing.T) {
-			r := require.New(t)
-			f := informers.NewSharedInformerFactory(fake.NewSimpleClientset(data.obj), 0)
-
-			defaultInformers := getDefaultInformers(f, "castware")
-			objInformer := defaultInformers[reflect.TypeOf(data.obj)]
-
-			match := objInformer.filters.Apply(data.eventType, data.obj)
-
-			r.Equal(data.expectedMatch, match)
-		})
-	}
-}
-
 func TestCollectSingleSnapshot(t *testing.T) {
 	r := require.New(t)
 
@@ -1294,7 +1217,6 @@ func TestCollectSingleSnapshot(t *testing.T) {
 			PrepTimeout: 10 * time.Second,
 		},
 		version,
-		"",
 	)
 	r.NoError(err)
 	r.NotNil(snapshot)
