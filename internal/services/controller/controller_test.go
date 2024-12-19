@@ -220,7 +220,6 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 				agentVersion,
 				NewHealthzProvider(defaultHealthzCfg, log),
 				fakeSelfSubjectAccessReviewsClient,
-				"castai-agent",
 			)
 
 			if mockDiscovery != nil {
@@ -382,7 +381,6 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 				agentVersion,
 				NewHealthzProvider(defaultHealthzCfg, log),
 				clientset.AuthorizationV1().SelfSubjectAccessReviews(),
-				"castai-agent",
 			)
 
 			ctrl.Start(ctx.Done())
@@ -531,7 +529,6 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 		agentVersion,
 		NewHealthzProvider(defaultHealthzCfg, log),
 		clientset.AuthorizationV1().SelfSubjectAccessReviews(),
-		"castai-agent",
 	)
 
 	ctrl.Start(ctx.Done())
@@ -1188,16 +1185,7 @@ func TestDefaultInformers_MatchFilters(t *testing.T) {
 		eventType     castai.EventType
 		expectedMatch bool
 	}{
-		"keep if replicaset in castware namespace": {
-			obj: &appsv1.ReplicaSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "castware",
-				},
-			},
-			eventType:     castai.EventAdd,
-			expectedMatch: true,
-		},
-		"discard if replicaset has zero replicas": {
+		"dont discard if replicaset has zero replicas": {
 			obj: &appsv1.ReplicaSet{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "test",
@@ -1210,30 +1198,6 @@ func TestDefaultInformers_MatchFilters(t *testing.T) {
 				},
 			},
 			eventType:     castai.EventAdd,
-			expectedMatch: false,
-		},
-		"keep if replicaset has more than zero replicas": {
-			obj: &appsv1.ReplicaSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "test",
-				},
-				Spec: appsv1.ReplicaSetSpec{
-					Replicas: lo.ToPtr(int32(1)),
-				},
-				Status: appsv1.ReplicaSetStatus{
-					Replicas: 1,
-				},
-			},
-			eventType:     castai.EventAdd,
-			expectedMatch: true,
-		},
-		"keep if delete event": {
-			obj: &appsv1.ReplicaSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "test",
-				},
-			},
-			eventType:     castai.EventDelete,
 			expectedMatch: true,
 		},
 	}
@@ -1243,7 +1207,7 @@ func TestDefaultInformers_MatchFilters(t *testing.T) {
 			r := require.New(t)
 			f := informers.NewSharedInformerFactory(fake.NewSimpleClientset(data.obj), 0)
 
-			defaultInformers := getDefaultInformers(f, "castware")
+			defaultInformers := getDefaultInformers(f)
 			objInformer := defaultInformers[reflect.TypeOf(data.obj)]
 
 			match := objInformer.filters.Apply(data.eventType, data.obj)
@@ -1294,7 +1258,6 @@ func TestCollectSingleSnapshot(t *testing.T) {
 			PrepTimeout: 10 * time.Second,
 		},
 		version,
-		"",
 	)
 	r.NoError(err)
 	r.NotNil(snapshot)
