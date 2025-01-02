@@ -105,3 +105,14 @@ func (ex *exporter) sendLogEvent(clusterID string, e *logrus.Entry) {
 		ex.localLog.Errorf("failed to send logs: %v", err)
 	}
 }
+
+// InvokeLogrusExitHandlers invokes exit handlers set up in SetupLogExporter
+// The handlers are also invoked when any Fatal log entry is made.
+// logrus.Exit runs all the Logrus exit handlers and then terminates the program using os.Exit(code)
+func InvokeLogrusExitHandlers(err error) {
+	if err != nil {
+		logrus.Exit(1)
+	} else {
+		logrus.Exit(0)
+	}
+}

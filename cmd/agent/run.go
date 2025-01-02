@@ -97,8 +97,6 @@ func run(ctx context.Context) error {
 	defer registrator.ReleaseWaiters()
 
 	castailog.SetupLogExporter(registrator, remoteLogger, localLog, castaiClient, &loggingConfig)
-	// to invoke exit handlers set up in castailog.SetupLogExporter
-	defer logrus.Exit(0)
 
 	clusterIDHandler := func(clusterID string) {
 		loggingConfig.ClusterID = clusterID
@@ -106,7 +104,14 @@ func run(ctx context.Context) error {
 		registrator.ReleaseWaiters()
 	}
 
-	return runAgentMode(ctx, castaiClient, log, cfg, clusterIDHandler)
+	err = runAgentMode(ctx, castaiClient, log, cfg, clusterIDHandler)
+	if err != nil {
+		// it is necessary to log error because invoking of logrus exit handlers will terminate the process using os.Exit()
+		// error handling in cobra ("github.com/spf13/cobra") won't be able to log this error
+		remoteLogger.Error(err)
+	}
+	defer castailog.InvokeLogrusExitHandlers(err)
+	return err
 }
 
 func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg config.Config, clusterIDChanged func(clusterID string)) error {
