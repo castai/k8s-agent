@@ -200,18 +200,27 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 			clusterID = cfg.Static.ClusterID
 		}
 
+		if clusterID != "" {
+			log.WithField("cluster_id", clusterID).Info("cluster ID provided by env variable")
+		}
+
 		if clusterID == "" {
 			reg, err := provider.RegisterCluster(ctx, castaiclient)
 			if err != nil {
 				return fmt.Errorf("registering cluster: %w", err)
 			}
 			clusterID = reg.ClusterID
-			clusterIDChangedHandler(clusterID)
-			log.Infof("cluster registered: %v, clusterID: %s", reg, clusterID)
-		} else {
-			clusterIDChangedHandler(clusterID)
-			log.Infof("clusterID: %s provided by env variable", clusterID)
+			log.WithField("cluster_id", clusterID).Infof("cluster registered: %v", reg)
 		}
+
+		// Final check to ensure we don't run without a cluster ID.
+		if clusterID == "" {
+			// This is not normal, but we see some requests with missing cluster IDs. Agent without cluster ID will not be
+			// able to upload snapshots which means it's serving no purpose. It's best to raise this issue and get it fixed.
+			return fmt.Errorf("cluster ID is still empty after initialization")
+		}
+
+		clusterIDChangedHandler(clusterID)
 
 		if err := saveMetadata(clusterID, cfg); err != nil {
 			return err
