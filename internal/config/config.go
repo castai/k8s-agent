@@ -211,6 +211,7 @@ func Get() Config {
 	if !strings.HasPrefix(cfg.API.URL, "https://") && !strings.HasPrefix(cfg.API.URL, "http://") {
 		cfg.API.URL = fmt.Sprintf("https://%s", cfg.API.URL)
 	}
+	cfg.API.URL = strings.TrimSuffix(cfg.API.URL, "/")
 
 	if cfg.EKS != nil {
 		if cfg.EKS.AccountID == "" {
