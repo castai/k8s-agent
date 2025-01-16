@@ -234,7 +234,7 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 		resp, err = c.deltaHTTPClient.Do(req)
 		if err != nil {
 			log.Warnf("failed sending delta request: %v", err)
-			return false, fmt.Errorf("sending delta request: %w", err)
+			return false, nil
 		}
 		return true, nil
 	})
