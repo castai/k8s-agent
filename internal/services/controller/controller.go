@@ -909,6 +909,26 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 				return f.Rbac().V1().ClusterRoleBindings().Informer()
 			},
 		},
+		{
+			groupVersion:    corev1.SchemeGroupVersion,
+			resource:        "limitranges",
+			kind:            "LimitRange",
+			apiType:         reflect.TypeOf(&corev1.LimitRange{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Core().V1().LimitRanges().Informer()
+			},
+		},
+		{
+			groupVersion:    corev1.SchemeGroupVersion,
+			resource:        "resourcequotas",
+			kind:            "ResourceQuota",
+			apiType:         reflect.TypeOf(&corev1.ResourceQuota{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Core().V1().ResourceQuotas().Informer()
+			},
+		},
 	}
 
 	for _, cmNamespace := range cfg.ConfigMapNamespaces {

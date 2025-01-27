@@ -20,6 +20,7 @@ import (
 	"go.uber.org/goleak"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
+	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -79,18 +80,18 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
-			expectedReceivedObjectsCount: 25,
+			expectedReceivedObjectsCount: 27,
 		},
 		"when fetching api resources produces multiple errors should exclude those resources": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 23,
+			expectedReceivedObjectsCount: 25,
 		},
 		"when fetching api resources produces single error should exclude that resource": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 24,
+			expectedReceivedObjectsCount: 26,
 		},
 	}
 
@@ -769,6 +770,30 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	}
 	clusterRoleBindingData := asJson(t, clusterRoleBinding)
 
+	resourceQuota := &corev1.ResourceQuota{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ResourceQuota",
+			APIVersion: corev1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "resourcequota",
+		},
+	}
+	resourceQuotasData := asJson(t, resourceQuota)
+
+	limitRange := &corev1.ResourceQuota{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "LimitRange",
+			APIVersion: corev1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "limitrange",
+		},
+	}
+	limitRangeData := asJson(t, limitRange)
+
 	clientset := fake.NewSimpleClientset(
 		node,
 		pod,
@@ -782,6 +807,8 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		roleBinding,
 		clusterRole,
 		clusterRoleBinding,
+		resourceQuota,
+		limitRange,
 	)
 	runtimeObjects := []runtime.Object{
 		unstructuredFromJson(t, provisionersData),
@@ -834,6 +861,18 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 					Group: "v1",
 					Name:  "configmaps",
 					Kind:  "ConfigMap",
+					Verbs: []string{"get", "list", "watch"},
+				},
+				{
+					Group: "v1",
+					Name:  "limitranges",
+					Kind:  "LimitRange",
+					Verbs: []string{"get", "list", "watch"},
+				},
+				{
+					Group: "v1",
+					Name:  "resourcequotas",
+					Kind:  "ResourceQuota",
 					Verbs: []string{"get", "list", "watch"},
 				},
 			},
@@ -1168,6 +1207,18 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Kind:     "ClusterRoleBinding",
 			Resource: "clusterrolebindings",
 			Data:     clusterRoleBindingData,
+		},
+		{
+			GV:       corev1.SchemeGroupVersion,
+			Kind:     "ResourceQuota",
+			Resource: "resourcequotas",
+			Data:     resourceQuotasData,
+		},
+		{
+			GV:       corev1.SchemeGroupVersion,
+			Kind:     "LimitRange",
+			Resource: "limitranges",
+			Data:     limitRangeData,
 		},
 	}
 	// There are a lot of manually entered samples. Running some sanity checks to ensure they don't contain basic errors.
