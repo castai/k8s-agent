@@ -643,7 +643,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			"apiVersion": "%s/%s",
 			"metadata": {
 				"name": "%s",
-				"namespace": "default"			
+				"namespace": "default"
 			}
 		}`
 		return []byte(fmt.Sprintf(t, kind, group, version, name))
@@ -693,6 +693,16 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      crd.RecommendationGVR.Resource,
 			Namespace: v1.NamespaceDefault,
+		},
+		Status: crd.RecommendationStatus{
+			Conditions: []metav1.Condition{
+				{
+					Type:               "Healthy",
+					Status:             "True",
+					ObservedGeneration: 1,
+					Reason:             "ReconciledSuccessfully",
+				},
+			},
 		},
 	}
 

@@ -26,6 +26,7 @@ type RecommendationSpec struct {
 
 // RecommendationStatus defines the observed state of Recommendation
 type RecommendationStatus struct {
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +genclient
