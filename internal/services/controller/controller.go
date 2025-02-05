@@ -121,7 +121,7 @@ func CollectSingleSnapshot(ctx context.Context,
 	v version.Interface,
 ) (*castai.Delta, error) {
 	tweakListOptions := func(options *metav1.ListOptions) {
-		if cfg.ForcePagination && options.ResourceVersion == "" {
+		if cfg.ForcePagination && options.ResourceVersion == "0" {
 			log.Info("Forcing pagination for the list request", "limit", cfg.PageSize)
 			options.ResourceVersion = ""
 			options.Limit = cfg.PageSize
@@ -955,7 +955,7 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
 				namespaceScopedInformer := informers.NewSharedInformerFactoryWithOptions(clientset, 0, informers.WithNamespace(cmNamespace), informers.WithTweakListOptions(func(options *metav1.ListOptions) {
-					if cfg.ForcePagination && options.ResourceVersion == "" {
+					if cfg.ForcePagination && options.ResourceVersion == "0" {
 						logger.Info("Forcing pagination for the list request", "limit", cfg.PageSize)
 						options.ResourceVersion = ""
 						options.Limit = cfg.PageSize
