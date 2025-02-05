@@ -120,8 +120,15 @@ func CollectSingleSnapshot(ctx context.Context,
 	cfg *config.Controller,
 	v version.Interface,
 ) (*castai.Delta, error) {
-	f := informers.NewSharedInformerFactory(clientset, 0)
-	df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
+	tweakListOptions := func(options *metav1.ListOptions) {
+		if cfg.ForcePagination && options.ResourceVersion == "" {
+			log.Info("Forcing pagination for the list request", "limit", cfg.PageSize)
+			options.ResourceVersion = ""
+			options.Limit = cfg.PageSize
+		}
+	}
+	f := informers.NewSharedInformerFactoryWithOptions(clientset, 0, informers.WithTweakListOptions(tweakListOptions))
+	df := dynamicinformer.NewFilteredDynamicSharedInformerFactory(dynamicClient, 0, metav1.NamespaceAll, tweakListOptions)
 
 	defaultInformers := getDefaultInformers(f)
 	conditionalInformers := getConditionalInformers(clientset, cfg, f, df, metricsClient, log)
@@ -204,8 +211,15 @@ func New(
 	queue := workqueue.NewNamed("castai-agent")
 
 	defaultResync := 0 * time.Second
-	f := informers.NewSharedInformerFactory(clientset, defaultResync)
-	df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, defaultResync)
+	tweakListOptions := func(options *metav1.ListOptions) {
+		if cfg.ForcePagination && options.ResourceVersion == "0" {
+			log.Info("Forcing pagination for the list request", "limit", cfg.PageSize)
+			options.ResourceVersion = ""
+			options.Limit = cfg.PageSize
+		}
+	}
+	f := informers.NewSharedInformerFactoryWithOptions(clientset, defaultResync, informers.WithTweakListOptions(tweakListOptions))
+	df := dynamicinformer.NewFilteredDynamicSharedInformerFactory(dynamicClient, defaultResync, metav1.NamespaceAll, tweakListOptions)
 	discovery := clientset.Discovery()
 
 	defaultInformers := getDefaultInformers(f)
@@ -940,7 +954,13 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			apiType:         reflect.TypeOf(&corev1.ConfigMap{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				namespaceScopedInformer := informers.NewSharedInformerFactoryWithOptions(clientset, 0, informers.WithNamespace(cmNamespace))
+				namespaceScopedInformer := informers.NewSharedInformerFactoryWithOptions(clientset, 0, informers.WithNamespace(cmNamespace), informers.WithTweakListOptions(func(options *metav1.ListOptions) {
+					if cfg.ForcePagination && options.ResourceVersion == "" {
+						logger.Info("Forcing pagination for the list request", "limit", cfg.PageSize)
+						options.ResourceVersion = ""
+						options.Limit = cfg.PageSize
+					}
+				}))
 				return namespaceScopedInformer.Core().V1().ConfigMaps().Informer()
 			},
 		})

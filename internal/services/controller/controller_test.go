@@ -77,10 +77,17 @@ func TestMain(m *testing.M) {
 func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 	tests := map[string]struct {
 		expectedReceivedObjectsCount int
+		paginationEnabled            bool
+		pageSize                     int64
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
 			expectedReceivedObjectsCount: 27,
+		},
+		"All supported objects are found and received in delta with pagination": {
+			expectedReceivedObjectsCount: 27,
+			paginationEnabled:            true,
+			pageSize:                     5,
 		},
 		"when fetching api resources produces multiple errors should exclude those resources": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
@@ -200,6 +207,18 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			}
 			provider.EXPECT().FilterSpot(gomock.Any(), []*v1.Node{node}).Return([]*v1.Node{node}, nil)
 
+			cfg := &config.Controller{
+				Interval:             15 * time.Second,
+				PrepTimeout:          2 * time.Second,
+				InitialSleepDuration: 10 * time.Millisecond,
+				ConfigMapNamespaces:  []string{v1.NamespaceDefault},
+			}
+
+			if tt.paginationEnabled {
+				cfg.ForcePagination = tt.paginationEnabled
+				cfg.PageSize = tt.pageSize
+			}
+
 			ctrl := New(
 				log,
 				clientset,
@@ -208,12 +227,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 				metricsClient,
 				provider,
 				clusterID.String(),
-				&config.Controller{
-					Interval:             15 * time.Second,
-					PrepTimeout:          2 * time.Second,
-					InitialSleepDuration: 10 * time.Millisecond,
-					ConfigMapNamespaces:  []string{v1.NamespaceDefault},
-				},
+				cfg,
 				version,
 				agentVersion,
 				NewHealthzProvider(defaultHealthzCfg, log),

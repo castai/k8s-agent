@@ -132,6 +132,8 @@ type Controller struct {
 	ConfigMapNamespaces            []string      `mapstructure:"config_map_namespaces"`
 	RemoveAnnotationsPrefixes      []string      `mapstructure:"remove_annotations_prefixes"`
 	AnnotationsMaxLength           string        `mapstructure:"annotations_max_length"`
+	ForcePagination                bool          `mapstructure:"force_pagination"`
+	PageSize                       int64         `mapstructure:"page_size"`
 
 	// DisabledInformers contains a list of informers to disable,
 	// for example:
@@ -171,6 +173,8 @@ func Get() Config {
 	viper.SetDefault("controller.initial_sleep_duration", 30*time.Second)
 	viper.SetDefault("controller.healthy_snapshot_interval_limit", 12*time.Minute)
 	viper.SetDefault("controller.initialization_timeout_extension", 5*time.Minute)
+	viper.SetDefault("controller.force_pagination", false)
+	viper.SetDefault("controller.page_size", 500)
 
 	viper.SetDefault("healthz_port", 9876)
 	viper.SetDefault("leader_election.enabled", true)
