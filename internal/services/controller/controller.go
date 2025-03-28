@@ -239,7 +239,10 @@ func New(
 	eventType := reflect.TypeOf(&corev1.Event{})
 	autoscalerEvents := fmt.Sprintf("%s:autoscaler", eventType)
 	if informerEnabled(cfg, autoscalerEvents) {
-		informer := createEventInformer(clientset, defaultResync, v, autoscalerevents.ListOpts)
+		informer := createEventInformer(clientset, defaultResync, v, func(options *metav1.ListOptions, v version.Interface) {
+			tweakListOptions(options)
+			autoscalerevents.ListOpts(options, v)
+		})
 		independentInformers[autoscalerEvents] = informer
 		handledInformers[autoscalerEvents] = custominformers.NewHandledInformer(
 			log,
@@ -256,7 +259,10 @@ func New(
 	}
 	oomEvents := fmt.Sprintf("%s:oom", eventType)
 	if informerEnabled(cfg, oomEvents) {
-		informer := createEventInformer(clientset, defaultResync, v, oomevents.ListOpts)
+		informer := createEventInformer(clientset, defaultResync, v, func(options *metav1.ListOptions, v version.Interface) {
+			tweakListOptions(options)
+			oomevents.ListOpts(options, v)
+		})
 		independentInformers[oomEvents] = informer
 		handledInformers[oomEvents] = custominformers.NewHandledInformer(
 			log,
