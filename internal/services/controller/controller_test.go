@@ -119,14 +119,12 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			fakeSelfSubjectAccessReviewsClient := &authfakev1.FakeSelfSubjectAccessReviews{
-				Fake: &authfakev1.FakeAuthorizationV1{
-					Fake: &k8stesting.Fake{},
-				},
+			fakeAuthorization := &authfakev1.FakeAuthorizationV1{
+				Fake: &k8stesting.Fake{},
 			}
 
 			// returns true for all requests to fakeSelfSubjectAccessReviewsClient
-			fakeSelfSubjectAccessReviewsClient.Fake.PrependReactor("create", "selfsubjectaccessreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			fakeAuthorization.PrependReactor("create", "selfsubjectaccessreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
 				return true, &authorizationv1.SelfSubjectAccessReview{
 					Status: authorizationv1.SubjectAccessReviewStatus{
 						Allowed: true,
@@ -231,7 +229,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 				version,
 				agentVersion,
 				NewHealthzProvider(defaultHealthzCfg, log),
-				fakeSelfSubjectAccessReviewsClient,
+				fakeAuthorization.SelfSubjectAccessReviews(),
 			)
 
 			if mockDiscovery != nil {
