@@ -1014,7 +1014,7 @@ func getDefaultInformers(f informers.SharedInformerFactory, castwareNamespace st
 			informer: f.Core().V1().Services().Informer(),
 			filters: filters.Filters{
 				{
-					// Since spec.type isn't supported as a field selector, filter out ExternalName services locally.
+					// spec.type isn't supported as a field selector, so we need to filter it out locally
 					func(e castai.EventType, obj interface{}) bool {
 						svc, ok := obj.(*corev1.Service)
 						if !ok {
