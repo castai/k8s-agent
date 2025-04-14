@@ -230,6 +230,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 				agentVersion,
 				NewHealthzProvider(defaultHealthzCfg, log),
 				fakeAuthorization.SelfSubjectAccessReviews(),
+				"",
 			)
 
 			if mockDiscovery != nil {
@@ -391,6 +392,7 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 				agentVersion,
 				NewHealthzProvider(defaultHealthzCfg, log),
 				clientset.AuthorizationV1().SelfSubjectAccessReviews(),
+				"",
 			)
 
 			ctrl.Start(ctx.Done())
@@ -517,6 +519,7 @@ func TestController_ShouldCancelAndRestartAfterFailToSend(t *testing.T) {
 		agentVersion,
 		NewHealthzProvider(defaultHealthzCfg, log),
 		clientset.AuthorizationV1().SelfSubjectAccessReviews(),
+		"",
 	)
 
 	ctrl.Start(ctx.Done())
@@ -1266,6 +1269,7 @@ func TestCollectSingleSnapshot(t *testing.T) {
 			PrepTimeout: 10 * time.Second,
 		},
 		version,
+		"",
 	)
 	r.NoError(err)
 	r.NotNil(snapshot)

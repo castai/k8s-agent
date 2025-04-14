@@ -60,6 +60,7 @@ func Loop(
 			agentVersion,
 			healthzProvider,
 			clientset.AuthorizationV1().SelfSubjectAccessReviews(),
+			cfg.SelfPod.Namespace,
 		)
 
 		ctrl.Start(ctrlCtx.Done())
