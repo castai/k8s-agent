@@ -135,6 +135,7 @@ type Controller struct {
 	AnnotationsMaxLength           string        `mapstructure:"annotations_max_length"`
 	ForcePagination                bool          `mapstructure:"force_pagination"`
 	PageSize                       int64         `mapstructure:"page_size"`
+	FilterEmptyReplicaSets         bool          `mapstructure:"filter_empty_replica_sets"`
 
 	// DisabledInformers contains a list of informers to disable,
 	// for example:
