@@ -66,7 +66,7 @@ func run(ctx context.Context) error {
 
 	log = log.WithField("k8s_version", v.Full())
 
-	delta, err := controller.CollectSingleSnapshot(ctx, log, clusterID, clientset, dynamicClient, metricsClient, cfg.Controller, v)
+	delta, err := controller.CollectSingleSnapshot(ctx, log, clusterID, clientset, dynamicClient, metricsClient, cfg.Controller, v, "")
 	if err != nil {
 		return err
 	}

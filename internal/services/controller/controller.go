@@ -120,6 +120,7 @@ func CollectSingleSnapshot(ctx context.Context,
 	metricsClient versioned.Interface,
 	cfg *config.Controller,
 	v version.Interface,
+	castwareNamespace string,
 ) (*castai.Delta, error) {
 	tweakListOptions := func(options *metav1.ListOptions) {
 		if cfg.ForcePagination && options.ResourceVersion == "0" {
@@ -131,7 +132,7 @@ func CollectSingleSnapshot(ctx context.Context,
 	f := informers.NewSharedInformerFactoryWithOptions(clientset, 0, informers.WithTweakListOptions(tweakListOptions))
 	df := dynamicinformer.NewFilteredDynamicSharedInformerFactory(dynamicClient, 0, metav1.NamespaceAll, tweakListOptions)
 
-	defaultInformers := getDefaultInformers(f)
+	defaultInformers := getDefaultInformers(f, castwareNamespace, cfg.FilterEmptyReplicaSets)
 	conditionalInformers := getConditionalInformers(clientset, cfg, f, df, metricsClient, log)
 	additionalTransformers := createAdditionalTransformers(cfg)
 
@@ -208,6 +209,7 @@ func New(
 	agentVersion *config.AgentVersion,
 	healthzProvider *HealthzProvider,
 	selfSubjectAccessReview authorizationtypev1.SelfSubjectAccessReviewInterface,
+	castwareNamespace string,
 ) *Controller {
 	healthzProvider.Initializing()
 
@@ -225,7 +227,7 @@ func New(
 	df := dynamicinformer.NewFilteredDynamicSharedInformerFactory(dynamicClient, defaultResync, metav1.NamespaceAll, tweakListOptions)
 	discovery := clientset.Discovery()
 
-	defaultInformers := getDefaultInformers(f)
+	defaultInformers := getDefaultInformers(f, castwareNamespace, cfg.FilterEmptyReplicaSets)
 	conditionalInformers := getConditionalInformers(clientset, cfg, f, df, metricsClient, log)
 	additionalTransformers := createAdditionalTransformers(cfg)
 
@@ -989,7 +991,7 @@ type defaultInformer struct {
 	filters  filters.Filters
 }
 
-func getDefaultInformers(f informers.SharedInformerFactory) map[reflect.Type]defaultInformer {
+func getDefaultInformers(f informers.SharedInformerFactory, castwareNamespace string, filterEmptyReplicaSets bool) map[reflect.Type]defaultInformer {
 	return map[reflect.Type]defaultInformer{
 		reflect.TypeOf(&corev1.Node{}):                  {informer: f.Core().V1().Nodes().Informer()},
 		reflect.TypeOf(&corev1.Pod{}):                   {informer: f.Core().V1().Pods().Informer()},
@@ -998,11 +1000,26 @@ func getDefaultInformers(f informers.SharedInformerFactory) map[reflect.Type]def
 		reflect.TypeOf(&corev1.ReplicationController{}): {informer: f.Core().V1().ReplicationControllers().Informer()},
 		reflect.TypeOf(&corev1.Namespace{}):             {informer: f.Core().V1().Namespaces().Informer()},
 		reflect.TypeOf(&appsv1.Deployment{}):            {informer: f.Apps().V1().Deployments().Informer()},
-		reflect.TypeOf(&appsv1.ReplicaSet{}):            {informer: f.Apps().V1().ReplicaSets().Informer()},
-		reflect.TypeOf(&appsv1.DaemonSet{}):             {informer: f.Apps().V1().DaemonSets().Informer()},
-		reflect.TypeOf(&appsv1.StatefulSet{}):           {informer: f.Apps().V1().StatefulSets().Informer()},
-		reflect.TypeOf(&storagev1.StorageClass{}):       {informer: f.Storage().V1().StorageClasses().Informer()},
-		reflect.TypeOf(&batchv1.Job{}):                  {informer: f.Batch().V1().Jobs().Informer()},
+		reflect.TypeOf(&appsv1.ReplicaSet{}): {
+			informer: f.Apps().V1().ReplicaSets().Informer(),
+			filters: lo.Ternary(filterEmptyReplicaSets, filters.Filters{
+				{
+					func(e castai.EventType, obj interface{}) bool {
+						replicaSet, ok := obj.(*appsv1.ReplicaSet)
+						if !ok {
+							return false
+						}
+
+						return e == castai.EventDelete || replicaSet.Namespace == castwareNamespace ||
+							(replicaSet.Spec.Replicas != nil && *replicaSet.Spec.Replicas > 0 && replicaSet.Status.Replicas > 0) || replicaSet.OwnerReferences == nil
+					},
+				},
+			}, filters.Filters{}),
+		},
+		reflect.TypeOf(&appsv1.DaemonSet{}):       {informer: f.Apps().V1().DaemonSets().Informer()},
+		reflect.TypeOf(&appsv1.StatefulSet{}):     {informer: f.Apps().V1().StatefulSets().Informer()},
+		reflect.TypeOf(&storagev1.StorageClass{}): {informer: f.Storage().V1().StorageClasses().Informer()},
+		reflect.TypeOf(&batchv1.Job{}):            {informer: f.Batch().V1().Jobs().Informer()},
 		reflect.TypeOf(&corev1.Service{}): {
 			informer: f.Core().V1().Services().Informer(),
 			filters: filters.Filters{
