@@ -415,7 +415,7 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 
 }
 
-func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
+func TestController_ShouldCancelAndRestartAfterFailToSend(t *testing.T) {
 	mockctrl := gomock.NewController(t)
 	castaiclient := mock_castai.NewMockClient(mockctrl)
 	version := mock_version.NewMockInterface(mockctrl)
@@ -493,28 +493,6 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 			return fmt.Errorf("testError")
 		})
 
-	// second attempt to send data when pod delete is received
-	castaiclient.EXPECT().
-		SendDelta(gomock.Any(), clusterID.String(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
-			defer atomic.AddInt64(&invocations, 1)
-
-			require.Equal(t, clusterID, d.ClusterID)
-			require.Equal(t, "1.21+", d.ClusterVersion)
-			require.Equal(t, "1.2.3", d.AgentVersion)
-			require.False(t, d.FullSnapshot)
-			require.Len(t, d.Items, 1)
-
-			actualItem, found := lo.Find(d.Items, func(item *castai.DeltaItem) bool {
-				return item.Event == castai.EventDelete && item.Kind == "Pod"
-			})
-			require.True(t, found)
-			require.NotNil(t, actualItem.Data)
-			require.JSONEq(t, string(*podData), string(*actualItem.Data))
-
-			return nil
-		})
-
 	castaiclient.EXPECT().ExchangeAgentTelemetry(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 		Return(&castai.AgentTelemetryResponse{}, nil).
 		Do(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
@@ -548,9 +526,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 	}()
 
 	wait.Until(func() {
-		if atomic.LoadInt64(&invocations) >= 3 {
-			cancel()
-		}
+		<-ctx.Done()
 	}, 10*time.Millisecond, ctx.Done())
 }
 

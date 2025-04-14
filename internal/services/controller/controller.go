@@ -76,8 +76,7 @@ type Controller struct {
 	// they need independent ListOptions
 	independentInformers map[string]cache.SharedIndexInformer
 
-	delta   *delta.Delta
-	deltaMu sync.Mutex
+	delta *delta.Delta
 
 	// sendMu ensures that only one goroutine can send deltas
 	sendMu sync.Mutex
@@ -189,9 +188,11 @@ func CollectSingleSnapshot(ctx context.Context,
 		return nil, err
 	}
 
-	log.Debugf("synced %d items", len(d.Cache))
+	delta := d.SnapshotAndReset(ctx, nil)
 
-	return d.ToCASTAIRequest(), nil
+	log.Debugf("synced %d items", len(delta.Items))
+
+	return delta, nil
 }
 
 func New(
@@ -524,57 +525,30 @@ func (c *Controller) processItem(i interface{}) {
 		return
 	}
 
-	c.deltaMu.Lock()
 	c.delta.Add(di)
-	c.deltaMu.Unlock()
 }
 
 func (c *Controller) send(ctx context.Context) {
-	c.deltaMu.Lock()
-	defer c.deltaMu.Unlock()
-
 	startTime := time.Now().UTC()
+	delta := c.delta.SnapshotAndReset(ctx, c.prepareNodesForSend)
 
-	nodesByName := map[string]*corev1.Node{}
-	var nodes []*corev1.Node
-
-	for _, item := range c.delta.Cache {
-		n, ok := item.Obj.(*corev1.Node)
-		if !ok {
-			continue
-		}
-
-		nodesByName[n.Name] = n
-		nodes = append(nodes, n)
-	}
-
-	if len(nodes) > 0 {
-		spots, err := c.provider.FilterSpot(ctx, nodes)
-		if err != nil {
-			c.log.Warnf("failed to determine node lifecycle, some functionality might be limited: %v", err)
-		}
-
-		for _, spot := range spots {
-			nodesByName[spot.Name].Labels[labels.CastaiFakeSpot] = "true"
-		}
-	}
-
-	if err := c.castaiclient.SendDelta(ctx, c.clusterID, c.delta.ToCASTAIRequest()); err != nil {
+	if err := c.castaiclient.SendDelta(ctx, c.clusterID, delta); err != nil {
 		if !errors.Is(err, context.Canceled) {
 			c.log.Errorf("failed sending delta: %v", err)
 		}
 
 		if errors.Is(err, castai.ErrInvalidContinuityToken) {
 			c.log.Info("restarting controller due to continuity token mismatch")
-			c.triggerRestart()
 		}
+
+		c.triggerRestart()
 
 		return
 	}
 
 	c.healthzProvider.SnapshotSent()
 
-	c.delta.Clear()
+	c.delta.FullSnapshot = false
 
 	metrics.DeltaSendTime.Observe(time.Since(startTime).Seconds())
 	if !c.lastSend.IsZero() {
@@ -603,6 +577,32 @@ func (c *Controller) debugQueueContent(maxItems int) string {
 	}
 
 	return content
+}
+
+func (c *Controller) prepareNodesForSend(ctx context.Context, cache map[string]*delta.Item) {
+	nodesByName := map[string]*corev1.Node{}
+	var nodes []*corev1.Node
+
+	for _, item := range cache {
+		n, ok := item.Obj.(*corev1.Node)
+		if !ok {
+			continue
+		}
+
+		nodesByName[n.Name] = n
+		nodes = append(nodes, n)
+	}
+
+	if len(nodes) > 0 {
+		spots, err := c.provider.FilterSpot(ctx, nodes)
+		if err != nil {
+			c.log.Warnf("failed to determine node lifecycle, some functionality might be limited: %v", err)
+		}
+
+		for _, spot := range spots {
+			nodesByName[spot.Name].Labels[labels.CastaiFakeSpot] = "true"
+		}
+	}
 }
 
 func informerHasAccess(ctx context.Context, informer conditionalInformer, selfSubjectAccessReview authorizationtypev1.SelfSubjectAccessReviewInterface, log logrus.FieldLogger) bool {
