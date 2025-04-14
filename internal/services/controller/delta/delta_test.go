@@ -1,6 +1,7 @@
 package delta
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -256,7 +257,7 @@ func TestDelta(t *testing.T) {
 				d.Add(item)
 			}
 
-			got := d.ToCASTAIRequest()
+			got := d.SnapshotAndReset(context.Background(), nil)
 
 			require.Equal(t, clusterID, got.ClusterID)
 			require.Equal(t, version, got.ClusterVersion)

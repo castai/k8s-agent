@@ -1,11 +1,14 @@
 package delta
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"golang.org/x/exp/maps"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -24,7 +27,9 @@ func New(log logrus.FieldLogger, clusterID, clusterVersion, agentVersion string)
 		clusterVersion: clusterVersion,
 		agentVersion:   agentVersion,
 		FullSnapshot:   true,
-		Cache:          map[string]*Item{},
+		cacheActive:    map[string]*Item{},
+		cacheSpare:     map[string]*Item{},
+		cacheLock:      sync.RWMutex{},
 	}
 }
 
@@ -36,13 +41,13 @@ type Delta struct {
 	clusterVersion string
 	agentVersion   string
 	FullSnapshot   bool
-	Cache          map[string]*Item
+	cacheActive    map[string]*Item
+	cacheSpare     map[string]*Item
+	cacheLock      sync.RWMutex
 }
 
 // Add will add an Item to the Delta Cache. It will debounce the objects.
 func (d *Delta) Add(i *Item) {
-	cache := d.Cache
-
 	if len(i.kind) == 0 {
 		gvk, err := determineObjectGVK(i.Obj)
 		if err != nil {
@@ -54,6 +59,9 @@ func (d *Delta) Add(i *Item) {
 
 	key := itemCacheKey(i)
 
+	d.cacheLock.RLock()
+	defer d.cacheLock.RUnlock()
+	cache := d.cacheActive
 	if other, ok := cache[key]; ok && other.Event == castai.EventAdd && i.Event == castai.EventUpdate {
 		i.Event = castai.EventAdd
 		cache[key] = i
@@ -71,19 +79,23 @@ func itemCacheKey(i *Item) string {
 	return fmt.Sprintf("%s::%s/%s", i.kind, i.Obj.GetNamespace(), i.Obj.GetName())
 }
 
-// Clear resets the Delta Cache and sets FullSnapshot to false. Should be called after ToCASTAIRequest is successfully
-// delivered.
-func (d *Delta) Clear() {
-	d.FullSnapshot = false
-	d.Cache = map[string]*Item{}
+// SnapshotAndReset maps the collected Delta Cache to the castai.Delta type.
+func (d *Delta) SnapshotAndReset(ctx context.Context, preProcessFunc func(context.Context, map[string]*Item)) *castai.Delta {
+	d.cacheLock.Lock()
+	cache := d.cacheActive
+	d.cacheActive = d.cacheSpare
+	maps.Clear(d.cacheActive)
+	d.cacheSpare = cache
 	metrics.CacheSize.Set(0)
-}
+	d.cacheLock.Unlock()
 
-// ToCASTAIRequest maps the collected Delta Cache to the castai.Delta type.
-func (d *Delta) ToCASTAIRequest() *castai.Delta {
+	if preProcessFunc != nil {
+		preProcessFunc(ctx, cache)
+	}
+
 	var items []*castai.DeltaItem
 
-	for _, i := range d.Cache {
+	for _, i := range cache {
 		data, err := Encode(i.Obj)
 		if err != nil {
 			d.log.Errorf("failed to encode %T: %v", i.Obj, err)
