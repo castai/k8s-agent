@@ -81,13 +81,7 @@ func itemCacheKey(i *Item) string {
 
 // SnapshotAndReset maps the collected Delta Cache to the castai.Delta type.
 func (d *Delta) SnapshotAndReset(ctx context.Context, preProcessFunc func(context.Context, map[string]*Item)) *castai.Delta {
-	d.cacheLock.Lock()
-	cache := d.cacheActive
-	d.cacheActive = d.cacheSpare
-	maps.Clear(d.cacheActive)
-	d.cacheSpare = cache
-	metrics.CacheSize.Set(0)
-	d.cacheLock.Unlock()
+	cache := d.swapCaches()
 
 	if preProcessFunc != nil {
 		preProcessFunc(ctx, cache)
@@ -116,6 +110,17 @@ func (d *Delta) SnapshotAndReset(ctx context.Context, preProcessFunc func(contex
 		FullSnapshot:   d.FullSnapshot,
 		Items:          items,
 	}
+}
+
+func (d *Delta) swapCaches() map[string]*Item {
+	d.cacheLock.Lock()
+	defer d.cacheLock.Unlock()
+	cache := d.cacheActive
+	d.cacheActive = d.cacheSpare
+	maps.Clear(d.cacheActive)
+	d.cacheSpare = cache
+	metrics.CacheSize.Set(0)
+	return cache
 }
 
 func Encode(obj interface{}) (*json.RawMessage, error) {
