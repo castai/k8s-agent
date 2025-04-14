@@ -12,6 +12,7 @@ import (
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/services/controller/scheme"
+	"castai-agent/internal/services/metrics"
 )
 
 // New initializes the Delta struct which is used to collect cluster deltas, debounce them and map to CAST AI
@@ -62,6 +63,8 @@ func (d *Delta) Add(i *Item) {
 	} else {
 		cache[key] = i
 	}
+	metrics.CacheSize.Set(float64(len(cache)))
+	metrics.CacheLatency.Observe(float64(time.Since(i.receivedAt).Milliseconds()))
 }
 
 func itemCacheKey(i *Item) string {
@@ -73,6 +76,7 @@ func itemCacheKey(i *Item) string {
 func (d *Delta) Clear() {
 	d.FullSnapshot = false
 	d.Cache = map[string]*Item{}
+	metrics.CacheSize.Set(0)
 }
 
 // ToCASTAIRequest maps the collected Delta Cache to the castai.Delta type.
@@ -139,13 +143,15 @@ type Object interface {
 
 func NewItem(event castai.EventType, obj Object) *Item {
 	return &Item{
-		Obj:   obj,
-		event: event,
+		Obj:        obj,
+		event:      event,
+		receivedAt: time.Now().UTC(),
 	}
 }
 
 type Item struct {
-	Obj   Object
-	event castai.EventType
-	kind  string
+	Obj        Object
+	event      castai.EventType
+	kind       string
+	receivedAt time.Time
 }

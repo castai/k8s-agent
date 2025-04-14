@@ -33,6 +33,7 @@ type Config struct {
 	Controller  *Controller `mapstructure:"controller"`
 	PprofPort   int         `mapstructure:"pprof_port"`
 	HealthzPort int         `mapstructure:"healthz_port"`
+	MetricsPort int         `mapstructure:"metrics_port"`
 
 	MetadataStore *MetadataStoreConfig `mapstructure:"metadata_store"`
 
@@ -177,6 +178,7 @@ func Get() Config {
 	viper.SetDefault("controller.page_size", 500)
 
 	viper.SetDefault("healthz_port", 9876)
+	viper.SetDefault("metrics_port", 9877)
 	viper.SetDefault("leader_election.enabled", true)
 	viper.SetDefault("leader_election.lock_name", "agent-leader-election-lock")
 	viper.SetDefault("leader_election.namespace", "castai-agent")

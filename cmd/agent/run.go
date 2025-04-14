@@ -9,12 +9,15 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/leaderelection"
+	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	"k8s.io/metrics/pkg/client/clientset/versioned"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -25,6 +28,7 @@ import (
 	"castai-agent/internal/services/controller/scheme"
 	"castai-agent/internal/services/discovery"
 	"castai-agent/internal/services/metadata"
+	"castai-agent/internal/services/metrics"
 	"castai-agent/internal/services/monitor"
 	"castai-agent/internal/services/providers"
 	"castai-agent/internal/services/replicas"
@@ -145,6 +149,9 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 
 	closeHealthz := runHealthzEndpoints(cfg, log, checks, exitCh)
 	defer closeHealthz()
+
+	closeMetrics := runMetricsEndpoints(cfg, log, exitCh)
+	defer closeMetrics()
 
 	restconfig, err := cfg.RetrieveKubeConfig(log)
 	if err != nil {
@@ -320,6 +327,46 @@ func runHealthzEndpoints(cfg config.Config, log *logrus.Entry, checks map[string
 				exitCh <- fmt.Errorf("healthz server: %w", err)
 			} else {
 				log.Warnf("healthz server closed")
+			}
+		}
+	}()
+	return closeFunc
+}
+
+func runMetricsEndpoints(cfg config.Config, log *logrus.Entry, exitCh chan error) func() {
+	log.Infof("starting metrics server on port: %d", cfg.MetricsPort)
+	addr := portToServerAddr(cfg.MetricsPort)
+
+	metricsMux := http.NewServeMux()
+
+	metricsMux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		gatherer := prometheus.Gatherers{
+			legacyregistry.DefaultGatherer,
+			metrics.Registry,
+		}
+
+		promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{
+			ErrorLog: log,
+		}).ServeHTTP(w, r)
+	})
+
+	metricsSrv := &http.Server{Addr: addr, Handler: metricsMux}
+	closeFunc := func() {
+		log.Infof("closing metrics server")
+		if err := metricsSrv.Close(); err != nil {
+			log.Errorf("closing metrics server: %v", err)
+		}
+	}
+
+	go func() {
+		log.Infof("metrics server ready")
+		err := metricsSrv.ListenAndServe()
+
+		if err != nil {
+			if !errors.Is(err, http.ErrServerClosed) {
+				exitCh <- fmt.Errorf("metrics server: %w", err)
+			} else {
+				log.Warnf("metrics server closed")
 			}
 		}
 	}()
