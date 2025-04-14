@@ -539,8 +539,9 @@ func (c *Controller) send(ctx context.Context) {
 
 		if errors.Is(err, castai.ErrInvalidContinuityToken) {
 			c.log.Info("restarting controller due to continuity token mismatch")
-			c.triggerRestart()
 		}
+
+		c.triggerRestart()
 
 		return
 	}
