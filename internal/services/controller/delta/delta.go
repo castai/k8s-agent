@@ -12,6 +12,7 @@ import (
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/services/controller/scheme"
+	"castai-agent/internal/services/metrics"
 )
 
 // New initializes the Delta struct which is used to collect cluster deltas, debounce them and map to CAST AI
@@ -53,15 +54,17 @@ func (d *Delta) Add(i *Item) {
 
 	key := itemCacheKey(i)
 
-	if other, ok := cache[key]; ok && other.event == castai.EventAdd && i.event == castai.EventUpdate {
-		i.event = castai.EventAdd
+	if other, ok := cache[key]; ok && other.Event == castai.EventAdd && i.Event == castai.EventUpdate {
+		i.Event = castai.EventAdd
 		cache[key] = i
-	} else if ok && other.event == castai.EventDelete && (i.event == castai.EventAdd || i.event == castai.EventUpdate) {
-		i.event = castai.EventUpdate
+	} else if ok && other.Event == castai.EventDelete && (i.Event == castai.EventAdd || i.Event == castai.EventUpdate) {
+		i.Event = castai.EventUpdate
 		cache[key] = i
 	} else {
 		cache[key] = i
 	}
+	metrics.CacheSize.Set(float64(len(cache)))
+	metrics.CacheLatency.Observe(float64(time.Since(i.receivedAt).Milliseconds()))
 }
 
 func itemCacheKey(i *Item) string {
@@ -73,6 +76,7 @@ func itemCacheKey(i *Item) string {
 func (d *Delta) Clear() {
 	d.FullSnapshot = false
 	d.Cache = map[string]*Item{}
+	metrics.CacheSize.Set(0)
 }
 
 // ToCASTAIRequest maps the collected Delta Cache to the castai.Delta type.
@@ -86,7 +90,7 @@ func (d *Delta) ToCASTAIRequest() *castai.Delta {
 			continue
 		}
 		items = append(items, &castai.DeltaItem{
-			Event:     i.event,
+			Event:     i.Event,
 			Kind:      i.kind,
 			Data:      data,
 			CreatedAt: time.Now().UTC(),
@@ -139,13 +143,15 @@ type Object interface {
 
 func NewItem(event castai.EventType, obj Object) *Item {
 	return &Item{
-		Obj:   obj,
-		event: event,
+		Obj:        obj,
+		Event:      event,
+		receivedAt: time.Now().UTC(),
 	}
 }
 
 type Item struct {
-	Obj   Object
-	event castai.EventType
-	kind  string
+	Obj        Object
+	Event      castai.EventType
+	kind       string
+	receivedAt time.Time
 }

@@ -14,6 +14,8 @@ import (
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	"k8s.io/metrics/pkg/client/clientset/versioned"
 	"k8s.io/utils/clock"
+
+	"castai-agent/internal/services/metrics"
 )
 
 const fetchInterval = 30 * time.Second
@@ -70,6 +72,8 @@ func (m *metricsWatch) Start(ctx context.Context) {
 			m.log.Infof("Failed getting pod metrics, check metrics server health: %v", err.Error())
 			return
 		}
+
+		metrics.WatchReceived.WithLabelValues("*v1beta1.PodMetrics", "update").Add(float64(len(result.Items)))
 
 		for _, metrics := range result.Items {
 			metrics := metrics

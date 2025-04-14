@@ -53,6 +53,7 @@ import (
 	custominformers "castai-agent/internal/services/controller/informers"
 	"castai-agent/internal/services/controller/knowngv"
 	"castai-agent/internal/services/memorypressure"
+	"castai-agent/internal/services/metrics"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/internal/services/version"
 	"castai-agent/pkg/labels"
@@ -88,6 +89,7 @@ type Controller struct {
 
 	conditionalInformers    []conditionalInformer
 	selfSubjectAccessReview authorizationtypev1.SelfSubjectAccessReviewInterface
+	lastSend                time.Time
 }
 
 type conditionalInformer struct {
@@ -531,6 +533,8 @@ func (c *Controller) send(ctx context.Context) {
 	c.deltaMu.Lock()
 	defer c.deltaMu.Unlock()
 
+	startTime := time.Now().UTC()
+
 	nodesByName := map[string]*corev1.Node{}
 	var nodes []*corev1.Node
 
@@ -571,6 +575,12 @@ func (c *Controller) send(ctx context.Context) {
 	c.healthzProvider.SnapshotSent()
 
 	c.delta.Clear()
+
+	metrics.DeltaSendTime.Observe(time.Since(startTime).Seconds())
+	if !c.lastSend.IsZero() {
+		metrics.DeltaSendInterval.Observe(startTime.Sub(c.lastSend).Seconds())
+	}
+	c.lastSend = startTime
 }
 
 func (c *Controller) debugQueueContent(maxItems int) string {
