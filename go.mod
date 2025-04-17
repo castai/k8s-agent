@@ -101,10 +101,4 @@ require (
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
-replace (
-	github.com/gogo/protobuf v1.1.1 => github.com/gogo/protobuf v1.3.2
-	github.com/gogo/protobuf v1.2.1 => github.com/gogo/protobuf v1.3.2
-	github.com/gogo/protobuf v1.3.1 => github.com/gogo/protobuf v1.3.2
-)
-
 replace github.com/chzyer/logex v1.1.10 => github.com/chzyer/logex v1.2.0
