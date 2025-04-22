@@ -1,17 +1,21 @@
 package delta
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"golang.org/x/exp/maps"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/services/controller/scheme"
+	"castai-agent/internal/services/metrics"
 )
 
 // New initializes the Delta struct which is used to collect cluster deltas, debounce them and map to CAST AI
@@ -23,7 +27,9 @@ func New(log logrus.FieldLogger, clusterID, clusterVersion, agentVersion string)
 		clusterVersion: clusterVersion,
 		agentVersion:   agentVersion,
 		FullSnapshot:   true,
-		Cache:          map[string]*Item{},
+		cacheActive:    map[string]*Item{},
+		cacheSpare:     map[string]*Item{},
+		cacheLock:      sync.RWMutex{},
 	}
 }
 
@@ -35,60 +41,63 @@ type Delta struct {
 	clusterVersion string
 	agentVersion   string
 	FullSnapshot   bool
-	Cache          map[string]*Item
+	cacheActive    map[string]*Item
+	cacheSpare     map[string]*Item
+	cacheLock      sync.RWMutex
 }
 
 // Add will add an Item to the Delta Cache. It will debounce the objects.
 func (d *Delta) Add(i *Item) {
-
-	key := keyObject(i.Obj)
-
-	if other, ok := d.Cache[key]; ok && other.event == castai.EventAdd && i.event == castai.EventUpdate {
-		i.event = castai.EventAdd
-		d.Cache[key] = i
-	} else if ok && other.event == castai.EventDelete && (i.event == castai.EventAdd || i.event == castai.EventUpdate) {
-		i.event = castai.EventUpdate
-		d.Cache[key] = i
-	} else {
-		d.Cache[key] = i
+	if len(i.kind) == 0 {
+		gvk, err := determineObjectGVK(i.Obj)
+		if err != nil {
+			d.log.Errorf("failed to determine Object kind: %v", err)
+			return
+		}
+		i.kind = gvk.Kind
 	}
+
+	key := itemCacheKey(i)
+
+	d.cacheLock.RLock()
+	defer d.cacheLock.RUnlock()
+	cache := d.cacheActive
+	if other, ok := cache[key]; ok && other.Event == castai.EventAdd && i.Event == castai.EventUpdate {
+		i.Event = castai.EventAdd
+		cache[key] = i
+	} else if ok && other.Event == castai.EventDelete && (i.Event == castai.EventAdd || i.Event == castai.EventUpdate) {
+		i.Event = castai.EventUpdate
+		cache[key] = i
+	} else {
+		cache[key] = i
+	}
+	metrics.CacheSize.Set(float64(len(cache)))
+	metrics.CacheLatency.Observe(float64(time.Since(i.receivedAt).Milliseconds()))
 }
 
-func keyObject(obj Object) string {
-	return fmt.Sprintf("%s::%s/%s", reflect.TypeOf(obj).String(), obj.GetNamespace(), obj.GetName())
+func itemCacheKey(i *Item) string {
+	return fmt.Sprintf("%s::%s/%s", i.kind, i.Obj.GetNamespace(), i.Obj.GetName())
 }
 
-// Clear resets the Delta Cache and sets FullSnapshot to false. Should be called after ToCASTAIRequest is successfully
-// delivered.
-func (d *Delta) Clear() {
-	d.FullSnapshot = false
-	d.Cache = map[string]*Item{}
-}
+// SnapshotAndReset maps the collected Delta Cache to the castai.Delta type.
+func (d *Delta) SnapshotAndReset(ctx context.Context, preProcessFunc func(context.Context, map[string]*Item)) *castai.Delta {
+	cache := d.swapCaches()
 
-// ToCASTAIRequest maps the collected Delta Cache to the castai.Delta type.
-func (d *Delta) ToCASTAIRequest() *castai.Delta {
+	if preProcessFunc != nil {
+		preProcessFunc(ctx, cache)
+	}
+
 	var items []*castai.DeltaItem
 
-	for _, i := range d.Cache {
+	for _, i := range cache {
 		data, err := Encode(i.Obj)
 		if err != nil {
 			d.log.Errorf("failed to encode %T: %v", i.Obj, err)
 			continue
 		}
-
-		kinds, _, err := scheme.Scheme.ObjectKinds(i.Obj)
-		if err != nil {
-			d.log.Errorf("failed to find Object %T kind: %v", i.Obj, err)
-			continue
-		}
-		if len(kinds) == 0 || kinds[0].Kind == "" {
-			d.log.Errorf("unknown Object kind for Object %T", i.Obj)
-			continue
-		}
-
 		items = append(items, &castai.DeltaItem{
-			Event:     i.event,
-			Kind:      kinds[0].Kind,
+			Event:     i.Event,
+			Kind:      i.kind,
 			Data:      data,
 			CreatedAt: time.Now().UTC(),
 		})
@@ -103,6 +112,17 @@ func (d *Delta) ToCASTAIRequest() *castai.Delta {
 	}
 }
 
+func (d *Delta) swapCaches() map[string]*Item {
+	d.cacheLock.Lock()
+	defer d.cacheLock.Unlock()
+	cache := d.cacheActive
+	d.cacheActive = d.cacheSpare
+	maps.Clear(d.cacheActive)
+	d.cacheSpare = cache
+	metrics.CacheSize.Set(0)
+	return cache
+}
+
 func Encode(obj interface{}) (*json.RawMessage, error) {
 	b, err := json.Marshal(obj)
 	if err != nil {
@@ -113,6 +133,26 @@ func Encode(obj interface{}) (*json.RawMessage, error) {
 	return &o, nil
 }
 
+func determineObjectGVK(obj runtime.Object) (schema.GroupVersionKind, error) {
+	// If the object contains its TypeMeta, it is expected to be the most accurate value.
+	gvk := obj.GetObjectKind().GroupVersionKind()
+	if !gvk.Empty() {
+		return gvk, nil
+	}
+
+	// Some structured objects have their TypeMeta stripped. In that case, it's only possible to look this information based on the runtime type.
+	kinds, _, err := scheme.Scheme.ObjectKinds(obj)
+	if err != nil {
+		return schema.GroupVersionKind{}, fmt.Errorf("failed to find Object %T kind: %v", obj, err)
+	}
+	if len(kinds) == 0 || len(kinds[0].Kind) == 0 {
+		return schema.GroupVersionKind{}, fmt.Errorf("unknown Object kind for Object %T", obj)
+	}
+	// Typically runtime types resolve to a single GVK combination but if it has multiple, at this point there is no way to
+	// determine which was the original one. We are just picking the first one and hoping it works out.
+	return kinds[0], nil
+}
+
 type Object interface {
 	runtime.Object
 	metav1.Object
@@ -120,12 +160,15 @@ type Object interface {
 
 func NewItem(event castai.EventType, obj Object) *Item {
 	return &Item{
-		Obj:   obj,
-		event: event,
+		Obj:        obj,
+		Event:      event,
+		receivedAt: time.Now().UTC(),
 	}
 }
 
 type Item struct {
-	Obj   Object
-	event castai.EventType
+	Obj        Object
+	Event      castai.EventType
+	kind       string
+	receivedAt time.Time
 }

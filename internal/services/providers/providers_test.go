@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"castai-agent/internal/config"
+	"castai-agent/internal/services/providers/anywhere"
 	"castai-agent/internal/services/providers/eks"
 	"castai-agent/internal/services/providers/gke"
 	"castai-agent/internal/services/providers/kops"
@@ -85,6 +86,22 @@ func TestGetProvider(t *testing.T) {
 
 		r.NoError(err)
 		r.IsType(&openshift.Provider{}, got)
+	})
+
+	t.Run("should return anywhere", func(t *testing.T) {
+		r := require.New(t)
+
+		t.Cleanup(config.Reset)
+		t.Cleanup(os.Clearenv)
+
+		r.NoError(os.Setenv("API_KEY", "api-key"))
+		r.NoError(os.Setenv("API_URL", "test"))
+		r.NoError(os.Setenv("PROVIDER", "anywhere"))
+
+		got, err := GetProvider(context.Background(), logrus.New(), nil, nil)
+
+		r.NoError(err)
+		r.IsType(&anywhere.Provider{}, got)
 	})
 }
 

@@ -18,13 +18,17 @@ import (
 )
 
 type Service interface {
+	// GetCSP discovers the cluster cloud service provider (CSP) by listing the cluster nodes and inspecting their labels.
+	// CSP is retrieved by parsing the Node.Spec.ProviderID property.
+	GetCSP(ctx context.Context) (csp cloud.Cloud, reterr error)
+
 	// GetCSPAndRegion discovers the cluster cloud service provider (CSP) and the region the cluster is deployed in by
 	// listing the cluster nodes and inspecting their labels. CSP is retrieved by parsing the Node.Spec.ProviderID property.
 	// Whereas the region is read from the well-known node region labels.
 	GetCSPAndRegion(ctx context.Context) (csp cloud.Cloud, region string, reterr error)
 
-	// GetClusterID retrieves the cluster ID by reading the UID of the kube-system namespace.
-	GetClusterID(ctx context.Context) (*uuid.UUID, error)
+	// GetKubeSystemNamespaceID retrieves the UID of the kube-system namespace.
+	GetKubeSystemNamespaceID(ctx context.Context) (*uuid.UUID, error)
 
 	// GetKOPSClusterNameAndStateStore discovers the cluster name and kOps state store bucket from the kube-system namespace
 	// annotation. kOps annotates the kube-system namespace with annotations such as this:
@@ -57,22 +61,26 @@ func New(clientset kubernetes.Interface, dyno dynamic.Interface) *ServiceImpl {
 	}
 }
 
+func (s *ServiceImpl) GetCSP(ctx context.Context) (cloud.Cloud, error) {
+	return s.getCSP(ctx, "")
+}
+
 func (s *ServiceImpl) GetCSPAndRegion(ctx context.Context) (csp cloud.Cloud, region string, reterr error) {
 	return s.getCSPAndRegion(ctx, "")
 }
 
-func (s *ServiceImpl) GetClusterID(ctx context.Context) (*uuid.UUID, error) {
+func (s *ServiceImpl) GetKubeSystemNamespaceID(ctx context.Context) (*uuid.UUID, error) {
 	ns, err := s.getKubeSystemNamespace(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	clusterID, err := uuid.Parse(string(ns.UID))
+	namespaceID, err := uuid.Parse(string(ns.UID))
 	if err != nil {
 		return nil, fmt.Errorf("parsing namespace %q uid: %w", metav1.NamespaceSystem, err)
 	}
 
-	return &clusterID, nil
+	return &namespaceID, nil
 }
 
 func (s *ServiceImpl) getKubeSystemNamespace(ctx context.Context) (*v1.Namespace, error) {
@@ -93,10 +101,10 @@ func (s *ServiceImpl) getKubeSystemNamespace(ctx context.Context) (*v1.Namespace
 	return ns, nil
 }
 
-func (s *ServiceImpl) getCSPAndRegion(ctx context.Context, next string) (csp cloud.Cloud, region string, reterr error) {
-	nodes, err := s.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{Limit: 10, Continue: next})
+func (s *ServiceImpl) getCSP(ctx context.Context, next string) (cloud.Cloud, error) {
+	nodes, err := s.listNodes(ctx, next)
 	if err != nil {
-		return "", "", fmt.Errorf("listing nodes: %w", err)
+		return "", err
 	}
 
 	for i := range nodes.Items {
@@ -106,13 +114,36 @@ func (s *ServiceImpl) getCSPAndRegion(ctx context.Context, next string) (csp clo
 			continue
 		}
 
-		nodeCSP, ok := getCSP(node)
-		if ok {
+		if nodeCSP, ok := getNodeCSP(node); ok {
+			return nodeCSP, nil
+		}
+	}
+
+	if nodes.Continue != "" {
+		return s.getCSP(ctx, nodes.Continue)
+	}
+
+	return "", fmt.Errorf("failed to discover csp")
+}
+
+func (s *ServiceImpl) getCSPAndRegion(ctx context.Context, next string) (csp cloud.Cloud, region string, reterr error) {
+	nodes, err := s.listNodes(ctx, next)
+	if err != nil {
+		return "", "", err
+	}
+
+	for i := range nodes.Items {
+		node := &nodes.Items[i]
+
+		if !isNodeReady(node) {
+			continue
+		}
+
+		if nodeCSP, ok := getNodeCSP(node); ok {
 			csp = nodeCSP
 		}
 
-		nodeRegion, ok := getRegion(node)
-		if ok {
+		if nodeRegion, ok := getRegion(node); ok {
 			region = nodeRegion
 		}
 
@@ -126,6 +157,15 @@ func (s *ServiceImpl) getCSPAndRegion(ctx context.Context, next string) (csp clo
 	}
 
 	return "", "", fmt.Errorf("failed discovering properties: csp=%q, region=%q", csp, region)
+}
+
+func (s *ServiceImpl) listNodes(ctx context.Context, next string) (*v1.NodeList, error) {
+	nodes, err := s.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{Limit: 10, Continue: next})
+	if err != nil {
+		return nil, fmt.Errorf("listing nodes: %w", err)
+	}
+
+	return nodes, nil
 }
 
 func isNodeReady(n *v1.Node) bool {
@@ -150,7 +190,7 @@ func getRegion(n *v1.Node) (string, bool) {
 	return "", false
 }
 
-func getCSP(n *v1.Node) (cloud.Cloud, bool) {
+func getNodeCSP(n *v1.Node) (cloud.Cloud, bool) {
 	providerID := n.Spec.ProviderID
 
 	if strings.HasPrefix(providerID, "gce://") {

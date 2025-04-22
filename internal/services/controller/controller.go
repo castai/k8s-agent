@@ -13,10 +13,6 @@ import (
 
 	datadoghqv1alpha1 "github.com/DataDog/extendeddaemonset/api/v1alpha1"
 	argorollouts "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
-	karpenterCoreAlpha "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
-	karpenterCore "github.com/aws/karpenter-core/pkg/apis/v1beta1"
-	karpenterAlpha "github.com/aws/karpenter/pkg/apis/v1alpha1"
-	karpenter "github.com/aws/karpenter/pkg/apis/v1beta1"
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
@@ -25,9 +21,12 @@ import (
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/discovery"
@@ -39,7 +38,7 @@ import (
 	authorizationtypev1 "k8s.io/client-go/kubernetes/typed/authorization/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
+	metrics_v1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	"k8s.io/metrics/pkg/client/clientset/versioned"
 
 	"castai-agent/internal/castai"
@@ -52,6 +51,9 @@ import (
 	"castai-agent/internal/services/controller/handlers/transformers"
 	"castai-agent/internal/services/controller/handlers/transformers/annotations"
 	custominformers "castai-agent/internal/services/controller/informers"
+	"castai-agent/internal/services/controller/knowngv"
+	"castai-agent/internal/services/memorypressure"
+	"castai-agent/internal/services/metrics"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/internal/services/version"
 	"castai-agent/pkg/labels"
@@ -69,9 +71,12 @@ type Controller struct {
 	discovery       discovery.DiscoveryInterface
 	metricsClient   versioned.Interface
 	informerFactory informers.SharedInformerFactory
+	// independentInformers are not handled by informerFactory.
+	// Initial use-case for them are Event informers:
+	// they need independent ListOptions
+	independentInformers map[string]cache.SharedIndexInformer
 
-	delta   *delta.Delta
-	deltaMu sync.Mutex
+	delta *delta.Delta
 
 	// sendMu ensures that only one goroutine can send deltas
 	sendMu sync.Mutex
@@ -83,24 +88,29 @@ type Controller struct {
 
 	conditionalInformers    []conditionalInformer
 	selfSubjectAccessReview authorizationtypev1.SelfSubjectAccessReviewInterface
+	lastSend                time.Time
 }
 
 type conditionalInformer struct {
 	// if empty it means all namespaces
 	namespace         string
-	resource          schema.GroupVersionResource
+	groupVersion      schema.GroupVersion
+	resource          string
+	kind              string
 	apiType           reflect.Type
 	informerFactory   func() cache.SharedIndexInformer
 	permissionVerbs   []string
 	isApplied         bool
 	isResourceInError bool
+	transformers      transformers.Transformers
 }
 
 func (i *conditionalInformer) Name() string {
+	resourceString := i.groupVersion.WithResource(i.resource).String()
 	if i.namespace != "" {
-		return fmt.Sprintf("Namespace:%s %s", i.namespace, i.resource.String())
+		return fmt.Sprintf("Namespace:%s %s", i.namespace, resourceString)
 	}
-	return i.resource.String()
+	return resourceString
 }
 
 func CollectSingleSnapshot(ctx context.Context,
@@ -113,10 +123,17 @@ func CollectSingleSnapshot(ctx context.Context,
 	v version.Interface,
 	castwareNamespace string,
 ) (*castai.Delta, error) {
-	f := informers.NewSharedInformerFactory(clientset, 0)
-	df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
+	tweakListOptions := func(options *metav1.ListOptions) {
+		if cfg.ForcePagination && options.ResourceVersion == "0" {
+			log.Info("Forcing pagination for the list request", "limit", cfg.PageSize)
+			options.ResourceVersion = ""
+			options.Limit = cfg.PageSize
+		}
+	}
+	f := informers.NewSharedInformerFactoryWithOptions(clientset, 0, informers.WithTweakListOptions(tweakListOptions))
+	df := dynamicinformer.NewFilteredDynamicSharedInformerFactory(dynamicClient, 0, metav1.NamespaceAll, tweakListOptions)
 
-	defaultInformers := getDefaultInformers(f, castwareNamespace)
+	defaultInformers := getDefaultInformers(f, castwareNamespace, cfg.FilterEmptyReplicaSets)
 	conditionalInformers := getConditionalInformers(clientset, cfg, f, df, metricsClient, log)
 	additionalTransformers := createAdditionalTransformers(cfg)
 
@@ -131,7 +148,8 @@ func CollectSingleSnapshot(ctx context.Context,
 
 	handledInformers := map[string]*custominformers.HandledInformer{}
 	for typ, i := range defaultInformers {
-		handledInformers[typ.String()] = custominformers.NewHandledInformer(log, queue, i.informer, typ, i.filters, additionalTransformers...)
+		transformers := append(i.transformers, additionalTransformers...)
+		handledInformers[typ.String()] = custominformers.NewHandledInformer(log, queue, i.informer, typ, i.filters, transformers...)
 	}
 	for typ, i := range handledConditionalInformers {
 		handledInformers[typ] = i
@@ -144,9 +162,12 @@ func CollectSingleSnapshot(ctx context.Context,
 
 	defer queue.ShutDown()
 
-	agentVersion := ctx.Value("agentVersion").(*config.AgentVersion)
+	agentVersion := "unknown"
+	if vi := config.VersionInfo; vi != nil {
+		agentVersion = vi.Version
+	}
 
-	d := delta.New(log, clusterID, v.Full(), agentVersion.Version)
+	d := delta.New(log, clusterID, v.Full(), agentVersion)
 	go func() {
 		for {
 			i, _ := queue.Get()
@@ -170,9 +191,11 @@ func CollectSingleSnapshot(ctx context.Context,
 		return nil, err
 	}
 
-	log.Debugf("synced %d items", len(d.Cache))
+	delta := d.SnapshotAndReset(ctx, nil)
 
-	return d.ToCASTAIRequest(), nil
+	log.Debugf("synced %d items", len(delta.Items))
+
+	return delta, nil
 }
 
 func New(
@@ -194,44 +217,74 @@ func New(
 
 	queue := workqueue.NewNamed("castai-agent")
 
-	f := informers.NewSharedInformerFactory(clientset, 0)
-	df := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, 0)
+	defaultResync := 0 * time.Second
+	tweakListOptions := func(options *metav1.ListOptions) {
+		if cfg.ForcePagination && options.ResourceVersion == "0" {
+			log.Info("Forcing pagination for the list request", "limit", cfg.PageSize)
+			options.ResourceVersion = ""
+			options.Limit = cfg.PageSize
+		}
+	}
+	f := informers.NewSharedInformerFactoryWithOptions(clientset, defaultResync, informers.WithTweakListOptions(tweakListOptions))
+	df := dynamicinformer.NewFilteredDynamicSharedInformerFactory(dynamicClient, defaultResync, metav1.NamespaceAll, tweakListOptions)
 	discovery := clientset.Discovery()
 
-	defaultInformers := getDefaultInformers(f, castwareNamespace)
+	defaultInformers := getDefaultInformers(f, castwareNamespace, cfg.FilterEmptyReplicaSets)
 	conditionalInformers := getConditionalInformers(clientset, cfg, f, df, metricsClient, log)
 	additionalTransformers := createAdditionalTransformers(cfg)
 
 	handledInformers := map[string]*custominformers.HandledInformer{}
+	independentInformers := map[string]cache.SharedIndexInformer{}
 	for typ, i := range defaultInformers {
-		handledInformers[typ.String()] = custominformers.NewHandledInformer(log, queue, i.informer, typ, i.filters, additionalTransformers...)
+		name := typ.String()
+		if !informerEnabled(cfg, name) {
+			continue
+		}
+		transformers := append(i.transformers, additionalTransformers...)
+		handledInformers[name] = custominformers.NewHandledInformer(log, queue, i.informer, typ, i.filters, transformers...)
 	}
 
 	eventType := reflect.TypeOf(&corev1.Event{})
-	handledInformers[fmt.Sprintf("%s:autoscaler", eventType)] = custominformers.NewHandledInformer(
-		log,
-		queue,
-		createEventInformer(f, v, autoscalerevents.ListOpts),
-		eventType,
-		filters.Filters{
-			{
-				autoscalerevents.Filter,
+	autoscalerEvents := fmt.Sprintf("%s:autoscaler", eventType)
+	if informerEnabled(cfg, autoscalerEvents) {
+		informer := createEventInformer(clientset, defaultResync, v, func(options *metav1.ListOptions, v version.Interface) {
+			tweakListOptions(options)
+			autoscalerevents.ListOpts(options, v)
+		})
+		independentInformers[autoscalerEvents] = informer
+		handledInformers[autoscalerEvents] = custominformers.NewHandledInformer(
+			log,
+			queue,
+			informer,
+			eventType,
+			filters.Filters{
+				{
+					autoscalerevents.Filter,
+				},
 			},
-		},
-		additionalTransformers...,
-	)
-	handledInformers[fmt.Sprintf("%s:oom", eventType)] = custominformers.NewHandledInformer(
-		log,
-		queue,
-		createEventInformer(f, v, oomevents.ListOpts),
-		eventType,
-		filters.Filters{
-			{
-				oomevents.Filter,
+			additionalTransformers...,
+		)
+	}
+	oomEvents := fmt.Sprintf("%s:oom", eventType)
+	if informerEnabled(cfg, oomEvents) {
+		informer := createEventInformer(clientset, defaultResync, v, func(options *metav1.ListOptions, v version.Interface) {
+			tweakListOptions(options)
+			oomevents.ListOpts(options, v)
+		})
+		independentInformers[oomEvents] = informer
+		handledInformers[oomEvents] = custominformers.NewHandledInformer(
+			log,
+			queue,
+			informer,
+			eventType,
+			filters.Filters{
+				{
+					oomevents.Filter,
+				},
 			},
-		},
-		additionalTransformers...,
-	)
+			additionalTransformers...,
+		)
+	}
 
 	return &Controller{
 		log:                     log,
@@ -242,6 +295,7 @@ func New(
 		delta:                   delta.New(log, clusterID, v.Full(), agentVersion.Version),
 		queue:                   queue,
 		informers:               handledInformers,
+		independentInformers:    independentInformers,
 		agentVersion:            agentVersion,
 		healthzProvider:         healthzProvider,
 		metricsClient:           metricsClient,
@@ -306,7 +360,7 @@ func (c *Controller) Run(ctx context.Context) error {
 
 		c.log.Infof("sending cluster deltas every %s", c.cfg.Interval)
 
-		wait.NonSlidingUntil(func() {
+		sendDeltas := func() {
 			// Check if another goroutine is trying to send deltas.
 			if !c.sendMu.TryLock() {
 				// If it is, don't try to send deltas on this turn to avoid a backlog of sends.
@@ -316,7 +370,14 @@ func (c *Controller) Run(ctx context.Context) error {
 			// release it immediately to allow the new sending goroutine to do its job.
 			defer c.sendMu.Unlock()
 			c.send(ctx)
-		}, c.cfg.Interval, ctx.Done())
+		}
+		mempr := memorypressure.MemoryPressure{
+			Ctx:      ctx,
+			Interval: c.cfg.MemoryPressureInterval,
+			Log:      c.log,
+		}
+		go mempr.OnMemoryPressure(sendDeltas)
+		wait.NonSlidingUntil(sendDeltas, c.cfg.Interval, ctx.Done())
 		return nil
 	})
 
@@ -333,6 +394,10 @@ func (c *Controller) Run(ctx context.Context) error {
 	c.pollQueueUntilShutdown()
 
 	return g.Wait()
+}
+
+func informerEnabled(cfg *config.Controller, name string) bool {
+	return !lo.Contains(cfg.DisabledInformers, name)
 }
 
 func (c *Controller) startConditionalInformersWithWatcher(ctx context.Context, conditionalInformers []conditionalInformer, additionalTransformers []transformers.Transformer) {
@@ -359,7 +424,7 @@ func startConditionalInformers(ctx context.Context,
 		log.Warnf("Error when getting server resources: %v", err.Error())
 		resourcesInError := extractGroupVersionsFromApiResourceError(log, err)
 		for i, informer := range conditionalInformers {
-			conditionalInformers[i].isResourceInError = resourcesInError[informer.resource.GroupVersion()]
+			conditionalInformers[i].isResourceInError = resourcesInError[informer.groupVersion]
 		}
 	}
 	log.Infof("Cluster API server is available, trying to start conditional informers")
@@ -370,8 +435,8 @@ func startConditionalInformers(ctx context.Context,
 			conditionalInformers[i].isResourceInError = false
 			continue
 		}
-		apiResourceListForGroupVersion := getAPIResourceListByGroupVersion(informer.resource.GroupVersion().String(), apiResourceLists)
-		if !isResourceAvailable(informer.apiType, apiResourceListForGroupVersion) {
+		apiResourceListForGroupVersion := getAPIResourceListByGroupVersion(informer.groupVersion.String(), apiResourceLists)
+		if !isResourceAvailable(informer.kind, apiResourceListForGroupVersion) {
 			log.Infof("Skipping conditional informer name: %v, because API resource is not available",
 				informer.Name(),
 			)
@@ -388,8 +453,10 @@ func startConditionalInformers(ctx context.Context,
 		log.Infof("Starting conditional informer for %v", informer.Name())
 		conditionalInformers[i].isApplied = true
 
-		handledInformer := custominformers.NewHandledInformer(log, queue, informer.informerFactory(), informer.apiType, nil, additionalTransformers...)
-		handledInformers[informer.apiType.String()] = handledInformer
+		transformers := append(informer.transformers, additionalTransformers...)
+		name := fmt.Sprintf("%s::%s", informer.groupVersion.String(), informer.kind)
+		handledInformer := custominformers.NewHandledInformer(log, queue, informer.informerFactory(), informer.apiType, nil, transformers...)
+		handledInformers[name] = handledInformer
 
 		go handledInformer.Run(ctx.Done())
 	}
@@ -464,55 +531,36 @@ func (c *Controller) processItem(i interface{}) {
 		return
 	}
 
-	c.deltaMu.Lock()
 	c.delta.Add(di)
-	c.deltaMu.Unlock()
 }
 
 func (c *Controller) send(ctx context.Context) {
-	c.deltaMu.Lock()
-	defer c.deltaMu.Unlock()
+	startTime := time.Now().UTC()
+	delta := c.delta.SnapshotAndReset(ctx, c.prepareNodesForSend)
 
-	nodesByName := map[string]*corev1.Node{}
-	var nodes []*corev1.Node
-
-	for _, item := range c.delta.Cache {
-		n, ok := item.Obj.(*corev1.Node)
-		if !ok {
-			continue
-		}
-
-		nodesByName[n.Name] = n
-		nodes = append(nodes, n)
-	}
-
-	if len(nodes) > 0 {
-		spots, err := c.provider.FilterSpot(ctx, nodes)
-		if err != nil {
-			c.log.Warnf("failed to determine node lifecycle, some functionality might be limited: %v", err)
-		}
-
-		for _, spot := range spots {
-			nodesByName[spot.Name].Labels[labels.CastaiFakeSpot] = "true"
-		}
-	}
-
-	if err := c.castaiclient.SendDelta(ctx, c.clusterID, c.delta.ToCASTAIRequest()); err != nil {
+	if err := c.castaiclient.SendDelta(ctx, c.clusterID, delta); err != nil {
 		if !errors.Is(err, context.Canceled) {
 			c.log.Errorf("failed sending delta: %v", err)
 		}
 
 		if errors.Is(err, castai.ErrInvalidContinuityToken) {
 			c.log.Info("restarting controller due to continuity token mismatch")
-			c.triggerRestart()
 		}
+
+		c.triggerRestart()
 
 		return
 	}
 
 	c.healthzProvider.SnapshotSent()
 
-	c.delta.Clear()
+	c.delta.FullSnapshot = false
+
+	metrics.DeltaSendTime.Observe(time.Since(startTime).Seconds())
+	if !c.lastSend.IsZero() {
+		metrics.DeltaSendInterval.Observe(startTime.Sub(c.lastSend).Seconds())
+	}
+	c.lastSend = startTime
 }
 
 func (c *Controller) debugQueueContent(maxItems int) string {
@@ -537,14 +585,40 @@ func (c *Controller) debugQueueContent(maxItems int) string {
 	return content
 }
 
+func (c *Controller) prepareNodesForSend(ctx context.Context, cache map[string]*delta.Item) {
+	nodesByName := map[string]*corev1.Node{}
+	var nodes []*corev1.Node
+
+	for _, item := range cache {
+		n, ok := item.Obj.(*corev1.Node)
+		if !ok {
+			continue
+		}
+
+		nodesByName[n.Name] = n
+		nodes = append(nodes, n)
+	}
+
+	if len(nodes) > 0 {
+		spots, err := c.provider.FilterSpot(ctx, nodes)
+		if err != nil {
+			c.log.Warnf("failed to determine node lifecycle, some functionality might be limited: %v", err)
+		}
+
+		for _, spot := range spots {
+			nodesByName[spot.Name].Labels[labels.CastaiFakeSpot] = "true"
+		}
+	}
+}
+
 func informerHasAccess(ctx context.Context, informer conditionalInformer, selfSubjectAccessReview authorizationtypev1.SelfSubjectAccessReviewInterface, log logrus.FieldLogger) bool {
 	// Check if allowed to access all resources with the wildcard "*" verb
-	if access := informerIsAllowedToAccessResource(ctx, informer.namespace, "*", informer, informer.resource.Group, selfSubjectAccessReview, log); access.Status.Allowed {
+	if access := informerIsAllowedToAccessResource(ctx, informer.namespace, "*", informer, informer.groupVersion.Group, selfSubjectAccessReview, log); access.Status.Allowed {
 		return true
 	}
 
 	for _, verb := range informer.permissionVerbs {
-		access := informerIsAllowedToAccessResource(ctx, informer.namespace, verb, informer, informer.resource.Group, selfSubjectAccessReview, log)
+		access := informerIsAllowedToAccessResource(ctx, informer.namespace, verb, informer, informer.groupVersion.Group, selfSubjectAccessReview, log)
 		if !access.Status.Allowed {
 			return false
 		}
@@ -559,7 +633,7 @@ func informerIsAllowedToAccessResource(ctx context.Context, namespace, verb stri
 				Namespace: namespace,
 				Verb:      verb,
 				Group:     groupName,
-				Resource:  informer.resource.Resource,
+				Resource:  informer.resource,
 			},
 		},
 	}, metav1.CreateOptions{})
@@ -572,21 +646,25 @@ func informerIsAllowedToAccessResource(ctx context.Context, namespace, verb stri
 }
 
 func waitInformersSync(ctx context.Context, log logrus.FieldLogger, informers map[string]*custominformers.HandledInformer) error {
+	waitStartedAt := time.Now()
 	syncs := make([]cache.InformerSynced, 0, len(informers))
+	syncCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	for objType, informer := range informers {
 		objType := objType
 		informer := informer
+		logC := throttleLog(syncCtx, log, objType, waitStartedAt, 5*time.Second)
 		syncs = append(syncs, func() bool {
 			hasSynced := informer.SharedInformer.HasSynced()
-			if !hasSynced {
-				log.Infof("Informer cache for %v has not been synced.", objType)
+			// By default, `cache.WaitForCacheSync` will poll every 100ms,
+			// so we deduplicate the log messages via unbuffered channel.
+			select {
+			case logC <- hasSynced:
 			}
-
 			return hasSynced
 		})
 	}
 
-	waitStartedAt := time.Now()
 	log.Info("waiting for informers cache to sync")
 	if !cache.WaitForCacheSync(ctx.Done(), syncs...) {
 		log.Error("failed to sync")
@@ -596,8 +674,37 @@ func waitInformersSync(ctx context.Context, log logrus.FieldLogger, informers ma
 	return nil
 }
 
+func throttleLog(ctx context.Context, log logrus.FieldLogger, objType string, waitStartedAt time.Time, window time.Duration) chan bool {
+	logC := make(chan bool)
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case synced := <-logC:
+				if !synced {
+					log.Infof("Informer cache for %v has not been synced after %v", objType, time.Since(waitStartedAt))
+				} else {
+					log.Infof("Informer cache for %v synced after %v", objType, time.Since(waitStartedAt))
+				}
+				select {
+				case <-time.After(window):
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+
+	return logC
+}
+
 func (c *Controller) Start(done <-chan struct{}) {
 	c.informerFactory.Start(done)
+	for _, informer := range c.independentInformers {
+		go informer.Run(done)
+	}
 }
 func extractGroupVersionsFromApiResourceError(log logrus.FieldLogger, err error) map[schema.GroupVersion]bool {
 	cleanedString := strings.Split(err.Error(), "unable to retrieve the complete list of server APIs: ")[1]
@@ -619,7 +726,9 @@ func extractGroupVersionsFromApiResourceError(log logrus.FieldLogger, err error)
 func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Controller, f informers.SharedInformerFactory, df dynamicinformer.DynamicSharedInformerFactory, metricsClient versioned.Interface, logger logrus.FieldLogger) []conditionalInformer {
 	conditionalInformers := []conditionalInformer{
 		{
-			resource:        policyv1.SchemeGroupVersion.WithResource("poddisruptionbudgets"),
+			groupVersion:    policyv1.SchemeGroupVersion,
+			resource:        "poddisruptionbudgets",
+			kind:            "PodDisruptionBudget",
 			apiType:         reflect.TypeOf(&policyv1.PodDisruptionBudget{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
@@ -627,7 +736,9 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			},
 		},
 		{
-			resource:        storagev1.SchemeGroupVersion.WithResource("csinodes"),
+			groupVersion:    storagev1.SchemeGroupVersion,
+			resource:        "csinodes",
+			kind:            "CSINode",
 			apiType:         reflect.TypeOf(&storagev1.CSINode{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
@@ -635,7 +746,9 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			},
 		},
 		{
-			resource:        autoscalingv1.SchemeGroupVersion.WithResource("horizontalpodautoscalers"),
+			groupVersion:    autoscalingv1.SchemeGroupVersion,
+			resource:        "horizontalpodautoscalers",
+			kind:            "HorizontalPodAutoscaler",
 			apiType:         reflect.TypeOf(&autoscalingv1.HorizontalPodAutoscaler{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
@@ -643,55 +756,99 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			},
 		},
 		{
-			resource:        karpenterCoreAlpha.SchemeGroupVersion.WithResource("provisioners"),
-			apiType:         reflect.TypeOf(&karpenterCoreAlpha.Provisioner{}),
+			groupVersion:    knowngv.KarpenterCoreV1Alpha5,
+			resource:        "provisioners",
+			kind:            "Provisioner",
+			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return df.ForResource(karpenterCoreAlpha.SchemeGroupVersion.WithResource("provisioners")).Informer()
+				return df.ForResource(knowngv.KarpenterCoreV1Alpha5.WithResource("provisioners")).Informer()
 			},
 		},
 		{
-			resource:        karpenterCoreAlpha.SchemeGroupVersion.WithResource("machines"),
-			apiType:         reflect.TypeOf(&karpenterCoreAlpha.Machine{}),
+			groupVersion:    knowngv.KarpenterCoreV1Alpha5,
+			resource:        "machines",
+			kind:            "Machine",
+			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return df.ForResource(karpenterCoreAlpha.SchemeGroupVersion.WithResource("machines")).Informer()
+				return df.ForResource(knowngv.KarpenterCoreV1Alpha5.WithResource("machines")).Informer()
 			},
 		},
 		{
-			resource:        karpenterAlpha.SchemeGroupVersion.WithResource("awsnodetemplates"),
-			apiType:         reflect.TypeOf(&karpenterAlpha.AWSNodeTemplate{}),
+			groupVersion:    knowngv.KarpenterV1Alpha1,
+			resource:        "awsnodetemplates",
+			kind:            "AWSNodeTemplate",
+			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return df.ForResource(karpenterAlpha.SchemeGroupVersion.WithResource("awsnodetemplates")).Informer()
+				return df.ForResource(knowngv.KarpenterV1Alpha1.WithResource("awsnodetemplates")).Informer()
 			},
 		},
 		{
-			resource:        karpenterCore.SchemeGroupVersion.WithResource("nodepools"),
-			apiType:         reflect.TypeOf(&karpenterCore.NodePool{}),
+			groupVersion:    knowngv.KarpenterCoreV1Beta1,
+			resource:        "nodepools",
+			kind:            "NodePool",
+			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return df.ForResource(karpenterCore.SchemeGroupVersion.WithResource("nodepools")).Informer()
+				return df.ForResource(knowngv.KarpenterCoreV1Beta1.WithResource("nodepools")).Informer()
 			},
 		},
 		{
-			resource:        karpenterCore.SchemeGroupVersion.WithResource("nodeclaims"),
-			apiType:         reflect.TypeOf(&karpenterCore.NodeClaim{}),
+			groupVersion:    knowngv.KarpenterCoreV1Beta1,
+			resource:        "nodeclaims",
+			kind:            "NodeClaim",
+			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return df.ForResource(karpenterCore.SchemeGroupVersion.WithResource("nodeclaims")).Informer()
+				return df.ForResource(knowngv.KarpenterCoreV1Beta1.WithResource("nodeclaims")).Informer()
 			},
 		},
 		{
-			resource:        karpenter.SchemeGroupVersion.WithResource("ec2nodeclasses"),
-			apiType:         reflect.TypeOf(&karpenter.EC2NodeClass{}),
+			groupVersion:    knowngv.KarpenterV1Beta1,
+			resource:        "ec2nodeclasses",
+			kind:            "EC2NodeClass",
+			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return df.ForResource(karpenter.SchemeGroupVersion.WithResource("ec2nodeclasses")).Informer()
+				return df.ForResource(knowngv.KarpenterV1Beta1.WithResource("ec2nodeclasses")).Informer()
 			},
 		},
 		{
-			resource:        datadoghqv1alpha1.GroupVersion.WithResource("extendeddaemonsetreplicasets"),
+			groupVersion:    knowngv.KarpenterCoreV1,
+			resource:        "nodepools",
+			kind:            "NodePool",
+			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(knowngv.KarpenterCoreV1.WithResource("nodepools")).Informer()
+			},
+		},
+		{
+			groupVersion:    knowngv.KarpenterCoreV1,
+			resource:        "nodeclaims",
+			kind:            "NodeClaim",
+			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(knowngv.KarpenterCoreV1.WithResource("nodeclaims")).Informer()
+			},
+		},
+		{
+			groupVersion:    knowngv.KarpenterV1,
+			resource:        "ec2nodeclasses",
+			kind:            "EC2NodeClass",
+			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(knowngv.KarpenterV1.WithResource("ec2nodeclasses")).Informer()
+			},
+		},
+		{
+			groupVersion:    datadoghqv1alpha1.GroupVersion,
+			resource:        "extendeddaemonsetreplicasets",
+			kind:            "ExtendedDaemonSetReplicaSet",
 			apiType:         reflect.TypeOf(&datadoghqv1alpha1.ExtendedDaemonSetReplicaSet{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
@@ -699,15 +856,19 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			},
 		},
 		{
-			resource:        v1beta1.SchemeGroupVersion.WithResource("pods"),
-			apiType:         reflect.TypeOf(&v1beta1.PodMetrics{}),
+			groupVersion:    metrics_v1beta1.SchemeGroupVersion,
+			resource:        "pods",
+			kind:            "PodMetrics",
+			apiType:         reflect.TypeOf(&metrics_v1beta1.PodMetrics{}),
 			permissionVerbs: []string{"get", "list"},
 			informerFactory: func() cache.SharedIndexInformer {
 				return custominformers.NewPodMetricsInformer(logger, metricsClient)
 			},
 		},
 		{
-			resource:        argorollouts.RolloutGVR,
+			groupVersion:    argorollouts.RolloutGVR.GroupVersion(),
+			resource:        argorollouts.RolloutGVR.Resource,
+			kind:            "Rollout",
 			apiType:         reflect.TypeOf(&argorollouts.Rollout{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
@@ -715,11 +876,93 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			},
 		},
 		{
-			resource:        crd.RecommendationGVR,
+			groupVersion:    crd.RecommendationGVR.GroupVersion(),
+			resource:        crd.RecommendationGVR.Resource,
+			kind:            "Recommendation",
 			apiType:         reflect.TypeOf(&crd.Recommendation{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
 				return df.ForResource(crd.RecommendationGVR).Informer()
+			},
+		},
+		{
+			groupVersion:    networkingv1.SchemeGroupVersion,
+			resource:        "ingresses",
+			kind:            "Ingress",
+			apiType:         reflect.TypeOf(&networkingv1.Ingress{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Networking().V1().Ingresses().Informer()
+			},
+		},
+		{
+			groupVersion:    networkingv1.SchemeGroupVersion,
+			resource:        "networkpolicies",
+			kind:            "NetworkPolicy",
+			apiType:         reflect.TypeOf(&networkingv1.NetworkPolicy{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Networking().V1().NetworkPolicies().Informer()
+			},
+		},
+		{
+			groupVersion:    rbacv1.SchemeGroupVersion,
+			resource:        "roles",
+			kind:            "Role",
+			apiType:         reflect.TypeOf(&rbacv1.Role{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Rbac().V1().Roles().Informer()
+			},
+		},
+		{
+			groupVersion:    rbacv1.SchemeGroupVersion,
+			resource:        "rolebindings",
+			kind:            "RoleBinding",
+			apiType:         reflect.TypeOf(&rbacv1.RoleBinding{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Rbac().V1().RoleBindings().Informer()
+			},
+		},
+		{
+			groupVersion:    rbacv1.SchemeGroupVersion,
+			resource:        "clusterroles",
+			kind:            "ClusterRole",
+			apiType:         reflect.TypeOf(&rbacv1.ClusterRole{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Rbac().V1().ClusterRoles().Informer()
+			},
+		},
+		{
+			groupVersion:    rbacv1.SchemeGroupVersion,
+			resource:        "clusterrolebindings",
+			kind:            "ClusterRoleBinding",
+			apiType:         reflect.TypeOf(&rbacv1.ClusterRoleBinding{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Rbac().V1().ClusterRoleBindings().Informer()
+			},
+		},
+		{
+			groupVersion:    corev1.SchemeGroupVersion,
+			resource:        "limitranges",
+			kind:            "LimitRange",
+			apiType:         reflect.TypeOf(&corev1.LimitRange{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Core().V1().LimitRanges().Informer()
+			},
+		},
+		{
+			groupVersion:    corev1.SchemeGroupVersion,
+			resource:        "resourcequotas",
+			kind:            "ResourceQuota",
+			apiType:         reflect.TypeOf(&corev1.ResourceQuota{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Core().V1().ResourceQuotas().Informer()
 			},
 		},
 	}
@@ -727,11 +970,19 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 	for _, cmNamespace := range cfg.ConfigMapNamespaces {
 		conditionalInformers = append(conditionalInformers, conditionalInformer{
 			namespace:       cmNamespace,
-			resource:        corev1.SchemeGroupVersion.WithResource("configmaps"),
+			groupVersion:    corev1.SchemeGroupVersion,
+			resource:        "configmaps",
+			kind:            "ConfigMap",
 			apiType:         reflect.TypeOf(&corev1.ConfigMap{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				namespaceScopedInformer := informers.NewSharedInformerFactoryWithOptions(clientset, 0, informers.WithNamespace(cmNamespace))
+				namespaceScopedInformer := informers.NewSharedInformerFactoryWithOptions(clientset, 0, informers.WithNamespace(cmNamespace), informers.WithTweakListOptions(func(options *metav1.ListOptions) {
+					if cfg.ForcePagination && options.ResourceVersion == "0" {
+						logger.Info("Forcing pagination for the list request", "limit", cfg.PageSize)
+						options.ResourceVersion = ""
+						options.Limit = cfg.PageSize
+					}
+				}))
 				return namespaceScopedInformer.Core().V1().ConfigMaps().Informer()
 			},
 		})
@@ -740,11 +991,12 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 }
 
 type defaultInformer struct {
-	informer cache.SharedInformer
-	filters  filters.Filters
+	informer     cache.SharedInformer
+	filters      filters.Filters
+	transformers transformers.Transformers
 }
 
-func getDefaultInformers(f informers.SharedInformerFactory, castwareNamespace string) map[reflect.Type]defaultInformer {
+func getDefaultInformers(f informers.SharedInformerFactory, castwareNamespace string, filterEmptyReplicaSets bool) map[reflect.Type]defaultInformer {
 	return map[reflect.Type]defaultInformer{
 		reflect.TypeOf(&corev1.Node{}):                  {informer: f.Core().V1().Nodes().Informer()},
 		reflect.TypeOf(&corev1.Pod{}):                   {informer: f.Core().V1().Pods().Informer()},
@@ -755,17 +1007,19 @@ func getDefaultInformers(f informers.SharedInformerFactory, castwareNamespace st
 		reflect.TypeOf(&appsv1.Deployment{}):            {informer: f.Apps().V1().Deployments().Informer()},
 		reflect.TypeOf(&appsv1.ReplicaSet{}): {
 			informer: f.Apps().V1().ReplicaSets().Informer(),
-			filters: filters.Filters{
-				{
-					func(e castai.EventType, obj interface{}) bool {
-						replicaSet, ok := obj.(*appsv1.ReplicaSet)
-						if !ok {
-							return false
-						}
+			transformers: transformers.Transformers{
+				func(e castai.EventType, obj interface{}) (castai.EventType, interface{}) {
+					replicaSet, ok := obj.(*appsv1.ReplicaSet)
+					if !ok || !filterEmptyReplicaSets {
+						return e, obj
+					}
 
-						return replicaSet.Namespace == castwareNamespace ||
-							(replicaSet.Spec.Replicas != nil && *replicaSet.Spec.Replicas > 0 && replicaSet.Status.Replicas > 0)
-					},
+					if e == castai.EventDelete || replicaSet.Namespace == castwareNamespace ||
+						(replicaSet.Spec.Replicas != nil && *replicaSet.Spec.Replicas > 0 && replicaSet.Status.Replicas > 0) || replicaSet.OwnerReferences == nil {
+						return e, obj
+					}
+
+					return castai.EventDelete, obj
 				},
 			},
 		},
@@ -791,11 +1045,12 @@ func getDefaultInformers(f informers.SharedInformerFactory, castwareNamespace st
 	}
 }
 
-func createEventInformer(f informers.SharedInformerFactory, v version.Interface, listOptions func(*metav1.ListOptions, version.Interface)) cache.SharedIndexInformer {
-	return f.InformerFor(&corev1.Event{}, func(client kubernetes.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-		return v1.NewFilteredEventInformer(client, corev1.NamespaceAll, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, func(options *metav1.ListOptions) {
-			listOptions(options, v)
-		})
+// createEventInformer creates a new event informer with the given list options.
+// We can't use sharedInformerFactory because it would reuse the first registered ListOptions
+// for all the informers.
+func createEventInformer(client kubernetes.Interface, resyncPeriod time.Duration, v version.Interface, listOptions func(*metav1.ListOptions, version.Interface)) cache.SharedIndexInformer {
+	return v1.NewFilteredEventInformer(client, corev1.NamespaceAll, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, func(options *metav1.ListOptions) {
+		listOptions(options, v)
 	})
 }
 
@@ -805,14 +1060,12 @@ func getAPIResourceListByGroupVersion(groupVersion string, apiResourceLists []*m
 			return apiResourceList
 		}
 	}
-	// return empty list if not found
 	return &metav1.APIResourceList{}
 }
 
-func isResourceAvailable(kind reflect.Type, apiResourceList *metav1.APIResourceList) bool {
+func isResourceAvailable(kind string, apiResourceList *metav1.APIResourceList) bool {
 	for _, apiResource := range apiResourceList.APIResources {
-		// apiResource.Kind is, ex.: "PodMetrics", while kind.String() is, ex.: "*v1.PodMetrics"
-		if strings.Contains(kind.String(), apiResource.Kind) {
+		if kind == apiResource.Kind {
 			return true
 		}
 	}

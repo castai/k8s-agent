@@ -13,6 +13,7 @@ import (
 	"castai-agent/internal/services/controller/delta"
 	"castai-agent/internal/services/controller/handlers/filters"
 	"castai-agent/internal/services/controller/handlers/transformers"
+	"castai-agent/internal/services/metrics"
 )
 
 type handler struct {
@@ -60,6 +61,8 @@ func (h *handler) handle(e castai.EventType, obj interface{}) {
 	}
 
 	e, obj = h.transformers.Apply(e, obj)
+
+	metrics.WatchReceived.WithLabelValues(reflect.TypeOf(obj).String(), string(e)).Inc()
 
 	if reflect.TypeOf(obj) != h.handledType {
 		// Check if obj is of type *unstructured.Unstructured

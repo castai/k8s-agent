@@ -37,6 +37,21 @@ func (m *MockService) EXPECT() *MockServiceMockRecorder {
 	return m.recorder
 }
 
+// GetCSP mocks base method.
+func (m *MockService) GetCSP(ctx context.Context) (cloud.Cloud, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCSP", ctx)
+	ret0, _ := ret[0].(cloud.Cloud)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetCSP indicates an expected call of GetCSP.
+func (mr *MockServiceMockRecorder) GetCSP(ctx interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCSP", reflect.TypeOf((*MockService)(nil).GetCSP), ctx)
+}
+
 // GetCSPAndRegion mocks base method.
 func (m *MockService) GetCSPAndRegion(ctx context.Context) (cloud.Cloud, string, error) {
 	m.ctrl.T.Helper()
@@ -53,21 +68,6 @@ func (mr *MockServiceMockRecorder) GetCSPAndRegion(ctx interface{}) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCSPAndRegion", reflect.TypeOf((*MockService)(nil).GetCSPAndRegion), ctx)
 }
 
-// GetClusterID mocks base method.
-func (m *MockService) GetClusterID(ctx context.Context) (*uuid.UUID, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetClusterID", ctx)
-	ret0, _ := ret[0].(*uuid.UUID)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetClusterID indicates an expected call of GetClusterID.
-func (mr *MockServiceMockRecorder) GetClusterID(ctx interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetClusterID", reflect.TypeOf((*MockService)(nil).GetClusterID), ctx)
-}
-
 // GetKOPSClusterNameAndStateStore mocks base method.
 func (m *MockService) GetKOPSClusterNameAndStateStore(ctx context.Context, log logrus.FieldLogger) (string, string, error) {
 	m.ctrl.T.Helper()
@@ -82,6 +82,21 @@ func (m *MockService) GetKOPSClusterNameAndStateStore(ctx context.Context, log l
 func (mr *MockServiceMockRecorder) GetKOPSClusterNameAndStateStore(ctx, log interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKOPSClusterNameAndStateStore", reflect.TypeOf((*MockService)(nil).GetKOPSClusterNameAndStateStore), ctx, log)
+}
+
+// GetKubeSystemNamespaceID mocks base method.
+func (m *MockService) GetKubeSystemNamespaceID(ctx context.Context) (*uuid.UUID, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetKubeSystemNamespaceID", ctx)
+	ret0, _ := ret[0].(*uuid.UUID)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetKubeSystemNamespaceID indicates an expected call of GetKubeSystemNamespaceID.
+func (mr *MockServiceMockRecorder) GetKubeSystemNamespaceID(ctx interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKubeSystemNamespaceID", reflect.TypeOf((*MockService)(nil).GetKubeSystemNamespaceID), ctx)
 }
 
 // GetOpenshiftClusterID mocks base method.

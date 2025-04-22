@@ -3,15 +3,13 @@ package scheme
 import (
 	datadoghqv1alpha1 "github.com/DataDog/extendeddaemonset/api/v1alpha1"
 	argorollouts "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
-	karpenterCoreAlpha "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
-	karpenterCore "github.com/aws/karpenter-core/pkg/apis/v1beta1"
-	karpenterAlpha "github.com/aws/karpenter/pkg/apis/v1alpha1"
-	karpenter "github.com/aws/karpenter/pkg/apis/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -29,13 +27,11 @@ var builder = runtime.SchemeBuilder{
 	autoscalingv1.AddToScheme,
 	v1beta1.AddToScheme,
 	policyv1.AddToScheme,
-	karpenterCoreAlpha.SchemeBuilder.AddToScheme,
-	karpenterAlpha.SchemeBuilder.AddToScheme,
-	karpenterCore.SchemeBuilder.AddToScheme,
-	karpenter.SchemeBuilder.AddToScheme,
 	datadoghqv1alpha1.SchemeBuilder.AddToScheme,
 	argorollouts.SchemeBuilder.AddToScheme,
 	crd.AddToScheme,
+	networkingv1.AddToScheme,
+	rbacv1.AddToScheme,
 }
 
 func init() {

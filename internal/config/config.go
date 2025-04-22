@@ -27,11 +27,15 @@ type Config struct {
 	KOPS      *KOPS      `mapstructure:"kops"`
 	AKS       *AKS       `mapstructure:"aks"`
 	OpenShift *OpenShift `mapstructure:"openshift"`
+	Anywhere  *Anywhere  `mapstructure:"anywhere"`
 
 	Static      *Static     `mapstructure:"static"`
 	Controller  *Controller `mapstructure:"controller"`
-	PprofPort   int         `mapstructure:"pprof.port"`
+	PprofPort   int         `mapstructure:"pprof_port"`
 	HealthzPort int         `mapstructure:"healthz_port"`
+	MetricsPort int         `mapstructure:"metrics_port"`
+
+	MetadataStore *MetadataStoreConfig `mapstructure:"metadata_store"`
 
 	LeaderElection LeaderElectionConfig `mapstructure:"leader_election"`
 
@@ -50,8 +54,9 @@ type TLS struct {
 }
 
 type Log struct {
-	Level                 int           `mapstructure:"level"`
-	ExporterSenderTimeout time.Duration `mapstructure:"exporter_timeout"`
+	Level                 int            `mapstructure:"level"`
+	ExporterSenderTimeout time.Duration  `mapstructure:"exporter_timeout"`
+	PrintMemoryUsageEvery *time.Duration `mapstructure:"print_memory_usage_every"`
 }
 
 type Pod struct {
@@ -61,8 +66,12 @@ type Pod struct {
 }
 
 type API struct {
-	Key string `mapstructure:"key"`
-	URL string `mapstructure:"url"`
+	Key                   string        `mapstructure:"key"`
+	URL                   string        `mapstructure:"url"`
+	HostHeaderOverride    string        `mapstructure:"host_header_override"`
+	Timeout               time.Duration `mapstructure:"timeout"`
+	DeltaReadTimeout      time.Duration `mapstructure:"delta_read_timeout"`
+	TotalSendDeltaTimeout time.Duration `mapstructure:"total_send_delta_timeout"`
 }
 
 type EKS struct {
@@ -104,8 +113,19 @@ type Static struct {
 	ClusterID string `mapstructure:"cluster_id"`
 }
 
+type MetadataStoreConfig struct {
+	Enabled            bool   `mapstructure:"enabled"`
+	ConfigMapNamespace string `mapstructure:"config_map_namespace"`
+	ConfigMapName      string `mapstructure:"config_map_name"`
+}
+
+type Anywhere struct {
+	ClusterName string `mapstructure:"cluster_name"`
+}
+
 type Controller struct {
 	Interval                       time.Duration `mapstructure:"interval"`
+	MemoryPressureInterval         time.Duration `mapstructure:"memory_pressure_interval"`
 	PrepTimeout                    time.Duration `mapstructure:"prep_timeout"`
 	InitialSleepDuration           time.Duration `mapstructure:"initial_sleep_duration"`
 	HealthySnapshotIntervalLimit   time.Duration `mapstructure:"healthy_snapshot_interval_limit"`
@@ -113,6 +133,15 @@ type Controller struct {
 	ConfigMapNamespaces            []string      `mapstructure:"config_map_namespaces"`
 	RemoveAnnotationsPrefixes      []string      `mapstructure:"remove_annotations_prefixes"`
 	AnnotationsMaxLength           string        `mapstructure:"annotations_max_length"`
+	ForcePagination                bool          `mapstructure:"force_pagination"`
+	PageSize                       int64         `mapstructure:"page_size"`
+	FilterEmptyReplicaSets         bool          `mapstructure:"filter_empty_replica_sets"`
+
+	// DisabledInformers contains a list of informers to disable,
+	// for example:
+	//	*v1.Event:oom,*v1.Deployment
+	// Note that appsv1 is referenced as v1 and the asterisk (*)
+	DisabledInformers []string `mapstructure:"disabled_informers"`
 }
 
 type LeaderElectionConfig struct {
@@ -136,16 +165,28 @@ func Get() Config {
 		return *cfg
 	}
 
+	viper.SetDefault("api.timeout", 10*time.Second)
+	viper.SetDefault("api.delta_read_timeout", 2*time.Minute)
+	viper.SetDefault("api.total_send_delta_timeout", 5*time.Minute)
+
 	viper.SetDefault("controller.interval", 15*time.Second)
 	viper.SetDefault("controller.prep_timeout", 10*time.Minute)
+	viper.SetDefault("controller.memory_pressure_interval", 3*time.Second)
 	viper.SetDefault("controller.initial_sleep_duration", 30*time.Second)
 	viper.SetDefault("controller.healthy_snapshot_interval_limit", 12*time.Minute)
 	viper.SetDefault("controller.initialization_timeout_extension", 5*time.Minute)
+	viper.SetDefault("controller.force_pagination", false)
+	viper.SetDefault("controller.page_size", 500)
 
 	viper.SetDefault("healthz_port", 9876)
+	viper.SetDefault("metrics_port", 9877)
 	viper.SetDefault("leader_election.enabled", true)
 	viper.SetDefault("leader_election.lock_name", "agent-leader-election-lock")
 	viper.SetDefault("leader_election.namespace", "castai-agent")
+
+	viper.SetDefault("metadata_store.enabled", false)
+	viper.SetDefault("metadata_store.config_map_name", "castai-agent-metadata")
+	viper.SetDefault("metadata_store.config_map_namespace", "castai-agent")
 
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -177,6 +218,7 @@ func Get() Config {
 	if !strings.HasPrefix(cfg.API.URL, "https://") && !strings.HasPrefix(cfg.API.URL, "http://") {
 		cfg.API.URL = fmt.Sprintf("https://%s", cfg.API.URL)
 	}
+	cfg.API.URL = strings.TrimSuffix(cfg.API.URL, "/")
 
 	if cfg.EKS != nil {
 		if cfg.EKS.AccountID == "" {

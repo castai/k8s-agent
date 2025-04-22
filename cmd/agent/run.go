@@ -6,14 +6,18 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"runtime"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/leaderelection"
+	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	"k8s.io/metrics/pkg/client/clientset/versioned"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -23,6 +27,8 @@ import (
 	"castai-agent/internal/services/controller"
 	"castai-agent/internal/services/controller/scheme"
 	"castai-agent/internal/services/discovery"
+	"castai-agent/internal/services/metadata"
+	"castai-agent/internal/services/metrics"
 	"castai-agent/internal/services/monitor"
 	"castai-agent/internal/services/providers"
 	"castai-agent/internal/services/replicas"
@@ -38,15 +44,45 @@ func run(ctx context.Context) error {
 		return errors.New("env variable \"API_URL\" is required")
 	}
 
+	textFormatter := logrus.TextFormatter{FullTimestamp: true}
 	remoteLogger := logrus.New()
 	remoteLogger.SetLevel(logrus.Level(cfg.Log.Level))
-	log := remoteLogger.WithField("version", ctx.Value("agentVersion").(*config.AgentVersion).Version)
+	remoteLogger.SetFormatter(&textFormatter)
+	log := remoteLogger.WithField("version", config.VersionInfo.Version)
+	if podName := os.Getenv("SELF_POD_NAME"); podName != "" {
+		log = log.WithField("component_pod_name", podName)
+	}
+
+	if nodeName := os.Getenv("SELF_POD_NODE"); nodeName != "" {
+		log = log.WithField("component_node_name", nodeName)
+	}
 
 	localLog := logrus.New()
 	localLog.SetLevel(logrus.DebugLevel)
 
 	loggingConfig := castailog.Config{
 		SendTimeout: cfg.Log.ExporterSenderTimeout,
+	}
+
+	if cfg.Log.PrintMemoryUsageEvery != nil {
+		go func() {
+			timer := time.NewTicker(*cfg.Log.PrintMemoryUsageEvery)
+			for {
+				select {
+				case <-timer.C:
+					var m runtime.MemStats
+					runtime.ReadMemStats(&m)
+					log.WithFields(logrus.Fields{
+						"Alloc_MiB":      m.Alloc / 1024 / 1024,
+						"TotalAlloc_MiB": m.TotalAlloc / 1024 / 1024,
+						"Sys_MiB":        m.Sys / 1024 / 1024,
+						"NumGC":          m.NumGC,
+					}).Infof("memory usage")
+				case <-ctx.Done():
+					break
+				}
+			}
+		}()
 	}
 
 	restyClient, err := castai.NewDefaultRestyClient()
@@ -65,8 +101,6 @@ func run(ctx context.Context) error {
 	defer registrator.ReleaseWaiters()
 
 	castailog.SetupLogExporter(registrator, remoteLogger, localLog, castaiClient, &loggingConfig)
-	// to invoke exit handlers set up in castailog.SetupLogExporter
-	defer logrus.Exit(0)
 
 	clusterIDHandler := func(clusterID string) {
 		loggingConfig.ClusterID = clusterID
@@ -74,20 +108,26 @@ func run(ctx context.Context) error {
 		registrator.ReleaseWaiters()
 	}
 
-	return runAgentMode(ctx, castaiClient, log, cfg, clusterIDHandler)
+	err = runAgentMode(ctx, castaiClient, log, cfg, clusterIDHandler)
+	if err != nil {
+		// it is necessary to log error because invoking of logrus exit handlers will terminate the process using os.Exit()
+		// error handling in cobra ("github.com/spf13/cobra") won't be able to log this error
+		remoteLogger.Error(err)
+	}
+	defer castailog.InvokeLogrusExitHandlers(err)
+	return err
 }
 
 func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg config.Config, clusterIDChanged func(clusterID string)) error {
 	ctx, ctxCancel := context.WithCancel(ctx)
 	defer ctxCancel()
 
-	agentVersion := ctx.Value("agentVersion").(*config.AgentVersion)
-
 	// buffer will allow for all senders to push, even though we will only read first error and cancel context after it;
 	// all errors from exitCh are logged
 	exitCh := make(chan error, 10)
 	go watchExitErrors(ctx, log, exitCh, ctxCancel)
 
+	agentVersion := config.VersionInfo
 	log.Infof("running agent version: %v", agentVersion)
 	log.Infof("platform URL: %s", cfg.API.URL)
 
@@ -109,6 +149,9 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 
 	closeHealthz := runHealthzEndpoints(cfg, log, checks, exitCh)
 	defer closeHealthz()
+
+	closeMetrics := runMetricsEndpoints(cfg, log, exitCh)
+	defer closeMetrics()
 
 	restconfig, err := cfg.RetrieveKubeConfig(log)
 	if err != nil {
@@ -143,6 +186,18 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 		return fmt.Errorf("getting provider: %w", err)
 	}
 
+	metadataStore := metadata.New(clientset, cfg)
+
+	clusterIDChangedHandler := func(clusterID string) {
+		if err := metadataStore.StoreMetadataConfigMap(ctx, &metadata.Metadata{
+			ClusterID: clusterID,
+		}); err != nil {
+			log.Warnf("failed to store metadata in a config map: %v", err)
+		}
+
+		clusterIDChanged(clusterID)
+	}
+
 	log.Data["provider"] = provider.Name()
 	log.Infof("using provider %q", provider.Name())
 
@@ -152,18 +207,27 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 			clusterID = cfg.Static.ClusterID
 		}
 
+		if clusterID != "" {
+			log.WithField("cluster_id", clusterID).Info("cluster ID provided by env variable")
+		}
+
 		if clusterID == "" {
 			reg, err := provider.RegisterCluster(ctx, castaiclient)
 			if err != nil {
 				return fmt.Errorf("registering cluster: %w", err)
 			}
 			clusterID = reg.ClusterID
-			clusterIDChanged(clusterID)
-			log.Infof("cluster registered: %v, clusterID: %s", reg, clusterID)
-		} else {
-			clusterIDChanged(clusterID)
-			log.Infof("clusterID: %s provided by env variable", clusterID)
+			log.WithField("cluster_id", clusterID).Infof("cluster registered: %v", reg)
 		}
+
+		// Final check to ensure we don't run without a cluster ID.
+		if clusterID == "" {
+			// This is not normal, but we see some requests with missing cluster IDs. Agent without cluster ID will not be
+			// able to upload snapshots which means it's serving no purpose. It's best to raise this issue and get it fixed.
+			return fmt.Errorf("cluster ID is still empty after initialization")
+		}
+
+		clusterIDChangedHandler(clusterID)
 
 		if err := saveMetadata(clusterID, cfg); err != nil {
 			return err
@@ -217,36 +281,94 @@ func watchExitErrors(ctx context.Context, log *logrus.Entry, exitCh chan error, 
 }
 
 func runPProf(cfg config.Config, log *logrus.Entry, exitCh chan error) (closeFunc func()) {
+	log.Infof("starting pprof server on port: %d", cfg.PprofPort)
 	addr := portToServerAddr(cfg.PprofPort)
 	pprofSrv := &http.Server{Addr: addr, Handler: http.DefaultServeMux}
 	closeFn := func() {
+		log.Infof("closing pprof server")
 		if err := pprofSrv.Close(); err != nil {
 			log.Errorf("closing pprof server: %v", err)
 		}
 	}
 
 	go func() {
-		log.Infof("starting pprof server on %s", addr)
-		exitCh <- fmt.Errorf("pprof server: %w", pprofSrv.ListenAndServe())
+		log.Infof("pprof server ready")
+		err := pprofSrv.ListenAndServe()
+		if err != nil {
+			if !errors.Is(err, http.ErrServerClosed) {
+				exitCh <- fmt.Errorf("pprof server: %w", err)
+			} else {
+				log.Warnf("pprof server closed")
+			}
+		}
 	}()
 	return closeFn
 }
 
 func runHealthzEndpoints(cfg config.Config, log *logrus.Entry, checks map[string]healthz.Checker, exitCh chan error) func() {
-	log.Infof("starting healthz on port: %d", cfg.HealthzPort)
+	log.Infof("starting healthz server on port: %d", cfg.HealthzPort)
 	allChecks := lo.Assign(map[string]healthz.Checker{
 		"server": healthz.Ping,
 	}, checks)
-
-	healthzSrv := &http.Server{Addr: portToServerAddr(cfg.HealthzPort), Handler: &healthz.Handler{Checks: allChecks}}
+	addr := portToServerAddr(cfg.HealthzPort)
+	healthzSrv := &http.Server{Addr: addr, Handler: &healthz.Handler{Checks: allChecks}}
 	closeFunc := func() {
+		log.Infof("closing healthz server")
 		if err := healthzSrv.Close(); err != nil {
 			log.Errorf("closing healthz server: %v", err)
 		}
 	}
 
 	go func() {
-		exitCh <- fmt.Errorf("healthz server: %w", healthzSrv.ListenAndServe())
+		log.Infof("healthz server ready")
+		err := healthzSrv.ListenAndServe()
+		if err != nil {
+			if !errors.Is(err, http.ErrServerClosed) {
+				exitCh <- fmt.Errorf("healthz server: %w", err)
+			} else {
+				log.Warnf("healthz server closed")
+			}
+		}
+	}()
+	return closeFunc
+}
+
+func runMetricsEndpoints(cfg config.Config, log *logrus.Entry, exitCh chan error) func() {
+	log.Infof("starting metrics server on port: %d", cfg.MetricsPort)
+	addr := portToServerAddr(cfg.MetricsPort)
+
+	metricsMux := http.NewServeMux()
+
+	metricsMux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		gatherer := prometheus.Gatherers{
+			legacyregistry.DefaultGatherer,
+			metrics.Registry,
+		}
+
+		promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{
+			ErrorLog: log,
+		}).ServeHTTP(w, r)
+	})
+
+	metricsSrv := &http.Server{Addr: addr, Handler: metricsMux}
+	closeFunc := func() {
+		log.Infof("closing metrics server")
+		if err := metricsSrv.Close(); err != nil {
+			log.Errorf("closing metrics server: %v", err)
+		}
+	}
+
+	go func() {
+		log.Infof("metrics server ready")
+		err := metricsSrv.ListenAndServe()
+
+		if err != nil {
+			if !errors.Is(err, http.ErrServerClosed) {
+				exitCh <- fmt.Errorf("metrics server: %w", err)
+			} else {
+				log.Warnf("metrics server closed")
+			}
+		}
 	}()
 	return closeFunc
 }

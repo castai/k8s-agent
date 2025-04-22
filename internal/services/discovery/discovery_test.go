@@ -17,7 +17,7 @@ import (
 	"castai-agent/pkg/cloud"
 )
 
-func TestServiceImpl_GetClusterID(t *testing.T) {
+func TestServiceImpl_GetKubeSystemNamespaceID(t *testing.T) {
 	namespaceID := uuid.New()
 	objects := []runtime.Object{
 		&v1.Namespace{
@@ -33,7 +33,7 @@ func TestServiceImpl_GetClusterID(t *testing.T) {
 
 	s := New(clientset, dyno)
 
-	id, err := s.GetClusterID(context.Background())
+	id, err := s.GetKubeSystemNamespaceID(context.Background())
 
 	require.NoError(t, err)
 	require.Equal(t, namespaceID, *id)

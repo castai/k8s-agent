@@ -22,7 +22,7 @@ func run(ctx context.Context) error {
 
 	logger := logrus.New()
 	logger.SetLevel(logrus.Level(cfg.Log.Level))
-	log := logger.WithField("version", ctx.Value("agentVersion").(*config.AgentVersion).Version)
+	log := logger.WithField("version", config.VersionInfo.Version)
 
 	log.Infof("starting dump of cluster snapshot")
 
@@ -52,7 +52,7 @@ func run(ctx context.Context) error {
 	if cfg.Static != nil && cfg.Static.ClusterID != "" {
 		clusterID = cfg.Static.ClusterID
 	} else {
-		c, err := discoveryService.GetClusterID(ctx)
+		c, err := discoveryService.GetKubeSystemNamespaceID(ctx)
 		if err != nil {
 			return fmt.Errorf("getting cluster ID: %w", err)
 		}
@@ -66,7 +66,7 @@ func run(ctx context.Context) error {
 
 	log = log.WithField("k8s_version", v.Full())
 
-	delta, err := controller.CollectSingleSnapshot(ctx, log, clusterID, clientset, dynamicClient, metricsClient, cfg.Controller, v, "")
+	delta, err := controller.CollectSingleSnapshot(ctx, log, clusterID, clientset, dynamicClient, metricsClient, cfg.Controller, v, cfg.SelfPod.Namespace)
 	if err != nil {
 		return err
 	}

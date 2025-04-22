@@ -41,6 +41,11 @@ type OpenshiftParams struct {
 	InternalID  string `json:"internalId"`
 }
 
+type AnywhereParams struct {
+	ClusterName           string    `json:"clusterName"`
+	KubeSystemNamespaceID uuid.UUID `json:"kubeSystemNamespaceId"`
+}
+
 type RegisterClusterRequest struct {
 	ID        uuid.UUID        `json:"id"`
 	Name      string           `json:"name"`
@@ -49,6 +54,7 @@ type RegisterClusterRequest struct {
 	KOPS      *KOPSParams      `json:"kops"`
 	AKS       *AKSParams       `json:"aks"`
 	Openshift *OpenshiftParams `json:"openshift"`
+	Anywhere  *AnywhereParams  `json:"anywhere"`
 }
 
 type Cluster struct {

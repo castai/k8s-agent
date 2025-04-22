@@ -14,6 +14,8 @@ import (
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	"k8s.io/metrics/pkg/client/clientset/versioned"
 	"k8s.io/utils/clock"
+
+	"castai-agent/internal/services/metrics"
 )
 
 const fetchInterval = 30 * time.Second
@@ -49,7 +51,7 @@ func newMetricsWatch(log logrus.FieldLogger,
 	listOptions metav1.ListOptions,
 	fetchInterval time.Duration) *metricsWatch {
 	return &metricsWatch{
-		closeChan:     make(chan struct{}, 1),
+		closeChan:     make(chan struct{}),
 		resultChan:    make(chan watch.Event),
 		log:           log,
 		client:        client,
@@ -71,6 +73,8 @@ func (m *metricsWatch) Start(ctx context.Context) {
 			return
 		}
 
+		metrics.WatchReceived.WithLabelValues("*v1beta1.PodMetrics", "update").Add(float64(len(result.Items)))
+
 		for _, metrics := range result.Items {
 			metrics := metrics
 			// Skip labels, as we already have that in the pod list.
@@ -90,10 +94,12 @@ func (m *metricsWatch) Start(ctx context.Context) {
 			}
 		}
 	}, backoff, true, m.closeChan)
+	m.log.Infof("Stopped pod metrics polling")
 }
 
 func (m *metricsWatch) Stop() {
-	m.closeChan <- struct{}{}
+	m.log.Infof("Stopping pod metrics polling")
+	close(m.closeChan)
 }
 
 func (m *metricsWatch) ResultChan() <-chan watch.Event {

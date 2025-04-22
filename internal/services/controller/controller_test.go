@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -13,32 +12,31 @@ import (
 
 	datadoghqv1alpha1 "github.com/DataDog/extendeddaemonset/api/v1alpha1"
 	argorollouts "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
-	karpenterCoreAlpha "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
-	karpenterCore "github.com/aws/karpenter-core/pkg/apis/v1beta1"
-	karpenterAlpha "github.com/aws/karpenter/pkg/apis/v1alpha1"
-	karpenter "github.com/aws/karpenter/pkg/apis/v1beta1"
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
-	appsv1 "k8s.io/api/apps/v1"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
+	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	dynamic_fake "k8s.io/client-go/dynamic/fake"
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	authfakev1 "k8s.io/client-go/kubernetes/typed/authorization/v1/fake"
 	k8stesting "k8s.io/client-go/testing"
+	metrics_v1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	metrics_fake "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 
 	"castai-agent/internal/castai"
@@ -46,6 +44,7 @@ import (
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller/crd"
 	"castai-agent/internal/services/controller/delta"
+	"castai-agent/internal/services/controller/knowngv"
 	mock_discovery "castai-agent/internal/services/controller/mock/discovery"
 	mock_types "castai-agent/internal/services/providers/types/mock"
 	mock_version "castai-agent/internal/services/version/mock"
@@ -60,6 +59,13 @@ var defaultHealthzCfg = config.Config{Controller: &config.Controller{
 	InitializationTimeoutExtension: 5 * time.Minute,
 }}
 
+type sampleObject struct {
+	GV       schema.GroupVersion
+	Kind     string
+	Resource string
+	Data     []byte
+}
+
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(
 		m,
@@ -71,52 +77,54 @@ func TestMain(m *testing.M) {
 func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 	tests := map[string]struct {
 		expectedReceivedObjectsCount int
+		paginationEnabled            bool
+		pageSize                     int64
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
-			expectedReceivedObjectsCount: 15,
+			expectedReceivedObjectsCount: 27,
+		},
+		"All supported objects are found and received in delta with pagination": {
+			expectedReceivedObjectsCount: 27,
+			paginationEnabled:            true,
+			pageSize:                     5,
 		},
 		"when fetching api resources produces multiple errors should exclude those resources": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 13,
+			expectedReceivedObjectsCount: 25,
 		},
 		"when fetching api resources produces single error should exclude that resource": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 14,
+			expectedReceivedObjectsCount: 26,
 		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			scheme := runtime.NewScheme()
-			utilruntime.Must(karpenterCoreAlpha.SchemeBuilder.AddToScheme(scheme))
-			utilruntime.Must(karpenterAlpha.SchemeBuilder.AddToScheme(scheme))
-			utilruntime.Must(karpenterCore.SchemeBuilder.AddToScheme(scheme))
-			utilruntime.Must(karpenter.SchemeBuilder.AddToScheme(scheme))
 			utilruntime.Must(datadoghqv1alpha1.SchemeBuilder.AddToScheme(scheme))
 			utilruntime.Must(argorollouts.SchemeBuilder.AddToScheme(scheme))
 			utilruntime.Must(crd.SchemeBuilder.AddToScheme(scheme))
+			utilruntime.Must(metrics_v1beta1.SchemeBuilder.AddToScheme(scheme))
 
 			mockctrl := gomock.NewController(t)
 			castaiclient := mock_castai.NewMockClient(mockctrl)
 			version := mock_version.NewMockInterface(mockctrl)
 			provider := mock_types.NewMockProvider(mockctrl)
-			objectsData, clientset, dynamicClient := loadInitialHappyPathData(t, scheme)
+			objectsData, clientset, dynamicClient, metricsClient := loadInitialHappyPathData(t, scheme)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			fakeSelfSubjectAccessReviewsClient := &authfakev1.FakeSelfSubjectAccessReviews{
-				Fake: &authfakev1.FakeAuthorizationV1{
-					Fake: &k8stesting.Fake{},
-				},
+			fakeAuthorization := &authfakev1.FakeAuthorizationV1{
+				Fake: &k8stesting.Fake{},
 			}
 
 			// returns true for all requests to fakeSelfSubjectAccessReviewsClient
-			fakeSelfSubjectAccessReviewsClient.Fake.PrependReactor("create", "selfsubjectaccessreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			fakeAuthorization.PrependReactor("create", "selfsubjectaccessreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
 				return true, &authorizationv1.SelfSubjectAccessReview{
 					Status: authorizationv1.SubjectAccessReviewStatus{
 						Allowed: true,
@@ -124,7 +132,6 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 				}, nil
 			})
 
-			metricsClient := metrics_fake.NewSimpleClientset()
 			log := logrus.New()
 			log.SetLevel(logrus.DebugLevel)
 
@@ -143,19 +150,12 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 				})
 
 				// filter expected data based on available resources
-				for k := range objectsData {
-					kLowerCased := strings.ToLower(k)
-					found := false
-					for _, resource := range apiResources {
-						if strings.Contains(resource.APIResources[0].Name, kLowerCased) {
-							found = true
-							break
-						}
-					}
-					if !found {
-						delete(objectsData, k)
-					}
-				}
+				objectsData = lo.Filter(objectsData, func(obj sampleObject, _ int) bool {
+					_, found := lo.Find(apiResources, func(r *metav1.APIResourceList) bool {
+						return r.APIResources[0].Name == obj.Resource
+					})
+					return found
+				})
 				mockDiscovery.EXPECT().ServerGroupsAndResources().Return([]*metav1.APIGroup{}, apiResources, tt.apiResourceError).AnyTimes()
 			}
 			var invocations int64
@@ -169,15 +169,19 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 					require.Equal(t, "1.21+", d.ClusterVersion)
 					require.Equal(t, "1.2.3", d.AgentVersion)
 					require.True(t, d.FullSnapshot)
-					require.Len(t, d.Items, tt.expectedReceivedObjectsCount)
+					require.Equal(t, tt.expectedReceivedObjectsCount, len(d.Items), "number of items in delta")
 
-					var actualValues []string
-					for _, item := range d.Items {
-						actualValues = append(actualValues, fmt.Sprintf("%s-%s-%v", item.Event, item.Kind, item.Data))
-					}
-
-					for k, v := range objectsData {
-						require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, k, v))
+					for _, expected := range objectsData {
+						expectedGVString := expected.GV.String()
+						actual, found := lo.Find(d.Items, func(item *castai.DeltaItem) bool {
+							return item.Event == castai.EventAdd &&
+								item.Kind == expected.Kind &&
+								item.Data != nil &&
+								strings.Contains(string(*item.Data), expectedGVString) // Hacky but OK given this is for testing purposes.
+						})
+						require.Truef(t, found, "missing object for %q %q", expectedGVString, expected.Kind)
+						require.NotNil(t, actual.Data)
+						require.JSONEq(t, string(expected.Data), string(*actual.Data))
 					}
 
 					return nil
@@ -189,8 +193,29 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 					require.Equalf(t, "1.2.3", req.AgentVersion, "got request: %+v", req)
 				})
 
-			node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node1", Labels: map[string]string{}}}
+			node := &v1.Node{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Node",
+					APIVersion: v1.SchemeGroupVersion.String(),
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "node1",
+					Labels: map[string]string{},
+				},
+			}
 			provider.EXPECT().FilterSpot(gomock.Any(), []*v1.Node{node}).Return([]*v1.Node{node}, nil)
+
+			cfg := &config.Controller{
+				Interval:             15 * time.Second,
+				PrepTimeout:          2 * time.Second,
+				InitialSleepDuration: 10 * time.Millisecond,
+				ConfigMapNamespaces:  []string{v1.NamespaceDefault},
+			}
+
+			if tt.paginationEnabled {
+				cfg.ForcePagination = tt.paginationEnabled
+				cfg.PageSize = tt.pageSize
+			}
 
 			ctrl := New(
 				log,
@@ -200,17 +225,12 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 				metricsClient,
 				provider,
 				clusterID.String(),
-				&config.Controller{
-					Interval:             15 * time.Second,
-					PrepTimeout:          2 * time.Second,
-					InitialSleepDuration: 10 * time.Millisecond,
-					ConfigMapNamespaces:  []string{v1.NamespaceDefault},
-				},
+				cfg,
 				version,
 				agentVersion,
 				NewHealthzProvider(defaultHealthzCfg, log),
-				fakeSelfSubjectAccessReviewsClient,
-				"castai-agent",
+				fakeAuthorization.SelfSubjectAccessReviews(),
+				"",
 			)
 
 			if mockDiscovery != nil {
@@ -372,7 +392,7 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 				agentVersion,
 				NewHealthzProvider(defaultHealthzCfg, log),
 				clientset.AuthorizationV1().SelfSubjectAccessReviews(),
-				"castai-agent",
+				"",
 			)
 
 			ctrl.Start(ctx.Done())
@@ -397,7 +417,7 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 
 }
 
-func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
+func TestController_ShouldCancelAndRestartAfterFailToSend(t *testing.T) {
 	mockctrl := gomock.NewController(t)
 	castaiclient := mock_castai.NewMockClient(mockctrl)
 	version := mock_version.NewMockInterface(mockctrl)
@@ -406,7 +426,16 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "pod1"}}
+	pod := &v1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Pod",
+			APIVersion: v1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "pod1",
+		},
+	}
 	podData, err := delta.Encode(pod)
 	require.NoError(t, err)
 
@@ -453,39 +482,17 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 			require.False(t, d.FullSnapshot)
 			require.Len(t, d.Items, 1)
 
-			var actualValues []string
-			for _, item := range d.Items {
-				actualValues = append(actualValues, fmt.Sprintf("%s-%s-%v", item.Event, item.Kind, item.Data))
-			}
-
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventAdd, "Pod", podData))
+			actualItem, found := lo.Find(d.Items, func(item *castai.DeltaItem) bool {
+				return item.Event == castai.EventAdd && item.Kind == "Pod"
+			})
+			require.True(t, found)
+			require.NotNil(t, actualItem.Data)
+			require.JSONEq(t, string(*podData), string(*actualItem.Data))
 
 			err := clientset.CoreV1().Pods("default").Delete(ctx, pod.Name, metav1.DeleteOptions{})
 			require.NoError(t, err)
 
 			return fmt.Errorf("testError")
-		})
-
-	// second attempt to send data when pod delete is received
-	castaiclient.EXPECT().
-		SendDelta(gomock.Any(), clusterID.String(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
-			defer atomic.AddInt64(&invocations, 1)
-
-			require.Equal(t, clusterID, d.ClusterID)
-			require.Equal(t, "1.21+", d.ClusterVersion)
-			require.Equal(t, "1.2.3", d.AgentVersion)
-			require.False(t, d.FullSnapshot)
-			require.Len(t, d.Items, 1)
-
-			var actualValues []string
-			for _, item := range d.Items {
-				actualValues = append(actualValues, fmt.Sprintf("%s-%s-%v", item.Event, item.Kind, item.Data))
-			}
-
-			require.Contains(t, actualValues, fmt.Sprintf("%s-%s-%v", castai.EventDelete, "Pod", podData))
-
-			return nil
 		})
 
 	castaiclient.EXPECT().ExchangeAgentTelemetry(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
@@ -512,7 +519,7 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 		agentVersion,
 		NewHealthzProvider(defaultHealthzCfg, log),
 		clientset.AuthorizationV1().SelfSubjectAccessReviews(),
-		"castai-agent",
+		"",
 	)
 
 	ctrl.Start(ctx.Done())
@@ -522,148 +529,126 @@ func TestController_ShouldKeepDeltaAfterDelete(t *testing.T) {
 	}()
 
 	wait.Until(func() {
-		if atomic.LoadInt64(&invocations) >= 3 {
-			cancel()
-		}
+		<-ctx.Done()
 	}, 10*time.Millisecond, ctx.Done())
 }
 
-func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]*json.RawMessage, *fake.Clientset, *dynamic_fake.FakeDynamicClient) {
-	provisionersGvr := karpenterCoreAlpha.SchemeGroupVersion.WithResource("provisioners")
-	machinesGvr := karpenterCoreAlpha.SchemeGroupVersion.WithResource("machines")
-	awsNodeTemplatesGvr := karpenterAlpha.SchemeGroupVersion.WithResource("awsnodetemplates")
-	nodePoolsGvr := karpenterCore.SchemeGroupVersion.WithResource("nodepools")
-	nodeClaimsGvr := karpenterCore.SchemeGroupVersion.WithResource("nodeclaims")
-	ec2NodeClassesGvr := karpenter.SchemeGroupVersion.WithResource("ec2nodeclasses")
+func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObject, *fake.Clientset, *dynamic_fake.FakeDynamicClient, *metrics_fake.Clientset) {
+	provisionersGvr := knowngv.KarpenterCoreV1Alpha5.WithResource("provisioners")
+	machinesGvr := knowngv.KarpenterCoreV1Alpha5.WithResource("machines")
+	awsNodeTemplatesGvr := knowngv.KarpenterV1Alpha1.WithResource("awsnodetemplates")
 	datadogExtendedDSReplicaSetsGvr := datadoghqv1alpha1.GroupVersion.WithResource("extendeddaemonsetreplicasets")
 
-	node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node1", Labels: map[string]string{}}}
+	node := &v1.Node{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Node",
+			APIVersion: v1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node1", Labels: map[string]string{},
+		},
+	}
 	expectedNode := node.DeepCopy()
 	expectedNode.Labels[labels.CastaiFakeSpot] = "true"
-	nodeData, err := delta.Encode(expectedNode)
-	require.NoError(t, err)
+	nodeData := asJson(t, expectedNode)
 
-	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "pod1"}}
-	podData, err := delta.Encode(pod)
-	require.NoError(t, err)
+	pod := &v1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Pod",
+			APIVersion: v1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault, Name: "pod1",
+		},
+	}
+	podData := asJson(t, pod)
 
 	cfgMap := &v1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "cfg1"},
-		Data:       map[string]string{"field1": "value1"},
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ConfigMap",
+			APIVersion: v1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "cfg1",
+		},
+		Data: map[string]string{
+			"field1": "value1",
+		},
 	}
-	cfgMapData, err := delta.Encode(cfgMap)
-	require.NoError(t, err)
+	cfgMapData := asJson(t, cfgMap)
 
 	pdb := &policyv1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodDisruptionBudget",
+			APIVersion: policyv1.SchemeGroupVersion.String(),
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "poddisruptionbudgets",
 			Namespace: v1.NamespaceDefault,
 		},
 	}
-	pdbData, err := delta.Encode(pdb)
-	require.NoError(t, err)
+	pdbData := asJson(t, pdb)
+
+	podMetricsResource := metrics_v1beta1.SchemeGroupVersion.WithResource("pods")
+	podMetrics := &metrics_v1beta1.PodMetrics{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodMetrics",
+			APIVersion: metrics_v1beta1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "podmetrics",
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+	podMetricsData := asJson(t, podMetrics)
 
 	hpa := &autoscalingv1.HorizontalPodAutoscaler{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "HorizontalPodAutoscaler",
+			APIVersion: autoscalingv1.SchemeGroupVersion.String(),
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "horizontalpodautoscalers",
 			Namespace: v1.NamespaceDefault,
 		},
 	}
-	hpaData, err := delta.Encode(hpa)
-	require.NoError(t, err)
+	hpaData := asJson(t, hpa)
 
 	csi := &storagev1.CSINode{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "CSINode",
+			APIVersion: storagev1.SchemeGroupVersion.String(),
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "csinodes",
 			Namespace: v1.NamespaceDefault,
 		},
 	}
-	csiData, err := delta.Encode(csi)
-	require.NoError(t, err)
+	csiData := asJson(t, csi)
 
-	provisioners := &karpenterCoreAlpha.Provisioner{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Provisioner",
-			APIVersion: provisionersGvr.GroupVersion().String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      provisionersGvr.Resource,
-			Namespace: v1.NamespaceDefault,
-		},
+	emptyObjectData := func(group, version, kind, name string) []byte {
+		// This is fragile, but it should be fine while it's so small.
+		t := `{
+			"kind": "%s",
+			"apiVersion": "%s/%s",
+			"metadata": {
+				"name": "%s",
+				"namespace": "default"
+			}
+		}`
+		return []byte(fmt.Sprintf(t, kind, group, version, name))
 	}
 
-	provisionersData, err := delta.Encode(provisioners)
-	require.NoError(t, err)
-
-	machines := &karpenterCoreAlpha.Machine{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Machine",
-			APIVersion: machinesGvr.GroupVersion().String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      machinesGvr.Resource,
-			Namespace: v1.NamespaceDefault,
-		},
-	}
-
-	machinesData, err := delta.Encode(machines)
-	require.NoError(t, err)
-
-	awsNodeTemplates := &karpenterAlpha.AWSNodeTemplate{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "AWSNodeTemplate",
-			APIVersion: awsNodeTemplatesGvr.GroupVersion().String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      awsNodeTemplatesGvr.Resource,
-			Namespace: v1.NamespaceDefault,
-		},
-	}
-
-	awsNodeTemplatesData, err := delta.Encode(awsNodeTemplates)
-	require.NoError(t, err)
-
-	nodePools := &karpenterCore.NodePool{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "NodePool",
-			APIVersion: nodePoolsGvr.GroupVersion().String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      nodePoolsGvr.Resource,
-			Namespace: v1.NamespaceDefault,
-		},
-	}
-
-	nodePoolsData, err := delta.Encode(nodePools)
-	require.NoError(t, err)
-
-	nodeClaims := &karpenterCore.NodeClaim{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "NodeClaim",
-			APIVersion: nodeClaimsGvr.GroupVersion().String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      nodeClaimsGvr.Resource,
-			Namespace: v1.NamespaceDefault,
-		},
-	}
-
-	nodeClaimsData, err := delta.Encode(nodeClaims)
-	require.NoError(t, err)
-
-	ec2NodeClasses := &karpenter.EC2NodeClass{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "EC2NodeClass",
-			APIVersion: ec2NodeClassesGvr.GroupVersion().String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      ec2NodeClassesGvr.Resource,
-			Namespace: v1.NamespaceDefault,
-		},
-	}
-
-	ec2NodeClassesData, err := delta.Encode(ec2NodeClasses)
-	require.NoError(t, err)
+	provisionersData := emptyObjectData("karpenter.sh", "v1alpha5", "Provisioner", "fake-provisioner")
+	machinesData := emptyObjectData("karpenter.sh", "v1alpha5", "Machine", "fake-machine")
+	awsNodeTemplatesData := emptyObjectData("karpenter.k8s.aws", "v1alpha1", "AWSNodeTemplate", "fake-awsnodetemplate")
+	nodePoolsDataV1Beta1 := emptyObjectData("karpenter.sh", "v1beta1", "NodePool", "fake-nodepool-v1beta1")
+	nodeClaimsDataV1Beta1 := emptyObjectData("karpenter.sh", "v1beta1", "NodeClaim", "fake-nodeclaim-v1beta1")
+	ec2NodeClassesDataV1Beta1 := emptyObjectData("karpenter.k8s.aws", "v1beta1", "EC2NodeClass", "fake-ec2nodeclass-v1beta1")
+	nodePoolsDataV1 := emptyObjectData("karpenter.sh", "v1", "NodePool", "fake-nodepool-v1")
+	nodeClaimsDataV1 := emptyObjectData("karpenter.sh", "v1", "NodeClaim", "fake-nodeclaim-v1")
+	ec2NodeClassesDataV1 := emptyObjectData("karpenter.k8s.aws", "v1", "EC2NodeClass", "fake-ec2nodeclass-v1")
 
 	datadogExtendedDSReplicaSet := &datadoghqv1alpha1.ExtendedDaemonSetReplicaSet{
 		TypeMeta: metav1.TypeMeta{
@@ -676,8 +661,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 		},
 	}
 
-	datadogExtendedDSReplicaSetData, err := delta.Encode(datadogExtendedDSReplicaSet)
-	require.NoError(t, err)
+	datadogExtendedDSReplicaSetData := asJson(t, datadogExtendedDSReplicaSet)
 
 	rollout := &argorollouts.Rollout{
 		TypeMeta: metav1.TypeMeta{
@@ -690,8 +674,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 		},
 	}
 
-	rolloutData, err := delta.Encode(rollout)
-	require.NoError(t, err)
+	rolloutData := asJson(t, rollout)
 
 	recommendation := &crd.Recommendation{
 		TypeMeta: metav1.TypeMeta{
@@ -702,13 +685,153 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 			Name:      crd.RecommendationGVR.Resource,
 			Namespace: v1.NamespaceDefault,
 		},
+		Status: crd.RecommendationStatus{
+			Conditions: []metav1.Condition{
+				{
+					Type:               "Healthy",
+					Status:             "True",
+					ObservedGeneration: 1,
+					Reason:             "ReconciledSuccessfully",
+				},
+			},
+		},
 	}
 
-	recommendationData, err := delta.Encode(recommendation)
+	recommendationData := asJson(t, recommendation)
+
+	ingress := &networkingv1.Ingress{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Ingress",
+			APIVersion: networkingv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "ingress",
+		},
+	}
+	ingressData := asJson(t, ingress)
+
+	netpolicy := &networkingv1.NetworkPolicy{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "NetworkPolicy",
+			APIVersion: networkingv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "netpolicy",
+		},
+	}
+	netpolicyData := asJson(t, netpolicy)
+
+	role := &rbacv1.Role{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Role",
+			APIVersion: rbacv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "role",
+		},
+	}
+	roleData := asJson(t, role)
+
+	roleBinding := &rbacv1.RoleBinding{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "RoleBinding",
+			APIVersion: rbacv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "rolebinding",
+		},
+	}
+	roleBindingData := asJson(t, roleBinding)
+
+	clusterRole := &rbacv1.ClusterRole{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ClusterRole",
+			APIVersion: rbacv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "clusterrole",
+		},
+	}
+	clusterRoleData := asJson(t, clusterRole)
+
+	clusterRoleBinding := &rbacv1.ClusterRoleBinding{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ClusterRoleBinding",
+			APIVersion: rbacv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "clusterrolebinding",
+		},
+	}
+	clusterRoleBindingData := asJson(t, clusterRoleBinding)
+
+	resourceQuota := &corev1.ResourceQuota{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ResourceQuota",
+			APIVersion: corev1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "resourcequota",
+		},
+	}
+	resourceQuotasData := asJson(t, resourceQuota)
+
+	limitRange := &corev1.ResourceQuota{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "LimitRange",
+			APIVersion: corev1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "limitrange",
+		},
+	}
+	limitRangeData := asJson(t, limitRange)
+
+	clientset := fake.NewSimpleClientset(
+		node,
+		pod,
+		cfgMap,
+		pdb,
+		hpa,
+		csi,
+		ingress,
+		netpolicy,
+		role,
+		roleBinding,
+		clusterRole,
+		clusterRoleBinding,
+		resourceQuota,
+		limitRange,
+	)
+	runtimeObjects := []runtime.Object{
+		unstructuredFromJson(t, provisionersData),
+		unstructuredFromJson(t, machinesData),
+		unstructuredFromJson(t, awsNodeTemplatesData),
+		unstructuredFromJson(t, nodePoolsDataV1Beta1),
+		unstructuredFromJson(t, nodeClaimsDataV1Beta1),
+		unstructuredFromJson(t, ec2NodeClassesDataV1Beta1),
+		unstructuredFromJson(t, nodePoolsDataV1),
+		unstructuredFromJson(t, nodeClaimsDataV1),
+		unstructuredFromJson(t, ec2NodeClassesDataV1),
+		datadogExtendedDSReplicaSet,
+		rollout,
+		recommendation,
+	}
+	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, runtimeObjects...)
+
+	metricsClient := metrics_fake.NewSimpleClientset()
+	// PodMetrics must be added to the tracker using Create method as it allows specifying custom resource. Otherwise heuristics are used and incorrect resource is associated.
+	err := metricsClient.Tracker().Create(podMetricsResource, podMetrics, v1.NamespaceDefault)
 	require.NoError(t, err)
 
-	clientset := fake.NewSimpleClientset(node, pod, cfgMap, pdb, hpa, csi)
-	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, provisioners, machines, awsNodeTemplates, nodePools, nodeClaims, ec2NodeClasses, datadogExtendedDSReplicaSet, rollout, recommendation)
 	clientset.Fake.Resources = []*metav1.APIResourceList{
 		{
 			GroupVersion: autoscalingv1.SchemeGroupVersion.String(),
@@ -741,6 +864,18 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 					Kind:  "ConfigMap",
 					Verbs: []string{"get", "list", "watch"},
 				},
+				{
+					Group: "v1",
+					Name:  "limitranges",
+					Kind:  "LimitRange",
+					Verbs: []string{"get", "list", "watch"},
+				},
+				{
+					Group: "v1",
+					Name:  "resourcequotas",
+					Kind:  "ResourceQuota",
+					Verbs: []string{"get", "list", "watch"},
+				},
 			},
 		},
 		{
@@ -755,23 +890,31 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 			},
 		},
 		{
+			GroupVersion: metrics_v1beta1.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group: "metrics.k8s.io",
+					Name:  "pods",
+					Kind:  "PodMetrics",
+					Verbs: []string{"get", "list"},
+				},
+			},
+		},
+		{
 			GroupVersion: provisionersGvr.GroupVersion().String(),
 			APIResources: []metav1.APIResource{
 				{
 					Group:   provisionersGvr.Group,
 					Name:    provisionersGvr.Resource,
 					Version: provisionersGvr.Version,
+					Kind:    "Provisioner",
 					Verbs:   []string{"get", "list", "watch"},
 				},
-			},
-		},
-		{
-			GroupVersion: machinesGvr.GroupVersion().String(),
-			APIResources: []metav1.APIResource{
 				{
 					Group:   machinesGvr.Group,
 					Name:    machinesGvr.Resource,
 					Version: machinesGvr.Version,
+					Kind:    "Machine",
 					Verbs:   []string{"get", "list", "watch"},
 				},
 			},
@@ -783,39 +926,69 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 					Group:   awsNodeTemplatesGvr.Group,
 					Name:    awsNodeTemplatesGvr.Resource,
 					Version: awsNodeTemplatesGvr.Version,
+					Kind:    "AWSNodeTemplate",
 					Verbs:   []string{"get", "list", "watch"},
 				},
 			},
 		},
 		{
-			GroupVersion: nodePoolsGvr.GroupVersion().String(),
+			GroupVersion: "karpenter.sh/v1beta1",
 			APIResources: []metav1.APIResource{
 				{
-					Group:   nodePoolsGvr.Group,
-					Name:    nodePoolsGvr.Resource,
-					Version: nodePoolsGvr.Version,
+					Group:   "karpenter.sh",
+					Name:    "nodepools",
+					Version: "v1beta1",
+					Kind:    "NodePool",
+					Verbs:   []string{"get", "list", "watch"},
+				},
+				{
+					Group:   "karpenter.sh",
+					Name:    "nodeclaims",
+					Version: "v1beta1",
+					Kind:    "NodeClaim",
 					Verbs:   []string{"get", "list", "watch"},
 				},
 			},
 		},
 		{
-			GroupVersion: nodeClaimsGvr.GroupVersion().String(),
+			GroupVersion: "karpenter.k8s.aws/v1beta1",
 			APIResources: []metav1.APIResource{
 				{
-					Group:   nodeClaimsGvr.Group,
-					Name:    nodeClaimsGvr.Resource,
-					Version: nodeClaimsGvr.Version,
+					Group:   "karpenter.k8s.aws",
+					Name:    "ec2nodeclasses",
+					Version: "v1beta1",
+					Kind:    "EC2NodeClass",
 					Verbs:   []string{"get", "list", "watch"},
 				},
 			},
 		},
 		{
-			GroupVersion: ec2NodeClassesGvr.GroupVersion().String(),
+			GroupVersion: "karpenter.sh/v1",
 			APIResources: []metav1.APIResource{
 				{
-					Group:   ec2NodeClassesGvr.Group,
-					Name:    ec2NodeClassesGvr.Resource,
-					Version: ec2NodeClassesGvr.Version,
+					Group:   "karpenter.sh",
+					Name:    "nodepools",
+					Version: "v1",
+					Kind:    "NodePool",
+					Verbs:   []string{"get", "list", "watch"},
+				},
+				{
+					Group:   "karpenter.sh",
+					Name:    "nodeclaims",
+					Version: "v1",
+					Kind:    "NodeClaim",
+					Verbs:   []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
+			GroupVersion: "karpenter.k8s.aws/v1",
+			APIResources: []metav1.APIResource{
+				{
+					Group:   "karpenter.k8s.aws",
+					Name:    "ec2nodeclasses",
+					Version: "v1",
+					Kind:    "EC2NodeClass",
 					Verbs:   []string{"get", "list", "watch"},
 				},
 			},
@@ -827,6 +1000,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 					Group:   datadogExtendedDSReplicaSetsGvr.Group,
 					Name:    datadogExtendedDSReplicaSetsGvr.Resource,
 					Version: datadogExtendedDSReplicaSetsGvr.Version,
+					Kind:    "ExtendedDaemonSetReplicaSet",
 					Verbs:   []string{"get", "list", "watch"},
 				},
 			},
@@ -838,6 +1012,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 					Group:   argorollouts.RolloutGVR.Group,
 					Name:    argorollouts.RolloutGVR.Resource,
 					Version: argorollouts.RolloutGVR.Version,
+					Kind:    "Rollout",
 					Verbs:   []string{"get", "list", "watch"},
 				},
 			},
@@ -849,87 +1024,208 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) (map[string]
 					Group:   crd.RecommendationGVR.Group,
 					Name:    crd.RecommendationGVR.Resource,
 					Version: crd.RecommendationGVR.Version,
+					Kind:    "Recommendation",
 					Verbs:   []string{"get", "list", "watch"},
 				},
 			},
 		},
-	}
-	objects := make(map[string]*json.RawMessage)
-	objects["Node"] = nodeData
-	objects["Pod"] = podData
-	objects["ConfigMap"] = cfgMapData
-	objects["PodDisruptionBudget"] = pdbData
-	objects["HorizontalPodAutoscaler"] = hpaData
-	objects["CSINode"] = csiData
-	objects["Provisioner"] = provisionersData
-	objects["Machine"] = machinesData
-	objects["AWSNodeTemplate"] = awsNodeTemplatesData
-	objects["NodePool"] = nodePoolsData
-	objects["NodeClaim"] = nodeClaimsData
-	objects["EC2NodeClass"] = ec2NodeClassesData
-	objects["ExtendedDaemonSetReplicaSet"] = datadogExtendedDSReplicaSetData
-	objects["Rollout"] = rolloutData
-	objects["Recommendation"] = recommendationData
-
-	return objects, clientset, dynamicClient
-}
-
-func TestDefaultInformers_MatchFilters(t *testing.T) {
-	tests := map[string]struct {
-		obj           runtime.Object
-		expectedMatch bool
-	}{
-		"keep if replicaset in castware namespace": {
-			obj: &appsv1.ReplicaSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "castware",
+		{
+			GroupVersion: networkingv1.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group: "v1",
+					Name:  "ingress",
+					Kind:  "Ingress",
+					Verbs: []string{"get", "list", "watch"},
+				},
+				{
+					Group: "v1",
+					Name:  "networkpolicies",
+					Kind:  "NetworkPolicy",
+					Verbs: []string{"get", "list", "watch"},
 				},
 			},
-			expectedMatch: true,
 		},
-		"discard if replicaset has zero replicas": {
-			obj: &appsv1.ReplicaSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "test",
+		{
+			GroupVersion: rbacv1.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group: "v1",
+					Name:  "roles",
+					Kind:  "Role",
+					Verbs: []string{"get", "list", "watch"},
 				},
-				Spec: appsv1.ReplicaSetSpec{
-					Replicas: lo.ToPtr(int32(0)),
+				{
+					Group: "v1",
+					Name:  "rolebindings",
+					Kind:  "RoleBinding",
+					Verbs: []string{"get", "list", "watch"},
 				},
-				Status: appsv1.ReplicaSetStatus{
-					Replicas: 0,
+				{
+					Group: "v1",
+					Name:  "clusterroles",
+					Kind:  "ClusterRole",
+					Verbs: []string{"get", "list", "watch"},
+				},
+				{
+					Group: "v1",
+					Name:  "clusterrolebindings",
+					Kind:  "ClusterRoleBinding",
+					Verbs: []string{"get", "list", "watch"},
 				},
 			},
-			expectedMatch: false,
-		},
-		"keep if replicaset has more than zero replicas": {
-			obj: &appsv1.ReplicaSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "test",
-				},
-				Spec: appsv1.ReplicaSetSpec{
-					Replicas: lo.ToPtr(int32(1)),
-				},
-				Status: appsv1.ReplicaSetStatus{
-					Replicas: 1,
-				},
-			},
-			expectedMatch: true,
 		},
 	}
-
-	for name, data := range tests {
-		t.Run(name, func(t *testing.T) {
-			r := require.New(t)
-			f := informers.NewSharedInformerFactory(fake.NewSimpleClientset(data.obj), 0)
-
-			defaultInformers := getDefaultInformers(f, "castware")
-			objInformer := defaultInformers[reflect.TypeOf(data.obj)]
-
-			match := objInformer.filters.Apply(castai.EventAdd, data.obj)
-
-			r.Equal(data.expectedMatch, match)
-		})
+	objects := []sampleObject{
+		{
+			GV:       v1.SchemeGroupVersion,
+			Kind:     "Node",
+			Resource: "nodes",
+			Data:     nodeData,
+		},
+		{
+			GV:       v1.SchemeGroupVersion,
+			Kind:     "Pod",
+			Resource: "pods",
+			Data:     podData,
+		},
+		{
+			GV:       v1.SchemeGroupVersion,
+			Kind:     "ConfigMap",
+			Resource: "configmaps",
+			Data:     cfgMapData,
+		},
+		{
+			GV:       policyv1.SchemeGroupVersion,
+			Kind:     "PodDisruptionBudget",
+			Resource: "poddisruptionbudgets",
+			Data:     pdbData,
+		},
+		{
+			GV:       metrics_v1beta1.SchemeGroupVersion,
+			Kind:     "PodMetrics",
+			Resource: "pods",
+			Data:     podMetricsData,
+		},
+		{
+			GV:       autoscalingv1.SchemeGroupVersion,
+			Kind:     "HorizontalPodAutoscaler",
+			Resource: "horizontalpodautoscalers",
+			Data:     hpaData,
+		},
+		{
+			GV:       storagev1.SchemeGroupVersion,
+			Kind:     "CSINode",
+			Resource: "csinodes",
+			Data:     csiData,
+		},
+		{
+			GV:       provisionersGvr.GroupVersion(),
+			Kind:     "Provisioner",
+			Resource: provisionersGvr.Resource,
+			Data:     provisionersData,
+		},
+		{
+			GV:       machinesGvr.GroupVersion(),
+			Kind:     "Machine",
+			Resource: machinesGvr.Resource,
+			Data:     machinesData,
+		},
+		{
+			GV:       awsNodeTemplatesGvr.GroupVersion(),
+			Kind:     "AWSNodeTemplate",
+			Resource: awsNodeTemplatesGvr.Resource,
+			Data:     awsNodeTemplatesData,
+		},
+		{
+			GV:       knowngv.KarpenterCoreV1Beta1,
+			Kind:     "NodePool",
+			Resource: "nodepools",
+			Data:     nodePoolsDataV1Beta1,
+		},
+		{
+			GV:       knowngv.KarpenterCoreV1Beta1,
+			Kind:     "NodeClaim",
+			Resource: "nodeclaims",
+			Data:     nodeClaimsDataV1Beta1,
+		},
+		{
+			GV:       knowngv.KarpenterV1Beta1,
+			Kind:     "EC2NodeClass",
+			Resource: "ec2nodeclasses",
+			Data:     ec2NodeClassesDataV1Beta1,
+		},
+		{
+			GV:       datadogExtendedDSReplicaSetsGvr.GroupVersion(),
+			Kind:     "ExtendedDaemonSetReplicaSet",
+			Resource: datadogExtendedDSReplicaSetsGvr.Resource,
+			Data:     datadogExtendedDSReplicaSetData,
+		},
+		{
+			GV:       argorollouts.RolloutGVR.GroupVersion(),
+			Kind:     "Rollout",
+			Resource: argorollouts.RolloutGVR.Resource,
+			Data:     rolloutData,
+		},
+		{
+			GV:       crd.RecommendationGVR.GroupVersion(),
+			Kind:     "Recommendation",
+			Resource: crd.RecommendationGVR.Resource,
+			Data:     recommendationData,
+		},
+		{
+			GV:       networkingv1.SchemeGroupVersion,
+			Kind:     "Ingress",
+			Resource: "ingresses",
+			Data:     ingressData,
+		},
+		{
+			GV:       networkingv1.SchemeGroupVersion,
+			Kind:     "NetworkPolicy",
+			Resource: "networkpolicies",
+			Data:     netpolicyData,
+		},
+		{
+			GV:       rbacv1.SchemeGroupVersion,
+			Kind:     "Role",
+			Resource: "roles",
+			Data:     roleData,
+		},
+		{
+			GV:       rbacv1.SchemeGroupVersion,
+			Kind:     "RoleBinding",
+			Resource: "rolebindings",
+			Data:     roleBindingData,
+		},
+		{
+			GV:       rbacv1.SchemeGroupVersion,
+			Kind:     "ClusterRole",
+			Resource: "clusterroles",
+			Data:     clusterRoleData,
+		},
+		{
+			GV:       rbacv1.SchemeGroupVersion,
+			Kind:     "ClusterRoleBinding",
+			Resource: "clusterrolebindings",
+			Data:     clusterRoleBindingData,
+		},
+		{
+			GV:       corev1.SchemeGroupVersion,
+			Kind:     "ResourceQuota",
+			Resource: "resourcequotas",
+			Data:     resourceQuotasData,
+		},
+		{
+			GV:       corev1.SchemeGroupVersion,
+			Kind:     "LimitRange",
+			Resource: "limitranges",
+			Data:     limitRangeData,
+		},
 	}
+	// There are a lot of manually entered samples. Running some sanity checks to ensure they don't contain basic errors.
+	verifySampleObjectsAreValid(t, objects)
+
+	return objects, clientset, dynamicClient, metricsClient
 }
 
 func TestCollectSingleSnapshot(t *testing.T) {
@@ -950,6 +1246,10 @@ func TestCollectSingleSnapshot(t *testing.T) {
 	for i := range 10000 {
 		name := fmt.Sprintf("pod-%d", i)
 		objs = append(objs, &v1.Pod{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "Pod",
+				APIVersion: v1.SchemeGroupVersion.String(),
+			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name: name,
 			},
@@ -983,4 +1283,33 @@ func TestCollectSingleSnapshot(t *testing.T) {
 		pods = append(pods, p)
 	}
 	r.ElementsMatch(objs, pods)
+}
+
+func unstructuredFromJson(t *testing.T, data []byte) *unstructured.Unstructured {
+	var out unstructured.Unstructured
+	err := json.Unmarshal(data, &out)
+	require.NoError(t, err)
+	return &out
+}
+
+func asJson(t *testing.T, obj interface{}) []byte {
+	data, err := json.Marshal(obj)
+	require.NoError(t, err)
+	return data
+}
+
+func verifySampleObjectsAreValid(t *testing.T, objects []sampleObject) {
+	for _, obj := range objects {
+		require.NotNil(t, obj.Data)
+
+		var data unstructured.Unstructured
+		err := json.Unmarshal(obj.Data, &data)
+		require.NoError(t, err)
+
+		gvk := data.GroupVersionKind()
+		require.False(t, gvk.Empty())
+		require.Equal(t, obj.GV.Group, gvk.Group)
+		require.Equal(t, obj.GV.Version, gvk.Version)
+		require.Equal(t, obj.Kind, gvk.Kind)
+	}
 }

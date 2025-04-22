@@ -27,13 +27,13 @@ import (
 
 const (
 	defaultRetryCount     = 3
-	defaultTimeout        = 10 * time.Second
-	sendDeltaReadTimeout  = 2 * time.Minute
-	totalSendDeltaTimeout = 5 * time.Minute
 	headerAPIKey          = "X-Api-Key"
 	headerContinuityToken = "Continuity-Token"
 	headerContentType     = "Content-Type"
 	headerContentEncoding = "Content-Encoding"
+	headerUserAgent       = "User-Agent"
+
+	respHeaderRequestID = "X-Castai-Request-Id"
 )
 
 var (
@@ -73,13 +73,18 @@ func NewDefaultRestyClient() (*resty.Client, error) {
 	}
 
 	restyClient := resty.NewWithClient(&http.Client{
-		Timeout:   defaultTimeout,
+		Timeout:   cfg.Timeout,
 		Transport: clientTransport,
 	})
 
 	restyClient.SetBaseURL(cfg.URL)
 	restyClient.SetRetryCount(defaultRetryCount)
 	restyClient.Header.Set(headerAPIKey, cfg.Key)
+	restyClient.Header.Set(headerUserAgent, fmt.Sprintf("castai-agent/%s", config.VersionInfo.Version))
+	if host := cfg.HostHeaderOverride; host != "" {
+		restyClient.Header.Set("Host", host)
+	}
+	addUA(restyClient.Header)
 
 	return restyClient, nil
 }
@@ -93,7 +98,7 @@ func NewDefaultDeltaHTTPClient() (*http.Client, error) {
 	}
 
 	return &http.Client{
-		Timeout:   sendDeltaReadTimeout,
+		Timeout:   config.Get().API.DeltaReadTimeout,
 		Transport: clientTransport,
 	}, nil
 }
@@ -194,7 +199,7 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 		}
 	}()
 
-	ctx, cancel := context.WithTimeout(ctx, totalSendDeltaTimeout)
+	ctx, cancel := context.WithTimeout(ctx, cfg.TotalSendDeltaTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), pipeReader)
@@ -206,6 +211,11 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 	req.Header.Set(headerContentEncoding, "gzip")
 	req.Header.Set(headerAPIKey, cfg.Key)
 	req.Header.Set(headerContinuityToken, c.continuityToken)
+	addUA(req.Header)
+
+	if host := cfg.HostHeaderOverride; host != "" {
+		req.Header.Set("Host", host)
+	}
 
 	var resp *http.Response
 
@@ -224,7 +234,7 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 		resp, err = c.deltaHTTPClient.Do(req)
 		if err != nil {
 			log.Warnf("failed sending delta request: %v", err)
-			return false, fmt.Errorf("sending delta request: %w", err)
+			return false, nil
 		}
 		return true, nil
 	})
@@ -253,7 +263,8 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 		if strings.Contains(buf.String(), ErrInvalidContinuityToken.Error()) {
 			return ErrInvalidContinuityToken
 		}
-		return fmt.Errorf("delta request error status_code=%d body=%s", resp.StatusCode, buf.String())
+		reqID := resp.Header.Get(respHeaderRequestID)
+		return fmt.Errorf("delta request error request_id=%q status_code=%d body=%s", reqID, resp.StatusCode, buf.String())
 	}
 	c.continuityToken = resp.Header.Get(headerContinuityToken)
 	log.Infof("delta upload finished")
@@ -311,4 +322,12 @@ func (c *client) ExchangeAgentTelemetry(ctx context.Context, clusterID string, r
 	}
 
 	return body, nil
+}
+
+func addUA(header http.Header) {
+	version := "unknown"
+	if vi := config.VersionInfo; vi != nil {
+		version = vi.Version
+	}
+	header.Set(headerUserAgent, fmt.Sprintf("castai-agent/%s", version))
 }
