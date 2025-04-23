@@ -125,9 +125,10 @@ func CollectSingleSnapshot(ctx context.Context,
 ) (*castai.Delta, error) {
 	tweakListOptions := func(options *metav1.ListOptions) {
 		if cfg.ForcePagination && options.ResourceVersion == "0" {
-			log.Info("Forcing pagination for the list request", "limit", cfg.PageSize)
+			log.Info("Forcing pagination for the list request", "limit", cfg.PageSize, "page_request_timeout", cfg.PageRequestTimeout)
 			options.ResourceVersion = ""
 			options.Limit = cfg.PageSize
+			options.TimeoutSeconds = &cfg.PageRequestTimeout
 		}
 	}
 	f := informers.NewSharedInformerFactoryWithOptions(clientset, 0, informers.WithTweakListOptions(tweakListOptions))
@@ -220,9 +221,10 @@ func New(
 	defaultResync := 0 * time.Second
 	tweakListOptions := func(options *metav1.ListOptions) {
 		if cfg.ForcePagination && options.ResourceVersion == "0" {
-			log.Info("Forcing pagination for the list request", "limit", cfg.PageSize)
+			log.Info("Forcing pagination for the list request", "limit", cfg.PageSize, "page_request_timeout", cfg.PageRequestTimeout)
 			options.ResourceVersion = ""
 			options.Limit = cfg.PageSize
+			options.TimeoutSeconds = &cfg.PageRequestTimeout
 		}
 	}
 	f := informers.NewSharedInformerFactoryWithOptions(clientset, defaultResync, informers.WithTweakListOptions(tweakListOptions))
@@ -989,9 +991,10 @@ func getConditionalInformers(
 			informerFactory: func() cache.SharedIndexInformer {
 				namespaceScopedInformer := informers.NewSharedInformerFactoryWithOptions(clientset, 0, informers.WithNamespace(cmNamespace), informers.WithTweakListOptions(func(options *metav1.ListOptions) {
 					if cfg.ForcePagination && options.ResourceVersion == "0" {
-						logger.Info("Forcing pagination for the list request", "limit", cfg.PageSize)
+						logger.Info("Forcing pagination for the list request", "limit", cfg.PageSize, "page_request_timeout", cfg.PageRequestTimeout)
 						options.ResourceVersion = ""
 						options.Limit = cfg.PageSize
+						options.TimeoutSeconds = &cfg.PageRequestTimeout
 					}
 				}))
 				return namespaceScopedInformer.Core().V1().ConfigMaps().Informer()
