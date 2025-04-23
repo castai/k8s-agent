@@ -106,11 +106,12 @@ func (m *metricsWatch) ResultChan() <-chan watch.Event {
 	return m.resultChan
 }
 
-func NewPodMetricsInformer(log logrus.FieldLogger, client versioned.Interface) cache.SharedIndexInformer {
+func NewPodMetricsInformer(log logrus.FieldLogger, client versioned.Interface, tweakListOptions func(options *metav1.ListOptions)) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 				options = withDefaultTimeout(options)
+				tweakListOptions(&options)
 
 				return client.MetricsV1beta1().
 					PodMetricses("").

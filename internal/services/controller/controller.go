@@ -134,7 +134,7 @@ func CollectSingleSnapshot(ctx context.Context,
 	df := dynamicinformer.NewFilteredDynamicSharedInformerFactory(dynamicClient, 0, metav1.NamespaceAll, tweakListOptions)
 
 	defaultInformers := getDefaultInformers(f, castwareNamespace, cfg.FilterEmptyReplicaSets)
-	conditionalInformers := getConditionalInformers(clientset, cfg, f, df, metricsClient, log)
+	conditionalInformers := getConditionalInformers(clientset, cfg, f, df, metricsClient, log, tweakListOptions)
 	additionalTransformers := createAdditionalTransformers(cfg)
 
 	informerContext, informerCancel := context.WithCancel(ctx)
@@ -230,7 +230,7 @@ func New(
 	discovery := clientset.Discovery()
 
 	defaultInformers := getDefaultInformers(f, castwareNamespace, cfg.FilterEmptyReplicaSets)
-	conditionalInformers := getConditionalInformers(clientset, cfg, f, df, metricsClient, log)
+	conditionalInformers := getConditionalInformers(clientset, cfg, f, df, metricsClient, log, tweakListOptions)
 	additionalTransformers := createAdditionalTransformers(cfg)
 
 	handledInformers := map[string]*custominformers.HandledInformer{}
@@ -723,7 +723,15 @@ func extractGroupVersionsFromApiResourceError(log logrus.FieldLogger, err error)
 	return result
 }
 
-func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Controller, f informers.SharedInformerFactory, df dynamicinformer.DynamicSharedInformerFactory, metricsClient versioned.Interface, logger logrus.FieldLogger) []conditionalInformer {
+func getConditionalInformers(
+	clientset kubernetes.Interface,
+	cfg *config.Controller,
+	f informers.SharedInformerFactory,
+	df dynamicinformer.DynamicSharedInformerFactory,
+	metricsClient versioned.Interface,
+	logger logrus.FieldLogger,
+	tweakListOptions func(options *metav1.ListOptions),
+) []conditionalInformer {
 	conditionalInformers := []conditionalInformer{
 		{
 			groupVersion:    policyv1.SchemeGroupVersion,
@@ -862,7 +870,10 @@ func getConditionalInformers(clientset kubernetes.Interface, cfg *config.Control
 			apiType:         reflect.TypeOf(&metrics_v1beta1.PodMetrics{}),
 			permissionVerbs: []string{"get", "list"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return custominformers.NewPodMetricsInformer(logger, metricsClient)
+				// This informer doesn't derive itself from the `df`, so we need
+				// to pass the tweakListOptions explicitly in order for it to
+				// set the options.Limit
+				return custominformers.NewPodMetricsInformer(logger, metricsClient, tweakListOptions)
 			},
 		},
 		{
