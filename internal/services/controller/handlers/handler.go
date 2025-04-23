@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"reflect"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -17,6 +18,7 @@ import (
 )
 
 type handler struct {
+	mutex        sync.Mutex
 	log          logrus.FieldLogger
 	handledType  reflect.Type
 	queue        workqueue.Interface
@@ -56,6 +58,10 @@ func (h *handler) OnDelete(obj interface{}) {
 }
 
 func (h *handler) handle(e castai.EventType, obj interface{}) {
+	// We start informers before scraping the initial state which means we might get called concurrently with the same object.
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+
 	if h.filters != nil && !h.filters.Apply(e, obj) {
 		return
 	}
