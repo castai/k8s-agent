@@ -76,7 +76,9 @@ type Controller struct {
 	// they need independent ListOptions
 	independentInformers map[string]cache.SharedIndexInformer
 
-	delta *delta.Delta
+	fullSnapshot  bool
+	deltaBatcher  *delta.Batcher[*delta.Item]
+	deltaCompiler *delta.Compiler[*delta.Item]
 
 	// sendMu ensures that only one goroutine can send deltas
 	sendMu sync.Mutex
@@ -167,7 +169,8 @@ func CollectSingleSnapshot(ctx context.Context,
 		agentVersion = vi.Version
 	}
 
-	d := delta.New(log, clusterID, v.Full(), agentVersion)
+	deltaBatcher := delta.DefaultBatcher(log)
+	deltaCompiler := delta.DefaultCompiler(log, clusterID, v.Full(), agentVersion)
 	go func() {
 		for {
 			i, _ := queue.Get()
@@ -181,7 +184,7 @@ func CollectSingleSnapshot(ctx context.Context,
 				continue
 			}
 
-			d.Add(di)
+			deltaBatcher.Write(di)
 			queue.Done(i)
 		}
 	}()
@@ -191,11 +194,13 @@ func CollectSingleSnapshot(ctx context.Context,
 		return nil, err
 	}
 
-	delta := d.SnapshotAndReset(ctx, nil)
+	deltaCompiler.Write(deltaBatcher.GetMapAndClear())
+	result := deltaCompiler.AsCastDelta(true)
+	deltaCompiler.Clear()
 
-	log.Debugf("synced %d items", len(delta.Items))
+	log.Debugf("synced %d items", len(result.Items))
 
-	return delta, nil
+	return result, nil
 }
 
 func New(
@@ -292,7 +297,9 @@ func New(
 		castaiclient:            castaiclient,
 		provider:                provider,
 		cfg:                     cfg,
-		delta:                   delta.New(log, clusterID, v.Full(), agentVersion.Version),
+		fullSnapshot:            true, // First snapshot is always full.
+		deltaBatcher:            delta.DefaultBatcher(log),
+		deltaCompiler:           delta.DefaultCompiler(log, clusterID, v.Full(), agentVersion.Version),
 		queue:                   queue,
 		informers:               handledInformers,
 		independentInformers:    independentInformers,
@@ -333,7 +340,7 @@ func (c *Controller) Run(ctx context.Context) error {
 				return
 			}
 			// Resync only when at least one full snapshot has already been sent.
-			if cfg.Resync && !c.delta.FullSnapshot {
+			if cfg.Resync && !c.fullSnapshot {
 				c.log.Info("restarting controller to resync data")
 				c.triggerRestart()
 			}
@@ -531,31 +538,41 @@ func (c *Controller) processItem(i interface{}) {
 		return
 	}
 
-	c.delta.Add(di)
+	c.deltaBatcher.Write(di)
 }
 
 func (c *Controller) send(ctx context.Context) {
+	c.trackSendMetrics(func() {
+		newBatch := c.deltaBatcher.GetMapAndClear()
+		c.prepareNodesForSend(ctx, newBatch)
+		c.deltaCompiler.Write(newBatch)
+
+		castDelta := c.deltaCompiler.AsCastDelta(c.fullSnapshot)
+		err := c.castaiclient.SendDelta(ctx, c.clusterID, castDelta)
+		if err != nil {
+			if errors.Is(err, castai.ErrInvalidContinuityToken) {
+				// This indicates process is in a bad state.
+				c.log.Info("restarting controller due to continuity token mismatch")
+				c.triggerRestart()
+				return
+			}
+			if !errors.Is(err, context.Canceled) {
+				c.log.Errorf("failed sending delta: %v", err)
+			}
+			// In most cases, it's because of external issues. In case it's actually an issue with the state, we rely on
+			// the health provider to eventually suicide the process. Here we only skip the tick and will upload these
+			// items on the next one.
+			return
+		}
+		c.healthzProvider.SnapshotSent()
+		c.deltaCompiler.Clear()
+		c.fullSnapshot = false
+	})
+}
+
+func (c *Controller) trackSendMetrics(op func()) {
 	startTime := time.Now().UTC()
-	delta := c.delta.SnapshotAndReset(ctx, c.prepareNodesForSend)
-
-	if err := c.castaiclient.SendDelta(ctx, c.clusterID, delta); err != nil {
-		if !errors.Is(err, context.Canceled) {
-			c.log.Errorf("failed sending delta: %v", err)
-		}
-
-		if errors.Is(err, castai.ErrInvalidContinuityToken) {
-			c.log.Info("restarting controller due to continuity token mismatch")
-		}
-
-		c.triggerRestart()
-
-		return
-	}
-
-	c.healthzProvider.SnapshotSent()
-
-	c.delta.FullSnapshot = false
-
+	op()
 	metrics.DeltaSendTime.Observe(time.Since(startTime).Seconds())
 	if !c.lastSend.IsZero() {
 		metrics.DeltaSendInterval.Observe(startTime.Sub(c.lastSend).Seconds())
