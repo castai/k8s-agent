@@ -29,7 +29,6 @@ func New(log logrus.FieldLogger, clusterID, clusterVersion, agentVersion string)
 		FullSnapshot:   true,
 		cacheActive:    map[string]*Item{},
 		cacheSpare:     map[string]*Item{},
-		cacheLock:      sync.RWMutex{},
 	}
 }
 
@@ -43,7 +42,7 @@ type Delta struct {
 	FullSnapshot   bool
 	cacheActive    map[string]*Item
 	cacheSpare     map[string]*Item
-	cacheLock      sync.RWMutex
+	cacheLock      sync.Mutex
 }
 
 // Add will add an Item to the Delta Cache. It will debounce the objects.
@@ -59,8 +58,8 @@ func (d *Delta) Add(i *Item) {
 
 	key := itemCacheKey(i)
 
-	d.cacheLock.RLock()
-	defer d.cacheLock.RUnlock()
+	d.cacheLock.Lock()
+	defer d.cacheLock.Unlock()
 	cache := d.cacheActive
 	if other, ok := cache[key]; ok && other.Event == castai.EventAdd && i.Event == castai.EventUpdate {
 		i.Event = castai.EventAdd
