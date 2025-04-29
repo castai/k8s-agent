@@ -43,7 +43,6 @@ import (
 	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller/crd"
-	"castai-agent/internal/services/controller/delta"
 	"castai-agent/internal/services/controller/knowngv"
 	mock_discovery "castai-agent/internal/services/controller/mock/discovery"
 	mock_types "castai-agent/internal/services/providers/types/mock"
@@ -328,10 +327,7 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: v1.NamespaceDefault, Name: "pod1"}}
-			_, err := delta.Encode(pod)
 			r := require.New(t)
-			r.NoError(err)
 
 			clientset := fake.NewSimpleClientset()
 			metricsClient := metrics_fake.NewSimpleClientset()
@@ -417,120 +413,124 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 
 }
 
-func TestController_ShouldCancelAndRestartAfterFailToSend(t *testing.T) {
-	mockctrl := gomock.NewController(t)
-	castaiclient := mock_castai.NewMockClient(mockctrl)
-	version := mock_version.NewMockInterface(mockctrl)
-	provider := mock_types.NewMockProvider(mockctrl)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	pod := &v1.Pod{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Pod",
-			APIVersion: v1.SchemeGroupVersion.String(),
+func TestController_HandlingSendErrors(t *testing.T) {
+	testCases := map[string]struct {
+		SendError   error
+		ExpectRetry bool
+	}{
+		"stop after continuity token error": {
+			SendError:   fmt.Errorf("fake error: %w", castai.ErrInvalidContinuityToken),
+			ExpectRetry: false,
 		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: v1.NamespaceDefault,
-			Name:      "pod1",
+		"retry after unrecognised error": {
+			SendError:   fmt.Errorf("some random error"),
+			ExpectRetry: true,
 		},
 	}
-	podData, err := delta.Encode(pod)
-	require.NoError(t, err)
 
-	clientset := fake.NewSimpleClientset()
-	metricsClient := metrics_fake.NewSimpleClientset()
-	dynamicClient := dynamic_fake.NewSimpleDynamicClient(runtime.NewScheme())
+	for name, tt := range testCases {
+		t.Run(name, func(t *testing.T) {
+			mockctrl := gomock.NewController(t)
+			castaiclient := mock_castai.NewMockClient(mockctrl)
+			version := mock_version.NewMockInterface(mockctrl)
+			provider := mock_types.NewMockProvider(mockctrl)
 
-	version.EXPECT().Full().Return("1.21+").MaxTimes(3)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
 
-	agentVersion := &config.AgentVersion{Version: "1.2.3"}
+			clientset := fake.NewSimpleClientset()
+			metricsClient := metrics_fake.NewSimpleClientset()
+			dynamicClient := dynamic_fake.NewSimpleDynamicClient(runtime.NewScheme())
 
-	clusterID := uuid.New()
-	log := logrus.New()
+			version.EXPECT().Full().Return("1.21+").MaxTimes(3)
 
-	var invocations int64
+			agentVersion := &config.AgentVersion{Version: "1.2.3"}
 
-	// initial full snapshot
-	castaiclient.EXPECT().
-		SendDelta(gomock.Any(), clusterID.String(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
-			defer atomic.AddInt64(&invocations, 1)
+			clusterID := uuid.New()
+			log := logrus.New()
 
-			require.Equal(t, clusterID, d.ClusterID)
-			require.Equal(t, "1.21+", d.ClusterVersion)
-			require.Equal(t, "1.2.3", d.AgentVersion)
-			require.True(t, d.FullSnapshot)
-			require.Len(t, d.Items, 0)
+			var (
+				invocations int64
+				podCount    int64
+			)
 
-			_, err := clientset.CoreV1().Pods("default").Create(ctx, pod, metav1.CreateOptions{})
-			require.NoError(t, err)
+			// initial full snapshot
+			castaiclient.EXPECT().
+				SendDelta(gomock.Any(), clusterID.String(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
+					defer atomic.AddInt64(&invocations, 1)
 
-			return nil
+					require.Equal(t, clusterID, d.ClusterID)
+					require.Equal(t, "1.21+", d.ClusterVersion)
+					require.Equal(t, "1.2.3", d.AgentVersion)
+					require.True(t, d.FullSnapshot)
+
+					// Expecting snapshot to be updated with the new delta items.
+					podNumber := int(atomic.AddInt64(&podCount, 1))
+					require.Len(t, d.Items, podNumber-1)
+					newPod := &v1.Pod{
+						TypeMeta: metav1.TypeMeta{
+							Kind:       "Pod",
+							APIVersion: v1.SchemeGroupVersion.String(),
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Namespace: v1.NamespaceDefault,
+							Name:      fmt.Sprintf("pod-%d", podNumber),
+						},
+					}
+					_, err := clientset.CoreV1().
+						Pods(v1.NamespaceDefault).
+						Create(ctx, newPod, metav1.CreateOptions{})
+					require.NoError(t, err)
+
+					return tt.SendError
+				}).AnyTimes()
+
+			castaiclient.EXPECT().ExchangeAgentTelemetry(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
+				Return(&castai.AgentTelemetryResponse{}, nil).
+				Do(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
+					require.Equalf(t, "1.2.3", req.AgentVersion, "got request: %+v", req)
+				})
+
+			log.SetLevel(logrus.DebugLevel)
+			ctrl := New(
+				log,
+				clientset,
+				dynamicClient,
+				castaiclient,
+				metricsClient,
+				provider,
+				clusterID.String(),
+				&config.Controller{
+					Interval:             2 * time.Second,
+					PrepTimeout:          2 * time.Second,
+					InitialSleepDuration: 10 * time.Millisecond,
+				},
+				version,
+				agentVersion,
+				NewHealthzProvider(defaultHealthzCfg, log),
+				clientset.AuthorizationV1().SelfSubjectAccessReviews(),
+				"",
+			)
+
+			ctrl.Start(ctx.Done())
+
+			go func() {
+				require.NoError(t, ctrl.Run(ctx))
+			}()
+
+			wait.Until(func() {
+				<-ctx.Done()
+			}, 10*time.Millisecond, ctx.Done())
+
+			gotInvocations := int(atomic.LoadInt64(&invocations))
+			if !tt.ExpectRetry {
+				require.Equal(t, 1, gotInvocations)
+			} else {
+				require.Less(t, 1, gotInvocations)
+			}
 		})
-
-	// first delta add pod - fail and trigger pod delete
-	castaiclient.EXPECT().
-		SendDelta(gomock.Any(), clusterID.String(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
-			defer atomic.AddInt64(&invocations, 1)
-
-			require.Equal(t, clusterID, d.ClusterID)
-			require.Equal(t, "1.21+", d.ClusterVersion)
-			require.Equal(t, "1.2.3", d.AgentVersion)
-			require.False(t, d.FullSnapshot)
-			require.Len(t, d.Items, 1)
-
-			actualItem, found := lo.Find(d.Items, func(item *castai.DeltaItem) bool {
-				return item.Event == castai.EventAdd && item.Kind == "Pod"
-			})
-			require.True(t, found)
-			require.NotNil(t, actualItem.Data)
-			require.JSONEq(t, string(*podData), string(*actualItem.Data))
-
-			err := clientset.CoreV1().Pods("default").Delete(ctx, pod.Name, metav1.DeleteOptions{})
-			require.NoError(t, err)
-
-			return fmt.Errorf("testError")
-		})
-
-	castaiclient.EXPECT().ExchangeAgentTelemetry(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
-		Return(&castai.AgentTelemetryResponse{}, nil).
-		Do(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
-			require.Equalf(t, "1.2.3", req.AgentVersion, "got request: %+v", req)
-		})
-
-	log.SetLevel(logrus.DebugLevel)
-	ctrl := New(
-		log,
-		clientset,
-		dynamicClient,
-		castaiclient,
-		metricsClient,
-		provider,
-		clusterID.String(),
-		&config.Controller{
-			Interval:             2 * time.Second,
-			PrepTimeout:          2 * time.Second,
-			InitialSleepDuration: 10 * time.Millisecond,
-		},
-		version,
-		agentVersion,
-		NewHealthzProvider(defaultHealthzCfg, log),
-		clientset.AuthorizationV1().SelfSubjectAccessReviews(),
-		"",
-	)
-
-	ctrl.Start(ctx.Done())
-
-	go func() {
-		require.NoError(t, ctrl.Run(ctx))
-	}()
-
-	wait.Until(func() {
-		<-ctx.Done()
-	}, 10*time.Millisecond, ctx.Done())
+	}
 }
 
 func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObject, *fake.Clientset, *dynamic_fake.FakeDynamicClient, *metrics_fake.Clientset) {

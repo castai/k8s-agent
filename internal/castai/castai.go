@@ -255,16 +255,22 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 	})
 
 	if resp.StatusCode > 399 {
-		var buf bytes.Buffer
-		if _, err := buf.ReadFrom(resp.Body); err != nil {
+		requestID := resp.Header.Get(respHeaderRequestID)
+		responseStatusCode := resp.StatusCode
+		responseBody, err := readAllString(resp.Body)
+		if err != nil {
 			log.Errorf("failed reading error response body: %v", err)
 		}
 
-		if strings.Contains(buf.String(), ErrInvalidContinuityToken.Error()) {
+		if strings.Contains(responseBody, ErrInvalidContinuityToken.Error()) {
 			return ErrInvalidContinuityToken
 		}
-		reqID := resp.Header.Get(respHeaderRequestID)
-		return fmt.Errorf("delta request error request_id=%q status_code=%d body=%s", reqID, resp.StatusCode, buf.String())
+
+		return DeltaRequestError{
+			requestID:  requestID,
+			statusCode: responseStatusCode,
+			body:       responseBody,
+		}
 	}
 	c.continuityToken = resp.Header.Get(headerContinuityToken)
 	log.Infof("delta upload finished")
@@ -330,4 +336,13 @@ func addUA(header http.Header) {
 		version = vi.Version
 	}
 	header.Set(headerUserAgent, fmt.Sprintf("castai-agent/%s", version))
+}
+
+func readAllString(r io.Reader) (string, error) {
+	var buffer bytes.Buffer
+	_, err := buffer.ReadFrom(r)
+	if err != nil {
+		return "", err
+	}
+	return buffer.String(), nil
 }
