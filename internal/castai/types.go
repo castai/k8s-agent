@@ -46,6 +46,12 @@ type AnywhereParams struct {
 	KubeSystemNamespaceID uuid.UUID `json:"kubeSystemNamespaceId"`
 }
 
+type AWSParams struct {
+	ClusterName string `json:"clusterName"`
+	Region      string `json:"region"`
+	AccountID   string `json:"accountId"`
+}
+
 type RegisterClusterRequest struct {
 	ID        uuid.UUID        `json:"id"`
 	Name      string           `json:"name"`
@@ -55,6 +61,7 @@ type RegisterClusterRequest struct {
 	AKS       *AKSParams       `json:"aks"`
 	Openshift *OpenshiftParams `json:"openshift"`
 	Anywhere  *AnywhereParams  `json:"anywhere"`
+	AWS       *AWSParams       `json:"aws"`
 }
 
 type Cluster struct {
