@@ -28,6 +28,7 @@ type Config struct {
 	AKS       *AKS       `mapstructure:"aks"`
 	OpenShift *OpenShift `mapstructure:"openshift"`
 	Anywhere  *Anywhere  `mapstructure:"anywhere"`
+	AWS       *AWS       `mapstructure:"aws"`
 
 	Static      *Static     `mapstructure:"static"`
 	Controller  *Controller `mapstructure:"controller"`
@@ -107,6 +108,12 @@ type OpenShift struct {
 	Region      string `mapstructure:"region"`
 	ClusterName string `mapstructure:"cluster_name"`
 	InternalID  string `mapstructure:"internal_id"`
+}
+
+type AWS struct {
+	ClusterName string `mapstructure:"cluster_name"`
+	Region      string `mapstructure:"region"`
+	AccountID   string `mapstructure:"account_id"`
 }
 
 type Static struct {
