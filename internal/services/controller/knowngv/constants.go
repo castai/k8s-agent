@@ -10,4 +10,6 @@ var (
 	KarpenterV1Alpha1     = schema.GroupVersion{Group: "karpenter.k8s.aws", Version: "v1alpha1"}
 	KarpenterV1Beta1      = schema.GroupVersion{Group: "karpenter.k8s.aws", Version: "v1beta1"}
 	KarpenterV1           = schema.GroupVersion{Group: "karpenter.k8s.aws", Version: "v1"}
+
+	RunbooksV1Alpha1 = schema.GroupVersion{Group: "runbooks.cast.ai", Version: "v1alpha1"}
 )

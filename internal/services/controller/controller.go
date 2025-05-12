@@ -993,6 +993,16 @@ func getConditionalInformers(
 				return f.Core().V1().ResourceQuotas().Informer()
 			},
 		},
+		{
+			groupVersion:    knowngv.RunbooksV1Alpha1,
+			resource:        "recommendationsyncs",
+			kind:            "RecommendationSync",
+			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(knowngv.RunbooksV1Alpha1.WithResource("recommendationsyncs")).Informer()
+			},
+		},
 	}
 
 	for _, cmNamespace := range cfg.ConfigMapNamespaces {

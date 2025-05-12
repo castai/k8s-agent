@@ -81,10 +81,10 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
-			expectedReceivedObjectsCount: 27,
+			expectedReceivedObjectsCount: 28,
 		},
 		"All supported objects are found and received in delta with pagination": {
-			expectedReceivedObjectsCount: 27,
+			expectedReceivedObjectsCount: 28,
 			paginationEnabled:            true,
 			pageSize:                     5,
 		},
@@ -92,12 +92,12 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 25,
+			expectedReceivedObjectsCount: 26,
 		},
 		"when fetching api resources produces single error should exclude that resource": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 26,
+			expectedReceivedObjectsCount: 27,
 		},
 	}
 
@@ -649,6 +649,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	nodePoolsDataV1 := emptyObjectData("karpenter.sh", "v1", "NodePool", "fake-nodepool-v1")
 	nodeClaimsDataV1 := emptyObjectData("karpenter.sh", "v1", "NodeClaim", "fake-nodeclaim-v1")
 	ec2NodeClassesDataV1 := emptyObjectData("karpenter.k8s.aws", "v1", "EC2NodeClass", "fake-ec2nodeclass-v1")
+	recommendationSyncV1Alpha1 := emptyObjectData("runbooks.cast.ai", "v1alpha1", "RecommendationSync", "fake-recommendationsync")
 
 	datadogExtendedDSReplicaSet := &datadoghqv1alpha1.ExtendedDaemonSetReplicaSet{
 		TypeMeta: metav1.TypeMeta{
@@ -824,6 +825,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		datadogExtendedDSReplicaSet,
 		rollout,
 		recommendation,
+		unstructuredFromJson(t, recommendationSyncV1Alpha1),
 	}
 	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, runtimeObjects...)
 
@@ -1075,6 +1077,18 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 				},
 			},
 		},
+		{
+			GroupVersion: "runbooks.cast.ai/v1alpha1",
+			APIResources: []metav1.APIResource{
+				{
+					Group:   "runbooks.cast.ai",
+					Name:    "recommendationsyncs",
+					Version: "v1alpha1",
+					Kind:    "RecommendationSync",
+					Verbs:   []string{"get", "list", "watch"},
+				},
+			},
+		},
 	}
 	objects := []sampleObject{
 		{
@@ -1220,6 +1234,12 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Kind:     "LimitRange",
 			Resource: "limitranges",
 			Data:     limitRangeData,
+		},
+		{
+			GV:       knowngv.RunbooksV1Alpha1,
+			Kind:     "RecommendationSync",
+			Resource: "recommendationsyncs",
+			Data:     recommendationSyncV1Alpha1,
 		},
 	}
 	// There are a lot of manually entered samples. Running some sanity checks to ensure they don't contain basic errors.
