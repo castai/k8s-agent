@@ -124,7 +124,15 @@ func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node
 		lifecycle := determineLifecycle(node)
 		if lifecycle == NodeLifecycleSpot {
 			ret = append(ret, node)
+			continue
 		}
+		if lifecycle == NodeLifecycleOnDemand {
+			continue
+		}
+
+		// TODO: call EC2 API to check unknown instance
+		// need to figure out how to get instance ID from Node object
+		// if lifecycle == NodeLifecycleUnknown {
 	}
 
 	return ret, nil
@@ -157,6 +165,5 @@ func determineLifecycle(node *v1.Node) NodeLifecycle {
 		}
 	}
 
-	// TODO: might need to improve this and call also the AWS EC2 API
-	return NodeLifecycleOnDemand
+	return NodeLifecycleUnknown
 }
