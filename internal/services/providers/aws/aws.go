@@ -71,7 +71,7 @@ func (p *Provider) RegisterCluster(ctx context.Context, castaiClient castai.Clie
 
 	if clusterName == "" {
 		clusterNameOutput, err := p.imds.GetMetadata(ctx, &imds.GetMetadataInput{
-			Path: "tags/instance/cluster-name",
+			Path: "tags/instance/castai:cluster-name",
 		})
 		if err != nil {
 			return nil, fmt.Errorf("getting cluster name: %w", err)
