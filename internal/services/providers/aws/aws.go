@@ -1,12 +1,16 @@
+//go:generate mockgen -destination ./mock/aws.go . IMDSClient,EC2Client
 package aws
 
 import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 
@@ -18,22 +22,48 @@ import (
 
 const Name = "aws"
 
-type Provider struct {
-	log  logrus.FieldLogger
-	imds *imds.Client
+type IMDSClient interface {
+	GetInstanceIdentityDocument(ctx context.Context, params *imds.GetInstanceIdentityDocumentInput, optFns ...func(*imds.Options)) (*imds.GetInstanceIdentityDocumentOutput, error)
+	GetMetadata(ctx context.Context, params *imds.GetMetadataInput, optFns ...func(*imds.Options)) (*imds.GetMetadataOutput, error)
 }
 
-func New(ctx context.Context, log logrus.FieldLogger) (*Provider, error) {
+type EC2Client interface {
+	DescribeInstances(ctx context.Context, params *ec2.DescribeInstancesInput, optFns ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error)
+}
+
+type Provider struct {
+	log  logrus.FieldLogger
+	imds IMDSClient
+	ec2  EC2Client
+
+	clusterName string
+	region      string
+	accountID   string
+
+	spotCache                        map[string]bool
+	apiNodeLifecycleDiscoveryEnabled bool
+}
+
+func New(ctx context.Context, log logrus.FieldLogger, cfg config.Config) (*Provider, error) {
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("loading aws config: %w", err)
 	}
 
 	imdsClient := imds.NewFromConfig(awsCfg)
+	ec2Client := ec2.NewFromConfig(awsCfg)
 
 	return &Provider{
 		log:  log.WithField("provider", Name),
 		imds: imdsClient,
+		ec2:  ec2Client,
+
+		clusterName: cfg.AWS.ClusterName,
+		region:      cfg.AWS.Region,
+		accountID:   cfg.AWS.AccountID,
+
+		spotCache:                        make(map[string]bool),
+		apiNodeLifecycleDiscoveryEnabled: cfg.AWS.APINodeLifecycleDiscoveryEnabled,
 	}, nil
 }
 
@@ -42,34 +72,21 @@ func (p *Provider) Name() string {
 }
 
 func (p *Provider) RegisterCluster(ctx context.Context, castaiClient castai.Client) (*types.ClusterRegistration, error) {
-	cfg := config.Get().AWS
-
-	var (
-		region      = ""
-		accountID   = ""
-		clusterName = ""
-	)
-	if cfg != nil {
-		region = cfg.Region
-		accountID = cfg.AccountID
-		clusterName = cfg.ClusterName
-	}
-
-	if region == "" || accountID == "" {
+	if p.region == "" || p.accountID == "" {
 		iiDoc, err := p.imds.GetInstanceIdentityDocument(ctx, &imds.GetInstanceIdentityDocumentInput{})
 		if err != nil {
 			return nil, fmt.Errorf("getting instance identity document: %w", err)
 		}
 
-		if region == "" {
-			region = iiDoc.Region
+		if p.region == "" {
+			p.region = iiDoc.Region
 		}
-		if accountID == "" {
-			accountID = iiDoc.AccountID
+		if p.accountID == "" {
+			p.accountID = iiDoc.AccountID
 		}
 	}
 
-	if clusterName == "" {
+	if p.clusterName == "" {
 		clusterNameOutput, err := p.imds.GetMetadata(ctx, &imds.GetMetadataInput{
 			Path: "tags/instance/castai:cluster-name",
 		})
@@ -82,27 +99,27 @@ func (p *Provider) RegisterCluster(ctx context.Context, castaiClient castai.Clie
 			return nil, fmt.Errorf("reading cluster name data: %w", err)
 		}
 
-		clusterName = string(clusterNameData)
+		p.clusterName = string(clusterNameData)
 	}
 
-	if region == "" {
+	if p.region == "" {
 		return nil, fmt.Errorf("region is empty")
 	}
 
-	if accountID == "" {
+	if p.accountID == "" {
 		return nil, fmt.Errorf("account id is empty")
 	}
 
-	if clusterName == "" {
+	if p.clusterName == "" {
 		return nil, fmt.Errorf("cluster name is empty")
 	}
 
 	req := &castai.RegisterClusterRequest{
-		Name: clusterName,
+		Name: p.clusterName,
 		AWS: &castai.AWSParams{
-			ClusterName: clusterName,
-			Region:      region,
-			AccountID:   accountID,
+			ClusterName: p.clusterName,
+			Region:      p.region,
+			AccountID:   p.accountID,
 		},
 	}
 
@@ -120,6 +137,9 @@ func (p *Provider) RegisterCluster(ctx context.Context, castaiClient castai.Clie
 func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node, error) {
 	var ret []*v1.Node
 
+	instanceIDsToCheck := make([]string, 0)
+	nodesByInstanceID := map[string]*v1.Node{}
+
 	for _, node := range nodes {
 		lifecycle := determineLifecycle(node)
 		if lifecycle == NodeLifecycleSpot {
@@ -130,12 +150,68 @@ func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node
 			continue
 		}
 
-		// TODO: call EC2 API to check unknown instance
-		// need to figure out how to get instance ID from Node object
-		// if lifecycle == NodeLifecycleUnknown {
+		splitProviderID := strings.Split(node.Spec.ProviderID, "/")
+		instanceID := splitProviderID[len(splitProviderID)-1]
+		if instanceID == "" {
+			continue
+		}
+		spot, ok := p.spotCache[instanceID]
+		if ok {
+			if spot {
+				ret = append(ret, node)
+			}
+			continue
+		}
+
+		instanceIDsToCheck = append(instanceIDsToCheck, instanceID)
+		nodesByInstanceID[instanceID] = node
+	}
+
+	if len(instanceIDsToCheck) == 0 || !p.apiNodeLifecycleDiscoveryEnabled {
+		return ret, nil
+	}
+
+	instances, err := p.GetInstances(ctx, instanceIDsToCheck)
+	if err != nil {
+		return nil, fmt.Errorf("getting instances: %w", err)
+	}
+
+	for _, instance := range instances {
+		isSpot := instance.InstanceLifecycle == ec2types.InstanceLifecycleTypeSpot
+		instanceID := *instance.InstanceId
+		p.spotCache[instanceID] = isSpot
+
+		if isSpot {
+			ret = append(ret, nodesByInstanceID[instanceID])
+		}
 	}
 
 	return ret, nil
+}
+
+func (p *Provider) GetInstances(ctx context.Context, instanceIDs []string) ([]ec2types.Instance, error) {
+	var token *string
+	var instances []ec2types.Instance
+
+	for {
+		resp, err := p.ec2.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+			NextToken:   token,
+			InstanceIds: instanceIDs,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("describing instances: %w", err)
+		}
+
+		for _, reservation := range resp.Reservations {
+			instances = append(instances, reservation.Instances...)
+		}
+
+		if resp.NextToken == nil {
+			break
+		}
+	}
+
+	return instances, nil
 }
 
 type NodeLifecycle string

@@ -111,9 +111,10 @@ type OpenShift struct {
 }
 
 type AWS struct {
-	ClusterName string `mapstructure:"cluster_name"`
-	Region      string `mapstructure:"region"`
-	AccountID   string `mapstructure:"account_id"`
+	ClusterName                      string `mapstructure:"cluster_name"`
+	Region                           string `mapstructure:"region"`
+	AccountID                        string `mapstructure:"account_id"`
+	APINodeLifecycleDiscoveryEnabled bool   `mapstructure:"api_node_lifecycle_discovery_enabled"`
 }
 
 type Static struct {
