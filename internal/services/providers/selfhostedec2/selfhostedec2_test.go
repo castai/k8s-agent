@@ -58,7 +58,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 			},
 			expectedReq: &castai.RegisterClusterRequest{
 				Name: "test-cluster",
-				SelfHostedWithEC2Nodes: &castai.AWSParams{
+				SelfHostedWithEC2Nodes: &castai.SelfHostedWithEC2NodesParams{
 					ClusterName: "test-cluster",
 					Region:      "us-west-2",
 					AccountID:   "123456789012",
@@ -102,7 +102,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 			},
 			expectedReq: &castai.RegisterClusterRequest{
 				Name: "test-cluster-imds",
-				SelfHostedWithEC2Nodes: &castai.AWSParams{
+				SelfHostedWithEC2Nodes: &castai.SelfHostedWithEC2NodesParams{
 					ClusterName: "test-cluster-imds",
 					Region:      "us-east-1",
 					AccountID:   "987654321098",

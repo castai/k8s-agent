@@ -46,22 +46,22 @@ type AnywhereParams struct {
 	KubeSystemNamespaceID uuid.UUID `json:"kubeSystemNamespaceId"`
 }
 
-type AWSParams struct {
+type SelfHostedWithEC2NodesParams struct {
 	ClusterName string `json:"clusterName"`
 	Region      string `json:"region"`
 	AccountID   string `json:"accountId"`
 }
 
 type RegisterClusterRequest struct {
-	ID                     uuid.UUID        `json:"id"`
-	Name                   string           `json:"name"`
-	EKS                    *EKSParams       `json:"eks"`
-	GKE                    *GKEParams       `json:"gke"`
-	KOPS                   *KOPSParams      `json:"kops"`
-	AKS                    *AKSParams       `json:"aks"`
-	Openshift              *OpenshiftParams `json:"openshift"`
-	Anywhere               *AnywhereParams  `json:"anywhere"`
-	SelfHostedWithEC2Nodes *AWSParams       `json:"self_hosted_with_ec2_nodes"`
+	ID                     uuid.UUID                     `json:"id"`
+	Name                   string                        `json:"name"`
+	EKS                    *EKSParams                    `json:"eks"`
+	GKE                    *GKEParams                    `json:"gke"`
+	KOPS                   *KOPSParams                   `json:"kops"`
+	AKS                    *AKSParams                    `json:"aks"`
+	Openshift              *OpenshiftParams              `json:"openshift"`
+	Anywhere               *AnywhereParams               `json:"anywhere"`
+	SelfHostedWithEC2Nodes *SelfHostedWithEC2NodesParams `json:"self_hosted_with_ec2_nodes"`
 }
 
 type Cluster struct {

@@ -116,7 +116,7 @@ func (p *Provider) RegisterCluster(ctx context.Context, castaiClient castai.Clie
 
 	req := &castai.RegisterClusterRequest{
 		Name: p.clusterName,
-		SelfHostedWithEC2Nodes: &castai.AWSParams{
+		SelfHostedWithEC2Nodes: &castai.SelfHostedWithEC2NodesParams{
 			ClusterName: p.clusterName,
 			Region:      p.region,
 			AccountID:   p.accountID,
