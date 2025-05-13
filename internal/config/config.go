@@ -21,14 +21,14 @@ type Config struct {
 
 	TLS *TLS `mapstructure:"tls"`
 
-	Provider  string     `mapstructure:"provider"`
-	EKS       *EKS       `mapstructure:"eks"`
-	GKE       *GKE       `mapstructure:"gke"`
-	KOPS      *KOPS      `mapstructure:"kops"`
-	AKS       *AKS       `mapstructure:"aks"`
-	OpenShift *OpenShift `mapstructure:"openshift"`
-	Anywhere  *Anywhere  `mapstructure:"anywhere"`
-	AWS       *AWS       `mapstructure:"aws"`
+	Provider      string         `mapstructure:"provider"`
+	EKS           *EKS           `mapstructure:"eks"`
+	GKE           *GKE           `mapstructure:"gke"`
+	KOPS          *KOPS          `mapstructure:"kops"`
+	AKS           *AKS           `mapstructure:"aks"`
+	OpenShift     *OpenShift     `mapstructure:"openshift"`
+	Anywhere      *Anywhere      `mapstructure:"anywhere"`
+	SelfHostedEC2 *SelfHostedEC2 `mapstructure:"selfhostedec2"`
 
 	Static      *Static     `mapstructure:"static"`
 	Controller  *Controller `mapstructure:"controller"`
@@ -110,7 +110,7 @@ type OpenShift struct {
 	InternalID  string `mapstructure:"internal_id"`
 }
 
-type AWS struct {
+type SelfHostedEC2 struct {
 	ClusterName                      string `mapstructure:"cluster_name"`
 	Region                           string `mapstructure:"region"`
 	AccountID                        string `mapstructure:"account_id"`

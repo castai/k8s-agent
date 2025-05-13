@@ -53,15 +53,15 @@ type AWSParams struct {
 }
 
 type RegisterClusterRequest struct {
-	ID        uuid.UUID        `json:"id"`
-	Name      string           `json:"name"`
-	EKS       *EKSParams       `json:"eks"`
-	GKE       *GKEParams       `json:"gke"`
-	KOPS      *KOPSParams      `json:"kops"`
-	AKS       *AKSParams       `json:"aks"`
-	Openshift *OpenshiftParams `json:"openshift"`
-	Anywhere  *AnywhereParams  `json:"anywhere"`
-	AWS       *AWSParams       `json:"aws"`
+	ID                     uuid.UUID        `json:"id"`
+	Name                   string           `json:"name"`
+	EKS                    *EKSParams       `json:"eks"`
+	GKE                    *GKEParams       `json:"gke"`
+	KOPS                   *KOPSParams      `json:"kops"`
+	AKS                    *AKSParams       `json:"aks"`
+	Openshift              *OpenshiftParams `json:"openshift"`
+	Anywhere               *AnywhereParams  `json:"anywhere"`
+	SelfHostedWithEC2Nodes *AWSParams       `json:"self_hosted_with_ec2_nodes"`
 }
 
 type Cluster struct {

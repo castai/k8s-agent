@@ -12,11 +12,11 @@ import (
 	"castai-agent/internal/services/providers/aks"
 	"castai-agent/internal/services/providers/anywhere"
 	anywhere_client "castai-agent/internal/services/providers/anywhere/client"
-	"castai-agent/internal/services/providers/aws"
 	"castai-agent/internal/services/providers/eks"
 	"castai-agent/internal/services/providers/gke"
 	"castai-agent/internal/services/providers/kops"
 	"castai-agent/internal/services/providers/openshift"
+	"castai-agent/internal/services/providers/selfhostedec2"
 	"castai-agent/internal/services/providers/types"
 )
 
@@ -57,8 +57,8 @@ func GetProvider(ctx context.Context, log logrus.FieldLogger, discoveryService d
 		return openshift.New(discoveryService, dyno), nil
 	}
 
-	if cfg.Provider == aws.Name || cfg.AWS != nil {
-		return aws.New(ctx, log)
+	if cfg.Provider == selfhostedec2.Name || cfg.SelfHostedEC2 != nil {
+		return selfhostedec2.New(ctx, log, cfg)
 	}
 
 	return nil, fmt.Errorf("unknown provider %q", cfg.Provider)

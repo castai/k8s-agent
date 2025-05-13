@@ -1,4 +1,4 @@
-package aws
+package selfhostedec2
 
 import (
 	"context"
@@ -18,7 +18,7 @@ import (
 
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
-	mock_aws "castai-agent/internal/services/providers/aws/mock"
+	mock_aws "castai-agent/internal/services/providers/selfhostedec2/mock"
 	"castai-agent/pkg/labels"
 )
 
@@ -58,7 +58,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 			},
 			expectedReq: &castai.RegisterClusterRequest{
 				Name: "test-cluster",
-				AWS: &castai.AWSParams{
+				SelfHostedWithEC2Nodes: &castai.AWSParams{
 					ClusterName: "test-cluster",
 					Region:      "us-west-2",
 					AccountID:   "123456789012",
@@ -102,7 +102,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 			},
 			expectedReq: &castai.RegisterClusterRequest{
 				Name: "test-cluster-imds",
-				AWS: &castai.AWSParams{
+				SelfHostedWithEC2Nodes: &castai.AWSParams{
 					ClusterName: "test-cluster-imds",
 					Region:      "us-east-1",
 					AccountID:   "987654321098",

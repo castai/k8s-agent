@@ -1,5 +1,5 @@
 //go:generate mockgen -destination ./mock/aws.go . IMDSClient,EC2Client
-package aws
+package selfhostedec2
 
 import (
 	"context"
@@ -20,7 +20,7 @@ import (
 	"castai-agent/pkg/labels"
 )
 
-const Name = "aws"
+const Name = "selfhostedec2"
 
 type IMDSClient interface {
 	GetInstanceIdentityDocument(ctx context.Context, params *imds.GetInstanceIdentityDocumentInput, optFns ...func(*imds.Options)) (*imds.GetInstanceIdentityDocumentOutput, error)
@@ -58,12 +58,12 @@ func New(ctx context.Context, log logrus.FieldLogger, cfg config.Config) (*Provi
 		imds: imdsClient,
 		ec2:  ec2Client,
 
-		clusterName: cfg.AWS.ClusterName,
-		region:      cfg.AWS.Region,
-		accountID:   cfg.AWS.AccountID,
+		clusterName: cfg.SelfHostedEC2.ClusterName,
+		region:      cfg.SelfHostedEC2.Region,
+		accountID:   cfg.SelfHostedEC2.AccountID,
 
 		spotCache:                        make(map[string]bool),
-		apiNodeLifecycleDiscoveryEnabled: cfg.AWS.APINodeLifecycleDiscoveryEnabled,
+		apiNodeLifecycleDiscoveryEnabled: cfg.SelfHostedEC2.APINodeLifecycleDiscoveryEnabled,
 	}, nil
 }
 
@@ -116,7 +116,7 @@ func (p *Provider) RegisterCluster(ctx context.Context, castaiClient castai.Clie
 
 	req := &castai.RegisterClusterRequest{
 		Name: p.clusterName,
-		AWS: &castai.AWSParams{
+		SelfHostedWithEC2Nodes: &castai.AWSParams{
 			ClusterName: p.clusterName,
 			Region:      p.region,
 			AccountID:   p.accountID,
