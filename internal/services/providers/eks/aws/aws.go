@@ -1,5 +1,5 @@
-//go:generate mockgen -destination ./mock/client.go . Client
-package client
+//go:generate mockgen -destination ./mock/aws.go . RegisterClusterBuilder,Client
+package aws
 
 import (
 	"context"
@@ -13,8 +13,157 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/sirupsen/logrus"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/utils/pointer"
+
+	"castai-agent/internal/castai"
+	"castai-agent/internal/services/providers/types"
+	"castai-agent/pkg/labels"
 )
+
+type nodeLifecycle string
+
+const (
+	NodeLifecycleUnknown  nodeLifecycle = "unknown"
+	NodeLifecycleSpot     nodeLifecycle = "spot"
+	NodeLifecycleOnDemand nodeLifecycle = "on_demand"
+)
+
+const (
+	LabelCapacity         = "eks.amazonaws.com/capacityType"
+	ValueCapacitySpot     = "SPOT"
+	ValueCapacityOnDemand = "ON_DEMAND"
+)
+
+type RegisterClusterBuilder interface {
+	BuildRegisterClusterRequest(ctx context.Context) (*castai.RegisterClusterRequest, error)
+}
+
+func NewProvider(ctx context.Context, log logrus.FieldLogger, name string, awsClient Client, apiNodeLifecycleDiscoveryEnabled bool, registerClusterBuilder RegisterClusterBuilder) (types.Provider, error) {
+	return &Provider{
+		name:                             name,
+		log:                              log,
+		awsClient:                        awsClient,
+		apiNodeLifecycleDiscoveryEnabled: apiNodeLifecycleDiscoveryEnabled,
+		spotCache:                        map[string]bool{},
+		registerClusterBuilder:           registerClusterBuilder,
+	}, nil
+}
+
+type Provider struct {
+	name                             string
+	log                              logrus.FieldLogger
+	awsClient                        Client
+	apiNodeLifecycleDiscoveryEnabled bool
+	registerClusterBuilder           RegisterClusterBuilder
+	spotCache                        map[string]bool
+}
+
+func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*types.ClusterRegistration, error) {
+	req, err := p.registerClusterBuilder.BuildRegisterClusterRequest(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("building register cluster request: %w", err)
+	}
+
+	resp, err := client.RegisterCluster(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("requesting castai api: %w", err)
+	}
+
+	return &types.ClusterRegistration{
+		ClusterID:      resp.ID,
+		OrganizationID: resp.OrganizationID,
+	}, nil
+}
+
+func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node, error) {
+	var ret []*v1.Node
+
+	var instanceIDs []string
+	nodesByInstanceID := map[string]*v1.Node{}
+
+	for _, node := range nodes {
+		lifecycle := determineLifecycle(node)
+		if lifecycle == NodeLifecycleSpot {
+			ret = append(ret, node)
+			continue
+		} else if lifecycle == NodeLifecycleOnDemand {
+			continue
+		}
+
+		splitProviderID := strings.Split(node.Spec.ProviderID, "/")
+		instanceID := splitProviderID[len(splitProviderID)-1]
+
+		spot, ok := p.spotCache[instanceID]
+		if ok {
+			if spot {
+				ret = append(ret, node)
+			}
+			continue
+		}
+
+		instanceIDs = append(instanceIDs, instanceID)
+		nodesByInstanceID[instanceID] = node
+	}
+
+	if len(instanceIDs) == 0 || !p.apiNodeLifecycleDiscoveryEnabled {
+		return ret, nil
+	}
+
+	instances, err := p.awsClient.GetInstancesByInstanceIDs(ctx, instanceIDs)
+	if err != nil {
+		return nil, fmt.Errorf("getting instances by instance IDs: %w", err)
+	}
+
+	for _, instance := range instances {
+		isSpot := instance.InstanceLifecycle != nil && *instance.InstanceLifecycle == "spot"
+		instanceID := *instance.InstanceId
+
+		if isSpot {
+			ret = append(ret, nodesByInstanceID[instanceID])
+		}
+
+		p.spotCache[instanceID] = isSpot
+	}
+
+	return ret, nil
+}
+
+func (p *Provider) Name() string {
+	return p.name
+}
+
+func determineLifecycle(n *v1.Node) nodeLifecycle {
+	if val, ok := n.Labels[LabelCapacity]; ok {
+		if val == ValueCapacitySpot {
+			return NodeLifecycleSpot
+		} else if val == ValueCapacityOnDemand {
+			return NodeLifecycleOnDemand
+		}
+	}
+
+	if val, ok := n.Labels[labels.CastaiSpotFallback]; ok && val == "true" {
+		return NodeLifecycleOnDemand
+	}
+
+	if val, ok := n.Labels[labels.CastaiSpot]; ok && val == "true" {
+		return NodeLifecycleSpot
+	}
+
+	if val, ok := n.Labels[labels.WorkerSpot]; ok && val == "true" {
+		return NodeLifecycleSpot
+	}
+
+	if val, ok := n.Labels[labels.KarpenterCapacityType]; ok {
+		if val == labels.ValueKarpenterCapacityTypeSpot {
+			return NodeLifecycleSpot
+		} else if val == labels.ValueKarpenterCapacityTypeOnDemand {
+			return NodeLifecycleOnDemand
+		}
+	}
+
+	return NodeLifecycleUnknown
+}
 
 // Client is an abstraction on the AWS SDK to enable easier mocking and manipulation of request data.
 type Client interface {

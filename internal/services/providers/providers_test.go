@@ -12,9 +12,11 @@ import (
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/providers/anywhere"
 	"castai-agent/internal/services/providers/eks"
+	"castai-agent/internal/services/providers/eks/aws"
 	"castai-agent/internal/services/providers/gke"
 	"castai-agent/internal/services/providers/kops"
 	"castai-agent/internal/services/providers/openshift"
+	"castai-agent/internal/services/providers/selfhostedec2"
 )
 
 func TestGetProvider(t *testing.T) {
@@ -34,7 +36,28 @@ func TestGetProvider(t *testing.T) {
 		got, err := GetProvider(context.Background(), logrus.New(), nil, nil)
 
 		r.NoError(err)
-		r.IsType(&eks.Provider{}, got)
+		r.IsType(&aws.Provider{}, got)
+		r.Equal(eks.Name, got.Name())
+	})
+
+	t.Run("should return selfhostedec2", func(t *testing.T) {
+		r := require.New(t)
+
+		t.Cleanup(config.Reset)
+		t.Cleanup(os.Clearenv)
+
+		r.NoError(os.Setenv("API_KEY", "api-key"))
+		r.NoError(os.Setenv("API_URL", "test"))
+		r.NoError(os.Setenv("PROVIDER", "selfhostedec2"))
+		r.NoError(os.Setenv("SELFHOSTEDEC2_CLUSTER_NAME", "test"))
+		r.NoError(os.Setenv("SELFHOSTEDEC2_ACCOUNT_ID", "accountID"))
+		r.NoError(os.Setenv("SELFHOSTEDEC2_REGION", "eu-central-1"))
+
+		got, err := GetProvider(context.Background(), logrus.New(), nil, nil)
+
+		r.NoError(err)
+		r.IsType(&aws.Provider{}, got)
+		r.Equal(selfhostedec2.Name, got.Name())
 	})
 
 	t.Run("should return gke", func(t *testing.T) {

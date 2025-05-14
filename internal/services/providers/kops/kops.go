@@ -11,7 +11,7 @@ import (
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/discovery"
-	awsclient "castai-agent/internal/services/providers/eks/client"
+	awsclient "castai-agent/internal/services/providers/eks/aws"
 	"castai-agent/internal/services/providers/gke"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/pkg/cloud"

@@ -16,6 +16,7 @@ import (
 	"castai-agent/internal/services/providers/gke"
 	"castai-agent/internal/services/providers/kops"
 	"castai-agent/internal/services/providers/openshift"
+	"castai-agent/internal/services/providers/selfhostedec2"
 	"castai-agent/internal/services/providers/types"
 )
 
@@ -30,7 +31,22 @@ func GetProvider(ctx context.Context, log logrus.FieldLogger, discoveryService d
 			eksProviderLogger.Info("node lifecycle discovery through AWS API is disabled - all nodes without spot labels will be considered on-demand")
 		}
 
-		return eks.New(ctx, eksProviderLogger, apiNodeLifecycleDiscoveryEnabled, cfg.EKS.SelfHosted)
+		return eks.New(ctx, eksProviderLogger, apiNodeLifecycleDiscoveryEnabled)
+	}
+
+	if cfg.Provider == selfhostedec2.Name || cfg.SelfHostedEC2 != nil {
+		providerLogger := log.WithField("provider", selfhostedec2.Name)
+
+		apiNodeLifecycleDiscoveryEnabled := config.DefaultAPINodeLifecycleDiscoveryEnabled
+		if cfg.SelfHostedEC2 != nil && cfg.SelfHostedEC2.APINodeLifecycleDiscoveryEnabled != nil {
+			apiNodeLifecycleDiscoveryEnabled = *cfg.SelfHostedEC2.APINodeLifecycleDiscoveryEnabled
+		}
+
+		if !apiNodeLifecycleDiscoveryEnabled {
+			providerLogger.Info("node lifecycle discovery through AWS API is disabled - all nodes without spot labels will be considered on-demand")
+		}
+
+		return selfhostedec2.New(ctx, providerLogger, apiNodeLifecycleDiscoveryEnabled)
 	}
 
 	if cfg.Provider == gke.Name || cfg.GKE != nil {
