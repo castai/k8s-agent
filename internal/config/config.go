@@ -21,14 +21,13 @@ type Config struct {
 
 	TLS *TLS `mapstructure:"tls"`
 
-	Provider      string         `mapstructure:"provider"`
-	EKS           *EKS           `mapstructure:"eks"`
-	GKE           *GKE           `mapstructure:"gke"`
-	KOPS          *KOPS          `mapstructure:"kops"`
-	AKS           *AKS           `mapstructure:"aks"`
-	OpenShift     *OpenShift     `mapstructure:"openshift"`
-	Anywhere      *Anywhere      `mapstructure:"anywhere"`
-	SelfHostedEC2 *SelfHostedEC2 `mapstructure:"selfhostedec2"`
+	Provider  string     `mapstructure:"provider"`
+	EKS       *EKS       `mapstructure:"eks"`
+	GKE       *GKE       `mapstructure:"gke"`
+	KOPS      *KOPS      `mapstructure:"kops"`
+	AKS       *AKS       `mapstructure:"aks"`
+	OpenShift *OpenShift `mapstructure:"openshift"`
+	Anywhere  *Anywhere  `mapstructure:"anywhere"`
 
 	Static      *Static     `mapstructure:"static"`
 	Controller  *Controller `mapstructure:"controller"`
@@ -81,6 +80,7 @@ type EKS struct {
 	ClusterName                      string        `mapstructure:"cluster_name"`
 	APITimeout                       time.Duration `mapstructure:"api_timeout"`
 	APINodeLifecycleDiscoveryEnabled *bool         `mapstructure:"api_node_lifecycle_discovery_enabled"`
+	SelfHosted                       bool          `mapstructure:"self_hosted"`
 }
 
 type GKE struct {
@@ -108,13 +108,6 @@ type OpenShift struct {
 	Region      string `mapstructure:"region"`
 	ClusterName string `mapstructure:"cluster_name"`
 	InternalID  string `mapstructure:"internal_id"`
-}
-
-type SelfHostedEC2 struct {
-	ClusterName                      string `mapstructure:"cluster_name"`
-	Region                           string `mapstructure:"region"`
-	AccountID                        string `mapstructure:"account_id"`
-	APINodeLifecycleDiscoveryEnabled bool   `mapstructure:"api_node_lifecycle_discovery_enabled"`
 }
 
 type Static struct {

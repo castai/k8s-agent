@@ -32,7 +32,7 @@ const (
 )
 
 // New configures and returns an EKS provider.
-func New(ctx context.Context, log logrus.FieldLogger, apiNodeLifecycleDiscoveryEnabled bool) (types.Provider, error) {
+func New(ctx context.Context, log logrus.FieldLogger, apiNodeLifecycleDiscoveryEnabled bool, selfHosted bool) (types.Provider, error) {
 	var opts []client.Opt
 
 	if cfg := config.Get().EKS; cfg != nil {
@@ -54,6 +54,7 @@ func New(ctx context.Context, log logrus.FieldLogger, apiNodeLifecycleDiscoveryE
 		awsClient:                        awsClient,
 		apiNodeLifecycleDiscoveryEnabled: apiNodeLifecycleDiscoveryEnabled,
 		spotCache:                        map[string]bool{},
+		selfHosted:                       selfHosted,
 	}, nil
 }
 
@@ -62,6 +63,7 @@ type Provider struct {
 	log                              logrus.FieldLogger
 	awsClient                        client.Client
 	apiNodeLifecycleDiscoveryEnabled bool
+	selfHosted                       bool
 
 	spotCache map[string]bool
 }
@@ -82,11 +84,20 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 
 	req := &castai.RegisterClusterRequest{
 		Name: *cn,
-		EKS: &castai.EKSParams{
+	}
+
+	if p.selfHosted {
+		req.SelfHostedWithEC2Nodes = &castai.SelfHostedWithEC2NodesParams{
 			ClusterName: *cn,
 			Region:      *r,
 			AccountID:   *accID,
-		},
+		}
+	} else {
+		req.EKS = &castai.EKSParams{
+			ClusterName: *cn,
+			Region:      *r,
+			AccountID:   *accID,
+		}
 	}
 
 	resp, err := client.RegisterCluster(ctx, req)
