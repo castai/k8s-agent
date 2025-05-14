@@ -67,5 +67,5 @@ func New(ctx context.Context, log logrus.FieldLogger, apiNodeLifecycleDiscoveryE
 		return nil, fmt.Errorf("configuring aws client: %w", err)
 	}
 
-	return aws.NewProvider(ctx, log, Name, awsClient, apiNodeLifecycleDiscoveryEnabled, newRegisterClusterBuilder(awsClient))
+	return aws.NewProvider(log, Name, awsClient, apiNodeLifecycleDiscoveryEnabled, newRegisterClusterBuilder(awsClient))
 }

@@ -39,7 +39,7 @@ type RegisterClusterBuilder interface {
 	BuildRegisterClusterRequest(ctx context.Context) (*castai.RegisterClusterRequest, error)
 }
 
-func NewProvider(ctx context.Context, log logrus.FieldLogger, name string, awsClient Client, apiNodeLifecycleDiscoveryEnabled bool, registerClusterBuilder RegisterClusterBuilder) (types.Provider, error) {
+func NewProvider(log logrus.FieldLogger, name string, awsClient Client, apiNodeLifecycleDiscoveryEnabled bool, registerClusterBuilder RegisterClusterBuilder) (types.Provider, error) {
 	return &Provider{
 		name:                             name,
 		log:                              log,
