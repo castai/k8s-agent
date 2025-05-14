@@ -1,4 +1,4 @@
-package eks
+package selfhostedec2
 
 import (
 	"context"
@@ -8,10 +8,10 @@ import (
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/require"
 
-	mock_aws "castai-agent/internal/services/providers/eks/aws/mock"
+	"castai-agent/internal/services/providers/eks/aws/mock"
 )
 
-func TestEKSRegisterClusterRequestBuilder(t *testing.T) {
+func TestSelfHostedEC2RegisterClusterRequestBuilder(t *testing.T) {
 	r := require.New(t)
 	ctx := context.Background()
 	mockctrl := gomock.NewController(t)
@@ -25,7 +25,7 @@ func TestEKSRegisterClusterRequestBuilder(t *testing.T) {
 	req, err := builder.BuildRegisterClusterRequest(ctx)
 	r.NoError(err)
 	r.Equal("test-cluster", req.Name)
-	r.Equal("test-cluster", req.EKS.ClusterName)
-	r.Equal("eu-central-1", req.EKS.Region)
-	r.Equal("account-id", req.EKS.AccountID)
+	r.Equal("test-cluster", req.SelfHostedWithEC2Nodes.ClusterName)
+	r.Equal("eu-central-1", req.SelfHostedWithEC2Nodes.Region)
+	r.Equal("account-id", req.SelfHostedWithEC2Nodes.AccountID)
 }

@@ -12,7 +12,7 @@ import (
 
 	"castai-agent/internal/services/discovery"
 	discovery_mock "castai-agent/internal/services/discovery/mock"
-	eks_client_mock "castai-agent/internal/services/providers/eks/client/mock"
+	eks_client_mock "castai-agent/internal/services/providers/eks/aws/mock"
 	gke_client_mock "castai-agent/internal/services/providers/gke/client/mock"
 	"castai-agent/pkg/cloud"
 )

@@ -22,7 +22,7 @@ import (
 	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/discovery"
-	mock_awsclient "castai-agent/internal/services/providers/eks/client/mock"
+	"castai-agent/internal/services/providers/eks/aws/mock"
 	"castai-agent/internal/services/providers/gke"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/pkg/cloud"
@@ -213,7 +213,7 @@ func TestProvider_IsSpot(t *testing.T) {
 			},
 		}
 
-		awsclient := mock_awsclient.NewMockClient(gomock.NewController(t))
+		awsclient := mock_aws.NewMockClient(gomock.NewController(t))
 
 		p := &Provider{
 			csp:       cloud.AWS,
@@ -258,7 +258,7 @@ func TestProvider_IsSpot(t *testing.T) {
 			},
 		}
 
-		awsclient := mock_awsclient.NewMockClient(gomock.NewController(t))
+		awsclient := mock_aws.NewMockClient(gomock.NewController(t))
 
 		p := &Provider{
 			csp:       cloud.AWS,

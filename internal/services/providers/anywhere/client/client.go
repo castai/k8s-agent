@@ -9,7 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"castai-agent/internal/services/discovery"
-	eks_client "castai-agent/internal/services/providers/eks/client"
+	eks_client "castai-agent/internal/services/providers/eks/aws"
 	gke_client "castai-agent/internal/services/providers/gke/client"
 	"castai-agent/pkg/cloud"
 )

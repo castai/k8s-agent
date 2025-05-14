@@ -1,4 +1,4 @@
-package eks
+package selfhostedec2
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"castai-agent/internal/services/providers/types"
 )
 
-const Name = "eks"
+const Name = "selfhostedec2"
 
 type registerClusterBuilder struct {
 	awsClient aws.Client
@@ -40,7 +40,7 @@ func (b *registerClusterBuilder) BuildRegisterClusterRequest(ctx context.Context
 
 	req := &castai.RegisterClusterRequest{
 		Name: *cn,
-		EKS: &castai.EKSParams{
+		SelfHostedWithEC2Nodes: &castai.SelfHostedWithEC2NodesParams{
 			ClusterName: *cn,
 			Region:      *r,
 			AccountID:   *accID,
@@ -53,7 +53,7 @@ func (b *registerClusterBuilder) BuildRegisterClusterRequest(ctx context.Context
 func New(ctx context.Context, log logrus.FieldLogger, apiNodeLifecycleDiscoveryEnabled bool) (types.Provider, error) {
 	var opts []aws.Opt
 
-	if cfg := config.Get().EKS; cfg != nil {
+	if cfg := config.Get().SelfHostedEC2; cfg != nil {
 		opts = append(opts, aws.WithMetadata(cfg.AccountID, cfg.Region, cfg.ClusterName))
 		opts = append(opts, aws.WithAPITimeout(cfg.APITimeout))
 	} else {
