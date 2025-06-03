@@ -1065,6 +1065,7 @@ func getDefaultInformers(f informers.SharedInformerFactory, castwareNamespace st
 		reflect.TypeOf(&appsv1.StatefulSet{}):     {informer: f.Apps().V1().StatefulSets().Informer()},
 		reflect.TypeOf(&storagev1.StorageClass{}): {informer: f.Storage().V1().StorageClasses().Informer()},
 		reflect.TypeOf(&batchv1.Job{}):            {informer: f.Batch().V1().Jobs().Informer()},
+		reflect.TypeOf(&batchv1.CronJob{}):        {informer: f.Batch().V1().CronJobs().Informer()},
 		reflect.TypeOf(&corev1.Service{}): {
 			informer: f.Core().V1().Services().Informer(),
 			filters: filters.Filters{
