@@ -20,7 +20,7 @@ import (
 	"go.uber.org/goleak"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
-	corev1 "k8s.io/api/core/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -69,7 +69,7 @@ func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(
 		m,
 		goleak.IgnoreTopFunction("k8s.io/klog/v2.(*loggingT).flushDaemon"),
-		goleak.IgnoreTopFunction("k8s.io/client-go/util/workqueue.(*Type).updateUnfinishedWorkLoop"),
+		goleak.IgnoreTopFunction("k8s.io/client-go/util/workqueue.(*Typed[...]).updateUnfinishedWorkLoop"),
 	)
 }
 
@@ -81,10 +81,10 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
-			expectedReceivedObjectsCount: 28,
+			expectedReceivedObjectsCount: 29,
 		},
 		"All supported objects are found and received in delta with pagination": {
-			expectedReceivedObjectsCount: 28,
+			expectedReceivedObjectsCount: 29,
 			paginationEnabled:            true,
 			pageSize:                     5,
 		},
@@ -92,12 +92,12 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 26,
+			expectedReceivedObjectsCount: 27,
 		},
 		"when fetching api resources produces single error should exclude that resource": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 27,
+			expectedReceivedObjectsCount: 28,
 		},
 	}
 
@@ -563,6 +563,17 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	}
 	podData := asJson(t, pod)
 
+	cronjob := &batchv1.CronJob{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "CronJob",
+			APIVersion: batchv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+	cronJobData := asJson(t, cronjob)
+
 	cfgMap := &v1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ConfigMap",
@@ -772,10 +783,10 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	}
 	clusterRoleBindingData := asJson(t, clusterRoleBinding)
 
-	resourceQuota := &corev1.ResourceQuota{
+	resourceQuota := &v1.ResourceQuota{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ResourceQuota",
-			APIVersion: corev1.SchemeGroupVersion.String(),
+			APIVersion: v1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: v1.NamespaceDefault,
@@ -784,10 +795,10 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	}
 	resourceQuotasData := asJson(t, resourceQuota)
 
-	limitRange := &corev1.ResourceQuota{
+	limitRange := &v1.ResourceQuota{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "LimitRange",
-			APIVersion: corev1.SchemeGroupVersion.String(),
+			APIVersion: v1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: v1.NamespaceDefault,
@@ -799,6 +810,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	clientset := fake.NewSimpleClientset(
 		node,
 		pod,
+		cronjob,
 		cfgMap,
 		pdb,
 		hpa,
@@ -1104,6 +1116,12 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Data:     podData,
 		},
 		{
+			GV:       batchv1.SchemeGroupVersion,
+			Kind:     "CronJob",
+			Resource: "cronjobs",
+			Data:     cronJobData,
+		},
+		{
 			GV:       v1.SchemeGroupVersion,
 			Kind:     "ConfigMap",
 			Resource: "configmaps",
@@ -1224,13 +1242,13 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Data:     clusterRoleBindingData,
 		},
 		{
-			GV:       corev1.SchemeGroupVersion,
+			GV:       v1.SchemeGroupVersion,
 			Kind:     "ResourceQuota",
 			Resource: "resourcequotas",
 			Data:     resourceQuotasData,
 		},
 		{
-			GV:       corev1.SchemeGroupVersion,
+			GV:       v1.SchemeGroupVersion,
 			Kind:     "LimitRange",
 			Resource: "limitranges",
 			Data:     limitRangeData,
