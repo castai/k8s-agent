@@ -1,10 +1,6 @@
 package kops
 
 import (
-	"castai-agent/pkg/services/discovery"
-	"castai-agent/pkg/services/providers/eks/aws/mock"
-	"castai-agent/pkg/services/providers/gke"
-	"castai-agent/pkg/services/providers/types"
 	"context"
 	"os"
 	"strconv"
@@ -27,6 +23,10 @@ import (
 	"castai-agent/internal/config"
 	"castai-agent/pkg/cloud"
 	"castai-agent/pkg/labels"
+	"castai-agent/pkg/services/discovery"
+	"castai-agent/pkg/services/providers/eks/aws/mock"
+	"castai-agent/pkg/services/providers/gke"
+	"castai-agent/pkg/services/providers/types"
 )
 
 func TestProvider_RegisterCluster(t *testing.T) {

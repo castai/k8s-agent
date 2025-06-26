@@ -1,8 +1,6 @@
 package aws
 
 import (
-	"castai-agent/pkg/services/providers/eks/aws/mock"
-	"castai-agent/pkg/services/providers/types"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -24,6 +22,8 @@ import (
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/pkg/labels"
+	"castai-agent/pkg/services/providers/eks/aws/mock"
+	"castai-agent/pkg/services/providers/types"
 )
 
 func TestProvider_RegisterCluster(t *testing.T) {

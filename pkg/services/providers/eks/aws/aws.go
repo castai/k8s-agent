@@ -2,7 +2,6 @@
 package aws
 
 import (
-	"castai-agent/pkg/services/providers/types"
 	"context"
 	"fmt"
 	"math"
@@ -19,6 +18,7 @@ import (
 
 	"castai-agent/internal/castai"
 	"castai-agent/pkg/labels"
+	"castai-agent/pkg/services/providers/types"
 )
 
 type nodeLifecycle string

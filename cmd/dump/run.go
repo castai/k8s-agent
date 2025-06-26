@@ -1,7 +1,6 @@
 package dump
 
 import (
-	"castai-agent/pkg/services/discovery"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,6 +14,7 @@ import (
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller"
 	"castai-agent/internal/services/version"
+	"castai-agent/pkg/services/discovery"
 )
 
 func run(ctx context.Context) error {

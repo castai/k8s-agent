@@ -1,8 +1,6 @@
 package agent
 
 import (
-	"castai-agent/pkg/services/discovery"
-	"castai-agent/pkg/services/providers"
 	"context"
 	"errors"
 	"fmt"
@@ -33,6 +31,8 @@ import (
 	"castai-agent/internal/services/monitor"
 	"castai-agent/internal/services/replicas"
 	castailog "castai-agent/pkg/log"
+	"castai-agent/pkg/services/discovery"
+	"castai-agent/pkg/services/providers"
 )
 
 func run(ctx context.Context) error {

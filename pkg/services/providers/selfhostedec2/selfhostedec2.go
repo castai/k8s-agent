@@ -1,8 +1,6 @@
 package selfhostedec2
 
 import (
-	"castai-agent/pkg/services/providers/eks/aws"
-	"castai-agent/pkg/services/providers/types"
 	"context"
 	"fmt"
 
@@ -10,6 +8,8 @@ import (
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
+	"castai-agent/pkg/services/providers/eks/aws"
+	"castai-agent/pkg/services/providers/types"
 )
 
 const Name = "selfhostedec2"

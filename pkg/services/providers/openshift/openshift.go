@@ -1,8 +1,6 @@
 package openshift
 
 import (
-	discovery2 "castai-agent/pkg/services/discovery"
-	"castai-agent/pkg/services/providers/types"
 	"context"
 	"fmt"
 	"strings"
@@ -14,6 +12,8 @@ import (
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
+	discovery2 "castai-agent/pkg/services/discovery"
+	"castai-agent/pkg/services/providers/types"
 )
 
 const Name = "openshift"

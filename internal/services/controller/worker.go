@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"castai-agent/pkg/services/providers/types"
 	"context"
 	"fmt"
 
@@ -14,6 +13,7 @@ import (
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/version"
+	"castai-agent/pkg/services/providers/types"
 )
 
 func Loop(

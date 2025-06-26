@@ -1,13 +1,14 @@
 package eks
 
 import (
-	"castai-agent/pkg/services/providers/eks/aws/mock"
 	"context"
 	"testing"
 
 	"github.com/golang/mock/gomock"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/require"
+
+	"castai-agent/pkg/services/providers/eks/aws/mock"
 )
 
 func TestEKSRegisterClusterRequestBuilder(t *testing.T) {

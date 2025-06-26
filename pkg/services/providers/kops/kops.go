@@ -1,10 +1,6 @@
 package kops
 
 import (
-	"castai-agent/pkg/services/discovery"
-	awsclient "castai-agent/pkg/services/providers/eks/aws"
-	"castai-agent/pkg/services/providers/gke"
-	"castai-agent/pkg/services/providers/types"
 	"context"
 	"fmt"
 	"strings"
@@ -16,6 +12,10 @@ import (
 	"castai-agent/internal/config"
 	"castai-agent/pkg/cloud"
 	"castai-agent/pkg/labels"
+	"castai-agent/pkg/services/discovery"
+	awsclient "castai-agent/pkg/services/providers/eks/aws"
+	"castai-agent/pkg/services/providers/gke"
+	"castai-agent/pkg/services/providers/types"
 )
 
 const Name = "kops"

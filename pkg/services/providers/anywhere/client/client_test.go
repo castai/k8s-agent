@@ -1,10 +1,6 @@
 package client
 
 import (
-	"castai-agent/pkg/services/discovery"
-	discovery_mock "castai-agent/pkg/services/discovery/mock"
-	eks_client_mock "castai-agent/pkg/services/providers/eks/aws/mock"
-	gke_client_mock "castai-agent/pkg/services/providers/gke/client/mock"
 	"context"
 	"fmt"
 	"testing"
@@ -15,6 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"castai-agent/pkg/cloud"
+	"castai-agent/pkg/services/discovery"
+	discovery_mock "castai-agent/pkg/services/discovery/mock"
+	eks_client_mock "castai-agent/pkg/services/providers/eks/aws/mock"
+	gke_client_mock "castai-agent/pkg/services/providers/gke/client/mock"
 )
 
 func Test_GetClusterName(t *testing.T) {

@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"castai-agent/pkg/services/providers/types/mock"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -48,6 +47,7 @@ import (
 	mock_discovery "castai-agent/internal/services/controller/mock/discovery"
 	mock_version "castai-agent/internal/services/version/mock"
 	"castai-agent/pkg/labels"
+	"castai-agent/pkg/services/providers/types/mock"
 )
 
 var defaultHealthzCfg = config.Config{Controller: &config.Controller{

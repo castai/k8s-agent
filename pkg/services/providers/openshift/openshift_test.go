@@ -1,9 +1,6 @@
 package openshift
 
 import (
-	"castai-agent/pkg/services/discovery"
-	"castai-agent/pkg/services/discovery/mock"
-	"castai-agent/pkg/services/providers/types"
 	"context"
 	"os"
 	"testing"
@@ -21,6 +18,9 @@ import (
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller/scheme"
 	"castai-agent/pkg/cloud"
+	"castai-agent/pkg/services/discovery"
+	"castai-agent/pkg/services/discovery/mock"
+	"castai-agent/pkg/services/providers/types"
 )
 
 func TestProvider_RegisterCluster(t *testing.T) {

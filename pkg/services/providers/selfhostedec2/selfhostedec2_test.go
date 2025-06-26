@@ -1,13 +1,14 @@
 package selfhostedec2
 
 import (
-	"castai-agent/pkg/services/providers/eks/aws/mock"
 	"context"
 	"testing"
 
 	"github.com/golang/mock/gomock"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/require"
+
+	"castai-agent/pkg/services/providers/eks/aws/mock"
 )
 
 func TestSelfHostedEC2RegisterClusterRequestBuilder(t *testing.T) {

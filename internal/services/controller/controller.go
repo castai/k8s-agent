@@ -2,7 +2,6 @@
 package controller
 
 import (
-	"castai-agent/pkg/services/providers/types"
 	"context"
 	"encoding/json"
 	"errors"
@@ -57,6 +56,7 @@ import (
 	"castai-agent/internal/services/metrics"
 	"castai-agent/internal/services/version"
 	"castai-agent/pkg/labels"
+	"castai-agent/pkg/services/providers/types"
 )
 
 type Controller struct {

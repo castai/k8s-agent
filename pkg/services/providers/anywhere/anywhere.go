@@ -1,9 +1,6 @@
 package anywhere
 
 import (
-	"castai-agent/pkg/services/discovery"
-	"castai-agent/pkg/services/providers/anywhere/client"
-	"castai-agent/pkg/services/providers/types"
 	"context"
 	"fmt"
 
@@ -12,6 +9,9 @@ import (
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
+	"castai-agent/pkg/services/discovery"
+	"castai-agent/pkg/services/providers/anywhere/client"
+	"castai-agent/pkg/services/providers/types"
 )
 
 const Name = "anywhere"

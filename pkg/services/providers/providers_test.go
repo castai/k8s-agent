@@ -1,13 +1,6 @@
 package providers
 
 import (
-	"castai-agent/pkg/services/providers/anywhere"
-	"castai-agent/pkg/services/providers/eks"
-	"castai-agent/pkg/services/providers/eks/aws"
-	"castai-agent/pkg/services/providers/gke"
-	"castai-agent/pkg/services/providers/kops"
-	"castai-agent/pkg/services/providers/openshift"
-	"castai-agent/pkg/services/providers/selfhostedec2"
 	"context"
 	"os"
 	"testing"
@@ -17,6 +10,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"castai-agent/internal/config"
+	"castai-agent/pkg/services/providers/anywhere"
+	"castai-agent/pkg/services/providers/eks"
+	"castai-agent/pkg/services/providers/eks/aws"
+	"castai-agent/pkg/services/providers/gke"
+	"castai-agent/pkg/services/providers/kops"
+	"castai-agent/pkg/services/providers/openshift"
+	"castai-agent/pkg/services/providers/selfhostedec2"
 )
 
 func TestGetProvider(t *testing.T) {

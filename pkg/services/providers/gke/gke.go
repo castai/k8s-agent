@@ -1,8 +1,6 @@
 package gke
 
 import (
-	"castai-agent/pkg/services/providers/gke/client"
-	"castai-agent/pkg/services/providers/types"
 	"context"
 	"fmt"
 
@@ -12,6 +10,8 @@ import (
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
 	"castai-agent/pkg/labels"
+	"castai-agent/pkg/services/providers/gke/client"
+	"castai-agent/pkg/services/providers/types"
 )
 
 const (

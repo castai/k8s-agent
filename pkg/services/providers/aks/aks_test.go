@@ -1,7 +1,6 @@
 package aks
 
 import (
-	"castai-agent/pkg/services/providers/types"
 	"context"
 	"os"
 	"testing"
@@ -16,6 +15,7 @@ import (
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/pkg/labels"
+	"castai-agent/pkg/services/providers/types"
 )
 
 func TestProvider_RegisterCluster(t *testing.T) {

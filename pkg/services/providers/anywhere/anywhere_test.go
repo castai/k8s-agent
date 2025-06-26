@@ -1,8 +1,6 @@
 package anywhere
 
 import (
-	discovery_mock "castai-agent/pkg/services/discovery/mock"
-	anywhere_client_mock "castai-agent/pkg/services/providers/anywhere/client/mock"
 	"context"
 	"fmt"
 	"os"
@@ -17,6 +15,8 @@ import (
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/internal/config"
+	discovery_mock "castai-agent/pkg/services/discovery/mock"
+	anywhere_client_mock "castai-agent/pkg/services/providers/anywhere/client/mock"
 )
 
 func Test_RegisterCluster(t *testing.T) {

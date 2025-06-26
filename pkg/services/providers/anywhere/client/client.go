@@ -2,9 +2,6 @@
 package client
 
 import (
-	"castai-agent/pkg/services/discovery"
-	eks_client "castai-agent/pkg/services/providers/eks/aws"
-	gke_client "castai-agent/pkg/services/providers/gke/client"
 	"context"
 	"fmt"
 
@@ -12,6 +9,9 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"castai-agent/pkg/cloud"
+	"castai-agent/pkg/services/discovery"
+	eks_client "castai-agent/pkg/services/providers/eks/aws"
+	gke_client "castai-agent/pkg/services/providers/gke/client"
 )
 
 type Client interface {
