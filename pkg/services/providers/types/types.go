@@ -7,7 +7,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 
-	castclient "castai-agent/internal/castai"
+	castclient "castai-agent/pkg/castai"
 )
 
 // Provider is an abstraction for various CAST AI supported K8s providers, like EKS, GKE, etc.

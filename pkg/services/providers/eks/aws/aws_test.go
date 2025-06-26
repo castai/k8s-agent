@@ -19,8 +19,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
 
-	"castai-agent/internal/castai"
-	mock_castai "castai-agent/internal/castai/mock"
+	"castai-agent/pkg/castai"
+	"castai-agent/pkg/castai/mock"
 	"castai-agent/pkg/labels"
 	"castai-agent/pkg/services/providers/eks/aws/mock"
 	"castai-agent/pkg/services/providers/types"

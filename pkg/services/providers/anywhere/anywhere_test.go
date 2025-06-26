@@ -12,9 +12,9 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
-	"castai-agent/internal/castai"
-	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/internal/config"
+	"castai-agent/pkg/castai"
+	"castai-agent/pkg/castai/mock"
 	discovery_mock "castai-agent/pkg/services/discovery/mock"
 	anywhere_client_mock "castai-agent/pkg/services/providers/anywhere/client/mock"
 )

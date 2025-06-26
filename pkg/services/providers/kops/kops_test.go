@@ -18,9 +18,9 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/pointer"
 
-	"castai-agent/internal/castai"
-	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/internal/config"
+	"castai-agent/pkg/castai"
+	"castai-agent/pkg/castai/mock"
 	"castai-agent/pkg/cloud"
 	"castai-agent/pkg/labels"
 	"castai-agent/pkg/services/discovery"

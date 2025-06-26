@@ -22,7 +22,6 @@ import (
 	"k8s.io/metrics/pkg/client/clientset/versioned"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
-	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller"
 	"castai-agent/internal/services/controller/scheme"
@@ -30,6 +29,7 @@ import (
 	"castai-agent/internal/services/metrics"
 	"castai-agent/internal/services/monitor"
 	"castai-agent/internal/services/replicas"
+	"castai-agent/pkg/castai"
 	castailog "castai-agent/pkg/log"
 	"castai-agent/pkg/services/discovery"
 	"castai-agent/pkg/services/providers"

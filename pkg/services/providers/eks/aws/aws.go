@@ -16,7 +16,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/utils/pointer"
 
-	"castai-agent/internal/castai"
+	"castai-agent/pkg/castai"
 	"castai-agent/pkg/labels"
 	"castai-agent/pkg/services/providers/types"
 )

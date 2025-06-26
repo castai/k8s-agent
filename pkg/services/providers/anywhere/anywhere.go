@@ -7,8 +7,8 @@ import (
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 
-	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
+	"castai-agent/pkg/castai"
 	"castai-agent/pkg/services/discovery"
 	"castai-agent/pkg/services/providers/anywhere/client"
 	"castai-agent/pkg/services/providers/types"

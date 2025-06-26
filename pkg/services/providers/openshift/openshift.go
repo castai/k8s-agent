@@ -10,8 +10,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/dynamic"
 
-	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
+	"castai-agent/pkg/castai"
 	discovery2 "castai-agent/pkg/services/discovery"
 	"castai-agent/pkg/services/providers/types"
 )

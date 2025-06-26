@@ -13,10 +13,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	fakedynamic "k8s.io/client-go/dynamic/fake"
 
-	"castai-agent/internal/castai"
-	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller/scheme"
+	"castai-agent/pkg/castai"
+	"castai-agent/pkg/castai/mock"
 	"castai-agent/pkg/cloud"
 	"castai-agent/pkg/services/discovery"
 	"castai-agent/pkg/services/discovery/mock"

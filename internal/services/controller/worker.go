@@ -10,9 +10,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/metrics/pkg/client/clientset/versioned"
 
-	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/version"
+	"castai-agent/pkg/castai"
 	"castai-agent/pkg/services/providers/types"
 )
 

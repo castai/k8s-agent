@@ -5,7 +5,7 @@
 package mock_aws
 
 import (
-	castai "castai-agent/internal/castai"
+	"castai-agent/pkg/castai"
 	context "context"
 	reflect "reflect"
 

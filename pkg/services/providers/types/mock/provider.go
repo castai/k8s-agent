@@ -5,7 +5,7 @@
 package mock_types
 
 import (
-	castai "castai-agent/internal/castai"
+	"castai-agent/pkg/castai"
 	types "castai-agent/pkg/services/providers/types"
 	context "context"
 	reflect "reflect"

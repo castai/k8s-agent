@@ -6,8 +6,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
+	"castai-agent/pkg/castai"
 	"castai-agent/pkg/services/providers/eks/aws"
 	"castai-agent/pkg/services/providers/types"
 )
