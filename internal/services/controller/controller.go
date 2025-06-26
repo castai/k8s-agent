@@ -2,6 +2,7 @@
 package controller
 
 import (
+	"castai-agent/pkg/services/providers/types"
 	"context"
 	"encoding/json"
 	"errors"
@@ -54,7 +55,6 @@ import (
 	"castai-agent/internal/services/controller/knowngv"
 	"castai-agent/internal/services/memorypressure"
 	"castai-agent/internal/services/metrics"
-	"castai-agent/internal/services/providers/types"
 	"castai-agent/internal/services/version"
 	"castai-agent/pkg/labels"
 )

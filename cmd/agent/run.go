@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"castai-agent/pkg/services/discovery"
+	"castai-agent/pkg/services/providers"
 	"context"
 	"errors"
 	"fmt"
@@ -26,11 +28,9 @@ import (
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller"
 	"castai-agent/internal/services/controller/scheme"
-	"castai-agent/internal/services/discovery"
 	"castai-agent/internal/services/metadata"
 	"castai-agent/internal/services/metrics"
 	"castai-agent/internal/services/monitor"
-	"castai-agent/internal/services/providers"
 	"castai-agent/internal/services/replicas"
 	castailog "castai-agent/pkg/log"
 )
