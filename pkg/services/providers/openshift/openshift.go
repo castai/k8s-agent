@@ -12,7 +12,7 @@ import (
 
 	"castai-agent/internal/config"
 	"castai-agent/pkg/castai"
-	discovery2 "castai-agent/pkg/services/discovery"
+	"castai-agent/pkg/services/discovery"
 	"castai-agent/pkg/services/providers/types"
 )
 
@@ -21,11 +21,11 @@ const Name = "openshift"
 var _ types.Provider = (*Provider)(nil)
 
 type Provider struct {
-	discoveryService discovery2.Service
+	discoveryService discovery.Service
 	dyno             dynamic.Interface
 }
 
-func New(discoveryService discovery2.Service, dyno dynamic.Interface) *Provider {
+func New(discoveryService discovery.Service, dyno dynamic.Interface) *Provider {
 	return &Provider{
 		discoveryService: discoveryService,
 		dyno:             dyno,
@@ -92,8 +92,8 @@ func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node
 	spotInstanceIDs := make(map[string]bool)
 
 	for {
-		machines, err := p.dyno.Resource(discovery2.OpenshiftMachinesGVR).
-			Namespace(discovery2.OpenshiftMachineAPINamespace).
+		machines, err := p.dyno.Resource(discovery.OpenshiftMachinesGVR).
+			Namespace(discovery.OpenshiftMachineAPINamespace).
 			List(ctx, metav1.ListOptions{Limit: 100, Continue: next})
 		if err != nil {
 			return nil, fmt.Errorf("listing machines: %w", err)
