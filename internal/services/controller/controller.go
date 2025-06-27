@@ -1003,6 +1003,16 @@ func getConditionalInformers(
 				return df.ForResource(knowngv.RunbooksV1Alpha1.WithResource("recommendationsyncs")).Informer()
 			},
 		},
+		{
+			groupVersion:    knowngv.RunbooksV1Alpha1,
+			resource:        "podmutations",
+			kind:            "PodMutation",
+			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(knowngv.RunbooksV1Alpha1.WithResource("podmutations")).Informer()
+			},
+		},
 	}
 
 	for _, cmNamespace := range cfg.ConfigMapNamespaces {
