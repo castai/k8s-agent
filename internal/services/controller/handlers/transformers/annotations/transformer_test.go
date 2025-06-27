@@ -1,13 +1,14 @@
 package annotations
 
 import (
-	"castai-agent/internal/castai"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"castai-agent/internal/castai"
 )
 
 func Test_Transform(t *testing.T) {
