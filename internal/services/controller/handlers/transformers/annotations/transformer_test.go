@@ -12,11 +12,11 @@ import (
 )
 
 func Test_Transform(t *testing.T) {
-	var tests = map[string]struct {
+	tests := map[string]struct {
 		prefixes []string
 		maxLen   string
-		input    interface{}
-		expected interface{}
+		input    any
+		expected any
 	}{
 		"should do nothing if no annotations": {
 			prefixes: []string{},
@@ -94,7 +94,8 @@ func Test_Transform(t *testing.T) {
 			}},
 			expected: &v1.Pod{ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
-					"foo.bar/baz": "qu"},
+					"foo.bar/baz": "qu",
+				},
 			}},
 		},
 		"should do nothing when length of value is under the limit ": {
@@ -107,7 +108,8 @@ func Test_Transform(t *testing.T) {
 			}},
 			expected: &v1.Pod{ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
-					"foo.bar/baz": "qux"},
+					"foo.bar/baz": "qux",
+				},
 			}},
 		},
 		"should do nothing when length of value is equal to the limit ": {
@@ -120,7 +122,8 @@ func Test_Transform(t *testing.T) {
 			}},
 			expected: &v1.Pod{ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
-					"foo.bar/baz": "qux"},
+					"foo.bar/baz": "qux",
+				},
 			}},
 		},
 		"should default to 2Ki when maxLen is invalid": {
@@ -133,7 +136,22 @@ func Test_Transform(t *testing.T) {
 			}},
 			expected: &v1.Pod{ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{
-					"foo.bar/baz": strings.Repeat("a", 2048)},
+					"foo.bar/baz": strings.Repeat("a", 2048),
+				},
+			}},
+		},
+		"should not strip annotation when length of value is over the limit but it is autoscalling annotation": {
+			prefixes: []string{},
+			maxLen:   "2",
+			input: &v1.Pod{ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{
+					"autoscaling.alpha.kubernetes.io/metrics": "qux",
+				},
+			}},
+			expected: &v1.Pod{ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{
+					"autoscaling.alpha.kubernetes.io/metrics": "qux",
+				},
 			}},
 		},
 		"should not nothing when object is not metav1.Object": {
