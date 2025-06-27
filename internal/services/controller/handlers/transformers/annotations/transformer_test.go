@@ -1,14 +1,13 @@
 package annotations
 
 import (
+	"castai-agent/internal/castai"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"castai-agent/internal/castai"
 )
 
 func Test_Transform(t *testing.T) {
@@ -170,6 +169,21 @@ func Test_Transform(t *testing.T) {
 			}},
 			expected: &v1.Namespace{ObjectMeta: metav1.ObjectMeta{
 				Annotations: map[string]string{},
+			}},
+		},
+		"should not re-add deleted annotation when it matches prefix and is too long": {
+			prefixes: []string{"foo.bar"},
+			maxLen:   "2",
+			input: &v1.Pod{ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{
+					"foo.bar/verylong": "qux",
+					"cast.ai/foo":      "keepme",
+				},
+			}},
+			expected: &v1.Pod{ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{
+					"cast.ai/foo": "keepme",
+				},
 			}},
 		},
 	}

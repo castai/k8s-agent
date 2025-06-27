@@ -38,6 +38,8 @@ func cleanObj(obj any, prefixes []string, maxLength int) {
 		if annotations == nil {
 			return
 		}
+
+	outer:
 		for key, value := range annotations {
 			tokens := strings.Split(key, "/")
 			if len(tokens) > 1 && strings.HasSuffix(tokens[0], castAnnotationSuffix) {
@@ -47,7 +49,7 @@ func cleanObj(obj any, prefixes []string, maxLength int) {
 			for _, prefix := range prefixes {
 				if strings.HasPrefix(key, prefix) {
 					delete(annotations, key)
-					continue
+					continue outer
 				}
 			}
 
