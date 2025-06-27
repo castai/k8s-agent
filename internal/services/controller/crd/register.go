@@ -27,9 +27,14 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(AutoscalingSchemaGroupVersion,
 		&Recommendation{},
 		&RecommendationList{},
+	)
+	metav1.AddToGroupVersion(scheme, AutoscalingSchemaGroupVersion)
+
+	scheme.AddKnownTypes(PodMutationsSchemaGroupVersion,
 		&PodMutation{},
 		&PodMutationList{},
 	)
-	metav1.AddToGroupVersion(scheme, AutoscalingSchemaGroupVersion)
+	metav1.AddToGroupVersion(scheme, PodMutationsSchemaGroupVersion)
+
 	return nil
 }
