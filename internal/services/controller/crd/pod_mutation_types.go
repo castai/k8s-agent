@@ -157,6 +157,8 @@ type SpotConfig struct {
 	DistributionPercentage int `json:"distributionPercentage,omitempty"`
 }
 
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
 // PodMutationList contains a list of PodMutation
 type PodMutationList struct {
 	metav1.TypeMeta `json:",inline"`
