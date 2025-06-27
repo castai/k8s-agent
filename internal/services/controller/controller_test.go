@@ -691,7 +691,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	recommendation := &crd.Recommendation{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Recommendation",
-			APIVersion: crd.SchemaGroupVersion.String(),
+			APIVersion: crd.AutoscalingSchemaGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      crd.RecommendationGVR.Resource,
@@ -708,8 +708,28 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			},
 		},
 	}
-
 	recommendationData := asJson(t, recommendation)
+
+	podMutation := &crd.PodMutation{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodMutation",
+			APIVersion: crd.PodMutationsSchemaGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: crd.PodMutationGVR.Resource,
+		},
+		Status: crd.PodMutationStatus{
+			Conditions: []metav1.Condition{
+				{
+					Type:               "Applied",
+					Status:             "True",
+					ObservedGeneration: 1,
+					Reason:             "ReconciledSuccessfully",
+				},
+			},
+		},
+	}
+	podMutationData := asJson(t, podMutation)
 
 	ingress := &networkingv1.Ingress{
 		TypeMeta: metav1.TypeMeta{
@@ -1204,6 +1224,12 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Kind:     "Recommendation",
 			Resource: crd.RecommendationGVR.Resource,
 			Data:     recommendationData,
+		},
+		{
+			GV:       crd.PodMutationGVR.GroupVersion(),
+			Kind:     "PodMutation",
+			Resource: crd.PodMutationGVR.Resource,
+			Data:     podMutationData,
 		},
 		{
 			GV:       networkingv1.SchemeGroupVersion,
