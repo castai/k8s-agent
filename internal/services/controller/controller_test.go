@@ -81,10 +81,10 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
-			expectedReceivedObjectsCount: 29,
+			expectedReceivedObjectsCount: 30,
 		},
 		"All supported objects are found and received in delta with pagination": {
-			expectedReceivedObjectsCount: 29,
+			expectedReceivedObjectsCount: 30,
 			paginationEnabled:            true,
 			pageSize:                     5,
 		},
@@ -92,12 +92,12 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 27,
+			expectedReceivedObjectsCount: 28,
 		},
 		"when fetching api resources produces single error should exclude that resource": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 28,
+			expectedReceivedObjectsCount: 29,
 		},
 	}
 
@@ -857,6 +857,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		datadogExtendedDSReplicaSet,
 		rollout,
 		recommendation,
+		podMutation,
 		unstructuredFromJson(t, recommendationSyncV1Alpha1),
 	}
 	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, runtimeObjects...)
@@ -1059,6 +1060,18 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 					Name:    crd.RecommendationGVR.Resource,
 					Version: crd.RecommendationGVR.Version,
 					Kind:    "Recommendation",
+					Verbs:   []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
+			GroupVersion: crd.PodMutationGVR.GroupVersion().String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group:   crd.PodMutationGVR.Group,
+					Name:    crd.PodMutationGVR.Resource,
+					Version: crd.PodMutationGVR.Version,
+					Kind:    "PodMutation",
 					Verbs:   []string{"get", "list", "watch"},
 				},
 			},
