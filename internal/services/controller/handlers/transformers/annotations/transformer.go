@@ -51,7 +51,11 @@ func cleanObj(obj any, prefixes []string, maxLength int) {
 				}
 			}
 
-			if len(value) > maxLength && !strings.HasPrefix(key, autoscalingAnnotationPrefix) {
+			if strings.HasPrefix(key, autoscalingAnnotationPrefix) {
+				continue
+			}
+
+			if len(value) > maxLength {
 				annotations[key] = value[:maxLength]
 			}
 		}
