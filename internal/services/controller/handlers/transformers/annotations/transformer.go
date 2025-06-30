@@ -46,15 +46,15 @@ func cleanObj(obj any, prefixes []string, maxLength int) {
 				continue
 			}
 
+			if len(tokens) > 1 && tokens[0] == autoscalingAnnotationPrefix {
+				continue
+			}
+
 			for _, prefix := range prefixes {
 				if strings.HasPrefix(key, prefix) {
 					delete(annotations, key)
 					continue outer
 				}
-			}
-
-			if strings.HasPrefix(key, autoscalingAnnotationPrefix) {
-				continue
 			}
 
 			if len(value) > maxLength {
