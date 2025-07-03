@@ -11,12 +11,11 @@ import (
 )
 
 const (
-	castAnnotationSuffix = "cast.ai"
+	castAnnotationSuffix        = "cast.ai"
+	autoscalingAnnotationPrefix = "autoscaling.alpha.kubernetes.io"
 )
 
-var (
-	fallbackMaxLenQuantity = resource.MustParse("2Ki")
-)
+var fallbackMaxLenQuantity = resource.MustParse("2Ki")
 
 func NewTransformer(prefixes []string, maxLen string) transformers.Transformer {
 	maxLengthQuantity, err := resource.ParseQuantity(maxLen)
@@ -25,7 +24,7 @@ func NewTransformer(prefixes []string, maxLen string) transformers.Transformer {
 	}
 	maxLength := int(maxLengthQuantity.Value())
 
-	return func(e castai.EventType, obj interface{}) (castai.EventType, interface{}) {
+	return func(e castai.EventType, obj any) (castai.EventType, any) {
 		cleanObj(obj, prefixes, maxLength)
 
 		return e, obj
@@ -33,28 +32,33 @@ func NewTransformer(prefixes []string, maxLen string) transformers.Transformer {
 }
 
 // cleanObj removes unnecessary annotations from K8s objects.
-func cleanObj(obj interface{}, prefixes []string, maxLength int) {
+func cleanObj(obj any, prefixes []string, maxLength int) {
 	if metaobj, ok := obj.(metav1.Object); ok {
 		annotations := metaobj.GetAnnotations()
 		if annotations == nil {
 			return
 		}
+
+	outer:
 		for key, value := range annotations {
 			tokens := strings.Split(key, "/")
 			if len(tokens) > 1 && strings.HasSuffix(tokens[0], castAnnotationSuffix) {
 				continue
 			}
 
+			if len(tokens) > 1 && tokens[0] == autoscalingAnnotationPrefix {
+				continue
+			}
+
 			for _, prefix := range prefixes {
 				if strings.HasPrefix(key, prefix) {
 					delete(annotations, key)
-					continue
+					continue outer
 				}
 			}
 
 			if len(value) > maxLength {
 				annotations[key] = value[:maxLength]
-				continue
 			}
 		}
 
