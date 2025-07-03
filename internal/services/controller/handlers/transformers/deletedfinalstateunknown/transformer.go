@@ -3,7 +3,7 @@ package deletedfinalstateunknown
 import (
 	"k8s.io/client-go/tools/cache"
 
-	"castai-agent/internal/castai"
+	"castai-agent/pkg/castai"
 )
 
 func Transformer(e castai.EventType, obj interface{}) (castai.EventType, interface{}) {

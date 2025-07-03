@@ -11,8 +11,8 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	k8stesting "k8s.io/client-go/testing"
 
-	"castai-agent/internal/castai"
 	mock_version "castai-agent/internal/services/version/mock"
+	"castai-agent/pkg/castai"
 )
 
 func TestFilter(t *testing.T) {
