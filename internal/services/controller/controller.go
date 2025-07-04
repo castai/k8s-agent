@@ -914,6 +914,16 @@ func getConditionalInformers(
 			},
 		},
 		{
+			groupVersion:    crd.PodMutationGVR.GroupVersion(),
+			resource:        crd.PodMutationGVR.Resource,
+			kind:            "PodMutation",
+			apiType:         reflect.TypeOf(&crd.PodMutation{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(crd.PodMutationGVR).Informer()
+			},
+		},
+		{
 			groupVersion:    networkingv1.SchemeGroupVersion,
 			resource:        "ingresses",
 			kind:            "Ingress",

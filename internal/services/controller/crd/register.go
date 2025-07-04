@@ -6,11 +6,15 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// SchemaGroupVersion is the group version used to register these objects
-var SchemaGroupVersion = schema.GroupVersion{Group: "autoscaling.cast.ai", Version: "v1"}
+// AutoscalingSchemaGroupVersion is the group version used to register these objects
+var AutoscalingSchemaGroupVersion = schema.GroupVersion{Group: "autoscaling.cast.ai", Version: "v1"}
 
 // RecommendationGVR is group version resource for recommendation objects
-var RecommendationGVR = SchemaGroupVersion.WithResource("recommendations")
+var RecommendationGVR = AutoscalingSchemaGroupVersion.WithResource("recommendations")
+
+var PodMutationsSchemaGroupVersion = schema.GroupVersion{Group: "pod-mutations.cast.ai", Version: "v1"}
+
+var PodMutationGVR = PodMutationsSchemaGroupVersion.WithResource("podmutations")
 
 // Register types with the SchemeBuilder
 var (
@@ -20,10 +24,17 @@ var (
 
 // Adds the list of known types to the given scheme.
 func addKnownTypes(scheme *runtime.Scheme) error {
-	scheme.AddKnownTypes(SchemaGroupVersion,
+	scheme.AddKnownTypes(AutoscalingSchemaGroupVersion,
 		&Recommendation{},
 		&RecommendationList{},
 	)
-	metav1.AddToGroupVersion(scheme, SchemaGroupVersion)
+	metav1.AddToGroupVersion(scheme, AutoscalingSchemaGroupVersion)
+
+	scheme.AddKnownTypes(PodMutationsSchemaGroupVersion,
+		&PodMutation{},
+		&PodMutationList{},
+	)
+	metav1.AddToGroupVersion(scheme, PodMutationsSchemaGroupVersion)
+
 	return nil
 }
