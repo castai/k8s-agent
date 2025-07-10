@@ -1,6 +1,6 @@
 module castai-agent
 
-go 1.22.8
+go 1.24.5
 
 require (
 	cloud.google.com/go/compute/metadata v0.2.3
