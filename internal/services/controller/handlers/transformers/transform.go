@@ -1,7 +1,7 @@
 package transformers
 
 import (
-	"castai-agent/internal/castai"
+	"castai-agent/pkg/castai"
 )
 
 type Transformer func(e castai.EventType, obj interface{}) (castai.EventType, interface{})

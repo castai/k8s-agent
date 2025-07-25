@@ -13,8 +13,8 @@ import (
 
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller"
-	"castai-agent/internal/services/discovery"
 	"castai-agent/internal/services/version"
+	"castai-agent/pkg/services/discovery"
 )
 
 func run(ctx context.Context) error {
