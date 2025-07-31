@@ -33,7 +33,6 @@ require (
 	k8s.io/metrics v0.33.2
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
 	sigs.k8s.io/controller-runtime v0.21.0
-
 )
 
 require (
@@ -95,3 +94,27 @@ require (
 )
 
 replace github.com/chzyer/logex v1.1.10 => github.com/chzyer/logex v1.2.0
+
+exclude (
+	// We require github.com/argoproj/argo-rollouts which depends on k8s.io/kubernetes.
+	//
+	// However, k8s.io/kubernetes itself requires k8s.io/* modules.
+	// Since k8s.io/kubernetes is a monorepo that requires and implements such modules,
+	// in its `go.mod` it uses `require k8s.io/sample-module-name v0.0.0` to signal the requirement:
+	// https://github.com/kubernetes/kubernetes/blob/948afe5ca072329a73c8e79ed5938717a5cb3d21/go.mod#L88-L118
+	// and then later replaces such modules with implementations local to the monorepo:
+	// https://github.com/kubernetes/kubernetes/blob/948afe5ca072329a73c8e79ed5938717a5cb3d21/go.mod#L228-L257
+	//
+	// When we require k8s.io/kubernetes and need to list all required modules,
+	// for example, so that the IDE can index the symbols for the project,
+	// it runs some variation of the following command:
+	//   go list -m -json -mod=mod all
+	// Unfortunately, the aforementioned approach makes this command error out,
+	// since k8s.io/kubernetes requires modules v0.0.0 which don't exist and aren't published.
+	// To sidestep this limitation, we exclude such modules from our dependency graph.
+	// Details:
+	//  * https://go.dev/doc/modules/gomod-ref#exclude
+	//  * https://go.dev/ref/mod#go-mod-file-exclude
+	k8s.io/cloud-provider v0.0.0
+	k8s.io/kubelet v0.0.0
+)
