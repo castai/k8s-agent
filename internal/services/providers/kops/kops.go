@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 
@@ -137,7 +138,7 @@ func (p *Provider) isSpot(ctx context.Context, node *v1.Node) (bool, error) {
 		}
 
 		for _, instance := range instances {
-			if instance.InstanceLifecycle != nil && *instance.InstanceLifecycle == "spot" {
+			if instance.InstanceLifecycle == ec2_types.InstanceLifecycleTypeSpot {
 				return true, nil
 			}
 		}

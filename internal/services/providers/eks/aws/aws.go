@@ -4,17 +4,19 @@ package aws
 import (
 	"context"
 	"fmt"
+	"io"
 	"math"
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/ec2metadata"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/services/providers/types"
@@ -116,7 +118,7 @@ func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node
 	}
 
 	for _, instance := range instances {
-		isSpot := instance.InstanceLifecycle != nil && *instance.InstanceLifecycle == "spot"
+		isSpot := instance.InstanceLifecycle == ec2_types.InstanceLifecycleTypeSpot
 		instanceID := *instance.InstanceId
 
 		if isSpot {
@@ -181,7 +183,7 @@ type Client interface {
 	GetClusterName(ctx context.Context) (*string, error)
 	// GetInstancesByInstanceIDs returns a list of EC2 instances from the EC2 SDK by filtering on the instance IDs which
 	// can be retrieved from node.spec.providerID.
-	GetInstancesByInstanceIDs(ctx context.Context, instanceIDs []string) ([]*ec2.Instance, error)
+	GetInstancesByInstanceIDs(ctx context.Context, instanceIDs []string) ([]ec2_types.Instance, error)
 }
 
 // New creates and configures a new AWS Client instance.
@@ -217,16 +219,15 @@ type Opt func(ctx context.Context, c *client) error
 // WithEC2Client configures an EC2 SDK client. AWS region must be already discovered or set on an environment variable.
 func WithEC2Client() func(ctx context.Context, c *client) error {
 	return func(ctx context.Context, c *client) error {
-		sess, err := session.NewSession(aws.
-			NewConfig().
-			WithRegion(*c.region).
-			WithCredentialsChainVerboseErrors(true))
+		sess, err := config.LoadDefaultConfig(ctx,
+			config.WithRegion(*c.region),
+		)
 		if err != nil {
 			return fmt.Errorf("creating aws sdk session: %w", err)
 		}
 
 		c.sess = sess
-		c.ec2Client = ec2.New(sess)
+		c.ec2Client = ec2.NewFromConfig(sess)
 
 		return nil
 	}
@@ -235,7 +236,7 @@ func WithEC2Client() func(ctx context.Context, c *client) error {
 // WithValidateCredentials validates the aws-sdk credentials chain.
 func WithValidateCredentials() func(ctx context.Context, c *client) error {
 	return func(ctx context.Context, c *client) error {
-		if _, err := c.sess.Config.Credentials.Get(); err != nil {
+		if _, err := c.sess.Credentials.Retrieve(ctx); err != nil {
 			return fmt.Errorf("validating aws credentials: %w", err)
 		}
 		return nil
@@ -256,19 +257,19 @@ func WithMetadata(accountID, region, clusterName string) func(ctx context.Contex
 // WithMetadataDiscovery configures the EC2 instance metadata client to enable dynamic discovery of those properties.
 func WithMetadataDiscovery() func(ctx context.Context, c *client) error {
 	return func(ctx context.Context, c *client) error {
-		metaSess, err := session.NewSession()
+		cfg, err := config.LoadDefaultConfig(ctx)
 		if err != nil {
 			return fmt.Errorf("creating metadata session: %w", err)
 		}
 
-		c.metaClient = ec2metadata.New(metaSess)
+		c.metaClient = imds.NewFromConfig(cfg)
 
-		region, err := c.metaClient.RegionWithContext(ctx)
+		getRegionOutput, err := c.metaClient.GetRegion(ctx, &imds.GetRegionInput{})
 		if err != nil {
 			return fmt.Errorf("getting instance region: %w", err)
 		}
 
-		c.region = &region
+		c.region = &getRegionOutput.Region
 
 		return nil
 	}
@@ -285,9 +286,9 @@ func WithAPITimeout(apiTimeout time.Duration) func(ctx context.Context, c *clien
 
 type client struct {
 	log         logrus.FieldLogger
-	sess        *session.Session
-	metaClient  *ec2metadata.EC2Metadata
-	ec2Client   *ec2.EC2
+	sess        aws.Config
+	metaClient  *imds.Client
+	ec2Client   *ec2.Client
 	region      *string
 	accountID   *string
 	clusterName *string
@@ -299,12 +300,12 @@ func (c *client) GetRegion(ctx context.Context) (*string, error) {
 		return c.region, nil
 	}
 
-	region, err := c.metaClient.RegionWithContext(ctx)
+	getRegionOutput, err := c.metaClient.GetRegion(ctx, &imds.GetRegionInput{})
 	if err != nil {
 		return nil, err
 	}
 
-	c.region = &region
+	c.region = &getRegionOutput.Region
 
 	return c.region, nil
 }
@@ -317,7 +318,7 @@ func (c *client) GetAccountID(ctx context.Context) (*string, error) {
 	defer cancel()
 
 	c.log.Debug("fetching instance identity document")
-	resp, err := c.metaClient.GetInstanceIdentityDocumentWithContext(ctx)
+	resp, err := c.metaClient.GetInstanceIdentityDocument(ctx, &imds.GetInstanceIdentityDocumentInput{})
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +339,7 @@ func (c *client) GetClusterName(ctx context.Context) (*string, error) {
 	}
 
 	resp, err := c.describeInstancesWithContext(ctx, &ec2.DescribeInstancesInput{
-		InstanceIds: []*string{pointer.StringPtr(instanceID)},
+		InstanceIds: []string{instanceID},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("describing instance_id=%s: %w", instanceID, err)
@@ -366,22 +367,22 @@ func (c *client) GetClusterName(ctx context.Context) (*string, error) {
 	return c.clusterName, nil
 }
 
-func (c *client) GetInstancesByInstanceIDs(ctx context.Context, instanceIDs []string) ([]*ec2.Instance, error) {
-	idsPtr := make([]*string, len(instanceIDs))
+func (c *client) GetInstancesByInstanceIDs(ctx context.Context, instanceIDs []string) ([]ec2_types.Instance, error) {
+	idsPtr := make([]string, len(instanceIDs))
 	for i := range instanceIDs {
-		idsPtr[i] = &instanceIDs[i]
+		idsPtr[i] = instanceIDs[i]
 	}
 
-	var instances []*ec2.Instance
+	var instances []ec2_types.Instance
 
 	batchSize := 20
 	for i := 0; i < len(idsPtr); i += batchSize {
 		batch := idsPtr[i:int(math.Min(float64(i+batchSize), float64(len(idsPtr))))]
 
 		req := &ec2.DescribeInstancesInput{
-			Filters: []*ec2.Filter{
+			Filters: []ec2_types.Filter{
 				{
-					Name:   pointer.StringPtr("instance-id"),
+					Name:   ptr.To("instance-id"),
 					Values: batch,
 				},
 			},
@@ -405,7 +406,17 @@ func (c *client) getMetadataWithContext(ctx context.Context) (string, error) {
 	defer cancel()
 
 	c.log.Debug("fetching EC2 instance metadata")
-	return c.metaClient.GetMetadataWithContext(ctx, "instance-id")
+	metadataResp, err := c.metaClient.GetMetadata(ctx, &imds.GetMetadataInput{
+		Path: "instance-id",
+	})
+	if err != nil {
+		return "", fmt.Errorf("getting instance id from metadata: %w", err)
+	}
+	metadata, err := io.ReadAll(metadataResp.Content)
+	if err != nil {
+		return "", fmt.Errorf("reading instance id from metadata: %w", err)
+	}
+	return string(metadata), nil
 }
 
 func (c *client) describeInstancesWithContext(ctx context.Context, req *ec2.DescribeInstancesInput) (*ec2.DescribeInstancesOutput, error) {
@@ -413,7 +424,7 @@ func (c *client) describeInstancesWithContext(ctx context.Context, req *ec2.Desc
 	defer cancel()
 
 	c.log.Debug("fetching EC2 instance information")
-	return c.ec2Client.DescribeInstancesWithContext(ctxWithTimeout, req)
+	return c.ec2Client.DescribeInstances(ctxWithTimeout, req)
 }
 
 func (c *client) requestContext(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -424,9 +435,9 @@ func (c *client) requestContext(ctx context.Context) (context.Context, context.C
 	return ctx, func() {}
 }
 
-func getClusterName(tags []*ec2.Tag) string {
+func getClusterName(tags []ec2_types.Tag) string {
 	for _, tag := range tags {
-		if tag == nil || tag.Key == nil || tag.Value == nil {
+		if tag.Key == nil || tag.Value == nil {
 			continue
 		}
 		for _, clusterTag := range eksClusterTags {
