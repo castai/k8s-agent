@@ -9,7 +9,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	ec2 "github.com/aws/aws-sdk-go/service/ec2"
+	types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	gomock "github.com/golang/mock/gomock"
 )
 
@@ -105,10 +105,10 @@ func (mr *MockClientMockRecorder) GetClusterName(arg0 interface{}) *gomock.Call 
 }
 
 // GetInstancesByInstanceIDs mocks base method.
-func (m *MockClient) GetInstancesByInstanceIDs(arg0 context.Context, arg1 []string) ([]*ec2.Instance, error) {
+func (m *MockClient) GetInstancesByInstanceIDs(arg0 context.Context, arg1 []string) ([]types.Instance, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetInstancesByInstanceIDs", arg0, arg1)
-	ret0, _ := ret[0].([]*ec2.Instance)
+	ret0, _ := ret[0].([]types.Instance)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

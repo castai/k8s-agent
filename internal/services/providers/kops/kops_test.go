@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/service/ec2"
+	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -16,7 +16,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
-	"k8s.io/utils/pointer"
 
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
@@ -220,9 +219,9 @@ func TestProvider_IsSpot(t *testing.T) {
 			awsClient: awsclient,
 		}
 
-		awsclient.EXPECT().GetInstancesByInstanceIDs(gomock.Any(), []string{"instanceID"}).Return([]*ec2.Instance{
+		awsclient.EXPECT().GetInstancesByInstanceIDs(gomock.Any(), []string{"instanceID"}).Return([]ec2_types.Instance{
 			{
-				InstanceLifecycle: pointer.StringPtr("spot"),
+				InstanceLifecycle: ec2_types.InstanceLifecycleTypeSpot,
 			},
 		}, nil)
 
@@ -265,9 +264,9 @@ func TestProvider_IsSpot(t *testing.T) {
 			awsClient: awsclient,
 		}
 
-		awsclient.EXPECT().GetInstancesByInstanceIDs(gomock.Any(), []string{"instanceID"}).Return([]*ec2.Instance{
+		awsclient.EXPECT().GetInstancesByInstanceIDs(gomock.Any(), []string{"instanceID"}).Return([]ec2_types.Instance{
 			{
-				InstanceLifecycle: pointer.StringPtr("on-demand"),
+				InstanceLifecycle: ec2_types.InstanceLifecycleTypeScheduled,
 			},
 		}, nil)
 

@@ -7,17 +7,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	"castai-agent/internal/castai"
 	mock_castai "castai-agent/internal/castai/mock"
@@ -147,10 +146,10 @@ func TestProvider_IsSpot(t *testing.T) {
 			spotCache:                        map[string]bool{},
 		}
 
-		awsClient.EXPECT().GetInstancesByInstanceIDs(gomock.Any(), []string{"instanceID"}).Return([]*ec2.Instance{
+		awsClient.EXPECT().GetInstancesByInstanceIDs(gomock.Any(), []string{"instanceID"}).Return([]ec2_types.Instance{
 			{
-				InstanceId:        pointer.StringPtr("instanceID"),
-				InstanceLifecycle: pointer.StringPtr("spot"),
+				InstanceId:        ptr.To("instanceID"),
+				InstanceLifecycle: ec2_types.InstanceLifecycleTypeSpot,
 			},
 		}, nil).Times(1)
 
@@ -182,10 +181,10 @@ func TestProvider_IsSpot(t *testing.T) {
 			spotCache:                        map[string]bool{},
 		}
 
-		awsClient.EXPECT().GetInstancesByInstanceIDs(gomock.Any(), []string{"instanceID"}).Return([]*ec2.Instance{
+		awsClient.EXPECT().GetInstancesByInstanceIDs(gomock.Any(), []string{"instanceID"}).Return([]ec2_types.Instance{
 			{
-				InstanceId:        pointer.StringPtr("instanceID"),
-				InstanceLifecycle: pointer.StringPtr("on-demand"),
+				InstanceId:        ptr.To("instanceID"),
+				InstanceLifecycle: ec2_types.InstanceLifecycleTypeScheduled,
 			},
 		}, nil)
 
@@ -266,26 +265,26 @@ func TestProvider_IsSpot(t *testing.T) {
 }
 
 func TestClusterNameFromTags(t *testing.T) {
-	randomTag1 := &ec2.Tag{
-		Key:   pointer.StringPtr("random1"),
-		Value: pointer.StringPtr("value1"),
+	randomTag1 := ec2_types.Tag{
+		Key:   ptr.To("random1"),
+		Value: ptr.To("value1"),
 	}
-	randomTag2 := &ec2.Tag{
-		Key:   pointer.StringPtr("random2"),
-		Value: pointer.StringPtr("value2"),
+	randomTag2 := ec2_types.Tag{
+		Key:   ptr.To("random2"),
+		Value: ptr.To("value2"),
 	}
 
 	tests := []struct {
 		name                string
-		tags                []*ec2.Tag
+		tags                []ec2_types.Tag
 		expectedClusterName string
 	}{
 		{
 			name: "eks tag 1",
-			tags: []*ec2.Tag{
+			tags: []ec2_types.Tag{
 				{
-					Key:   pointer.StringPtr(tagEKSK8sCluster + "eks-tag-1"),
-					Value: pointer.StringPtr(owned),
+					Key:   ptr.To(tagEKSK8sCluster + "eks-tag-1"),
+					Value: ptr.To(owned),
 				},
 				randomTag1,
 				randomTag2,
@@ -294,10 +293,10 @@ func TestClusterNameFromTags(t *testing.T) {
 		},
 		{
 			name: "eks tag 2",
-			tags: []*ec2.Tag{
+			tags: []ec2_types.Tag{
 				{
-					Key:   pointer.StringPtr(tagEKSK8sCluster + "eks-tag-2"),
-					Value: pointer.StringPtr(owned),
+					Key:   ptr.To(tagEKSK8sCluster + "eks-tag-2"),
+					Value: ptr.To(owned),
 				},
 				randomTag1,
 				randomTag2,
@@ -306,10 +305,10 @@ func TestClusterNameFromTags(t *testing.T) {
 		},
 		{
 			name: "kops tag",
-			tags: []*ec2.Tag{
+			tags: []ec2_types.Tag{
 				{
-					Key:   pointer.StringPtr(tagKOPSKubernetesCluster),
-					Value: pointer.StringPtr("kops-tag"),
+					Key:   ptr.To(tagKOPSKubernetesCluster),
+					Value: ptr.To("kops-tag"),
 				},
 				randomTag1,
 				randomTag2,
@@ -318,18 +317,18 @@ func TestClusterNameFromTags(t *testing.T) {
 		},
 		{
 			name: "all tags",
-			tags: []*ec2.Tag{
+			tags: []ec2_types.Tag{
 				{
-					Key:   pointer.StringPtr(tagEKSK8sCluster + "all-tags"),
-					Value: pointer.StringPtr(owned),
+					Key:   ptr.To(tagEKSK8sCluster + "all-tags"),
+					Value: ptr.To(owned),
 				},
 				{
-					Key:   pointer.StringPtr(tagEKSK8sCluster + "all-tags"),
-					Value: pointer.StringPtr(owned),
+					Key:   ptr.To(tagEKSK8sCluster + "all-tags"),
+					Value: ptr.To(owned),
 				},
 				{
-					Key:   pointer.StringPtr(tagKOPSKubernetesCluster),
-					Value: pointer.StringPtr("all-tags"),
+					Key:   ptr.To(tagKOPSKubernetesCluster),
+					Value: ptr.To("all-tags"),
 				},
 				randomTag1,
 				randomTag2,
@@ -338,7 +337,7 @@ func TestClusterNameFromTags(t *testing.T) {
 		},
 		{
 			name: "no tags cluster tags",
-			tags: []*ec2.Tag{
+			tags: []ec2_types.Tag{
 				randomTag1,
 				randomTag2,
 			},
@@ -392,14 +391,13 @@ func Test_APITimeout(t *testing.T) {
 					w.WriteHeader(http.StatusOK)
 				}))
 
-				s := session.Must(session.NewSession(&aws.Config{
-					Region:      pointer.String("us-central1"),
-					Credentials: credentials.AnonymousCredentials,
-					DisableSSL:  aws.Bool(true),
-					Endpoint:    aws.String(server.URL),
-				}))
+				s := aws.Config{
+					Region:       "us-central1",
+					Credentials:  aws.AnonymousCredentials{},
+					BaseEndpoint: ptr.To(server.URL),
+				}
 				c.sess = s
-				c.ec2Client = ec2.New(s)
+				c.ec2Client = ec2.NewFromConfig(s)
 
 				return nil
 			}
@@ -411,7 +409,7 @@ func Test_APITimeout(t *testing.T) {
 			_, err = client.GetInstancesByInstanceIDs(ctx, []string{"1"})
 			if test.expectTimeout {
 				r.Error(err)
-				r.Contains(err.Error(), "RequestCanceled: request context canceled")
+				r.Contains(err.Error(), "context deadline exceeded")
 			} else {
 				r.NoError(err)
 			}
