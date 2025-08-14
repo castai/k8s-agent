@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/viper"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/flowcontrol"
 )
 
 type Config struct {
@@ -35,6 +36,8 @@ type Config struct {
 	PprofPort   int         `mapstructure:"pprof_port"`
 	HealthzPort int         `mapstructure:"healthz_port"`
 	MetricsPort int         `mapstructure:"metrics_port"`
+
+	KubernetesClient KubernetesClient `mapstructure:"kubernetes_client"`
 
 	MetadataStore *MetadataStoreConfig `mapstructure:"metadata_store"`
 
@@ -159,6 +162,15 @@ type LeaderElectionConfig struct {
 	Namespace string `mapstructure:"namespace"`
 }
 
+type KubernetesClient struct {
+	RateLimiter RateLimiter `mapstructure:"rate_limiter"`
+}
+
+type RateLimiter struct {
+	QPS   int `mapstructure:"qps"`
+	Burst int `mapstructure:"burst"`
+}
+
 var cfg *Config
 var mu sync.Mutex
 
@@ -196,6 +208,9 @@ func Get() Config {
 	viper.SetDefault("metadata_store.enabled", false)
 	viper.SetDefault("metadata_store.config_map_name", "castai-agent-metadata")
 	viper.SetDefault("metadata_store.config_map_namespace", "castai-agent")
+
+	viper.SetDefault("kubernetes_client.rate_limiter.qps", 5)
+	viper.SetDefault("kubernetes_client.rate_limiter.burst", 10)
 
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -300,15 +315,23 @@ func (c *Config) RetrieveKubeConfig(log logrus.FieldLogger) (*rest.Config, error
 
 	if kubeconfig != nil {
 		log.Debug("using kubeconfig from env variables")
-		return kubeconfig, nil
+	} else {
+		kubeconfig, err = rest.InClusterConfig()
+		if err != nil {
+			return nil, err
+		}
+
+		log.Debug("using in cluster kubeconfig")
 	}
 
-	inClusterConfig, err := rest.InClusterConfig()
-	if err != nil {
-		return nil, err
+	if kubeconfig != nil {
+		rateLimiter := flowcontrol.NewTokenBucketRateLimiter(
+			float32(c.KubernetesClient.RateLimiter.QPS), c.KubernetesClient.RateLimiter.Burst,
+		)
+		kubeconfig.RateLimiter = rateLimiter
 	}
-	log.Debug("using in cluster kubeconfig")
-	return inClusterConfig, nil
+
+	return kubeconfig, nil
 }
 
 // Reset is used only for unit testing to reset configuration and rebind variables.
