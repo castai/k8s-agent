@@ -147,6 +147,7 @@ type Controller struct {
 	AnnotationsMaxLength           string        `mapstructure:"annotations_max_length"`
 	ForcePagination                bool          `mapstructure:"force_pagination"`
 	PageSize                       int64         `mapstructure:"page_size"`
+	PageRequestTimeout             int64         `mapstructure:"page_request_timeout"`
 	FilterEmptyReplicaSets         bool          `mapstructure:"filter_empty_replica_sets"`
 
 	// DisabledInformers contains a list of informers to disable,
@@ -198,6 +199,7 @@ func Get() Config {
 	viper.SetDefault("controller.initialization_timeout_extension", 5*time.Minute)
 	viper.SetDefault("controller.force_pagination", false)
 	viper.SetDefault("controller.page_size", 500)
+	viper.SetDefault("controller.page_request_timeout", 15)
 
 	viper.SetDefault("healthz_port", 9876)
 	viper.SetDefault("metrics_port", 9877)
