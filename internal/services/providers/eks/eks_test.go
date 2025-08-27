@@ -4,18 +4,16 @@ import (
 	"context"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/require"
 
-	mock_aws "castai-agent/internal/services/providers/eks/aws/mock"
+	mock_aws "castai-agent/mocks/internal_/services/providers/eks/aws"
 )
 
 func TestEKSRegisterClusterRequestBuilder(t *testing.T) {
 	r := require.New(t)
 	ctx := context.Background()
-	mockctrl := gomock.NewController(t)
-	awsClient := mock_aws.NewMockClient(mockctrl)
+	awsClient := mock_aws.NewMockClient(t)
 
 	awsClient.EXPECT().GetClusterName(ctx).Return(lo.ToPtr("test-cluster"), nil)
 	awsClient.EXPECT().GetRegion(ctx).Return(lo.ToPtr("eu-central-1"), nil)

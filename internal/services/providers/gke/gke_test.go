@@ -6,25 +6,24 @@ import (
 	"os"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"castai-agent/internal/castai"
-	mock_castai "castai-agent/internal/castai/mock"
-	mock_client "castai-agent/internal/services/providers/gke/client/mock"
 	"castai-agent/internal/services/providers/types"
+	mock_castai "castai-agent/mocks/internal_/castai"
+	mock_client "castai-agent/mocks/internal_/services/providers/gke/client"
 	"castai-agent/pkg/labels"
 )
 
 func TestProvider_RegisterCluster(t *testing.T) {
 	t.Run("happy path", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		castaiclient := mock_castai.NewMockClient(ctrl)
-		metaclient := mock_client.NewMockMetadata(ctrl)
+		castaiclient := mock_castai.NewMockClient(t)
+		metaclient := mock_client.NewMockMetadata(t)
 
 		p := &Provider{log: logrus.New(), metadata: metaclient}
 
@@ -40,7 +39,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 			ID:             uuid.New().String(),
 			OrganizationID: uuid.New().String(),
 		}}
-		castaiclient.EXPECT().RegisterCluster(gomock.Any(), &castai.RegisterClusterRequest{
+		castaiclient.EXPECT().RegisterCluster(mock.Anything, &castai.RegisterClusterRequest{
 			Name: "test-cluster",
 			GKE: &castai.GKEParams{
 				Region:      "us-east4",
@@ -60,9 +59,8 @@ func TestProvider_RegisterCluster(t *testing.T) {
 	})
 
 	t.Run("autodiscovery failed", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		castaiclient := mock_castai.NewMockClient(ctrl)
-		metaclient := mock_client.NewMockMetadata(ctrl)
+		castaiclient := mock_castai.NewMockClient(t)
+		metaclient := mock_client.NewMockMetadata(t)
 
 		p := &Provider{log: logrus.New(), metadata: metaclient}
 

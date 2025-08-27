@@ -1,25 +1,23 @@
 package selfhostedec2
 
 import (
-	"context"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/samber/lo"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"castai-agent/internal/services/providers/eks/aws/mock"
+	aws_mocks "castai-agent/mocks/internal_/services/providers/eks/aws"
 )
 
 func TestSelfHostedEC2RegisterClusterRequestBuilder(t *testing.T) {
 	r := require.New(t)
-	ctx := context.Background()
-	mockctrl := gomock.NewController(t)
-	awsClient := mock_aws.NewMockClient(mockctrl)
+	ctx := t.Context()
 
-	awsClient.EXPECT().GetClusterName(ctx).Return(lo.ToPtr("test-cluster"), nil)
-	awsClient.EXPECT().GetRegion(ctx).Return(lo.ToPtr("eu-central-1"), nil)
-	awsClient.EXPECT().GetAccountID(ctx).Return(lo.ToPtr("account-id"), nil)
+	awsClient := aws_mocks.NewMockClient(t)
+	awsClient.EXPECT().GetClusterName(mock.Anything).Return(lo.ToPtr("test-cluster"), nil)
+	awsClient.EXPECT().GetRegion(mock.Anything).Return(lo.ToPtr("eu-central-1"), nil)
+	awsClient.EXPECT().GetAccountID(mock.Anything).Return(lo.ToPtr("account-id"), nil)
 
 	builder := newRegisterClusterBuilder(awsClient)
 	req, err := builder.BuildRegisterClusterRequest(ctx)

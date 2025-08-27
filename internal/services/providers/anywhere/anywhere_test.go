@@ -2,21 +2,21 @@ package anywhere
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"os"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"castai-agent/internal/castai"
-	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/internal/config"
-	discovery_mock "castai-agent/internal/services/discovery/mock"
-	anywhere_client_mock "castai-agent/internal/services/providers/anywhere/client/mock"
+	mock_castai "castai-agent/mocks/internal_/castai"
+	discovery_mock "castai-agent/mocks/internal_/services/discovery"
+	anywhere_client_mock "castai-agent/mocks/internal_/services/providers/anywhere/client"
 )
 
 func Test_RegisterCluster(t *testing.T) {
@@ -28,28 +28,27 @@ func Test_RegisterCluster(t *testing.T) {
 		expectedClusterName     string
 		expectedKubeNamespaceId uuid.UUID
 		expectedErr             *string
-		setup                   func(*require.Assertions, *gomock.Controller) (*discovery_mock.MockService, *anywhere_client_mock.MockClient)
+		setup                   func(testing.TB, *require.Assertions) (*discovery_mock.MockService, *anywhere_client_mock.MockClient)
 	}{
 		"should fail cluster registration when there's an error retrieving kube-system namespace id": {
-			setup: func(_ *require.Assertions, ctrl *gomock.Controller) (*discovery_mock.MockService, *anywhere_client_mock.MockClient) {
-				discoveryService := discovery_mock.NewMockService(ctrl)
-				anywhereClient := anywhere_client_mock.NewMockClient(ctrl)
+			setup: func(t testing.TB, _ *require.Assertions) (*discovery_mock.MockService, *anywhere_client_mock.MockClient) {
+				discoveryService := discovery_mock.NewMockService(t)
+				anywhereClient := anywhere_client_mock.NewMockClient(t)
 
-				discoveryService.EXPECT().GetKubeSystemNamespaceID(gomock.Any()).Return(nil, fmt.Errorf("some error")).Times(1)
+				discoveryService.EXPECT().GetKubeSystemNamespaceID(mock.Anything).Return(nil, errors.New("some error"))
 
 				return discoveryService, anywhereClient
 			},
 			expectedErr: lo.ToPtr("getting kube-system namespace id"),
 		},
 		"should use cluster name from config when it's provided through env variables": {
-			setup: func(r *require.Assertions, ctrl *gomock.Controller) (*discovery_mock.MockService, *anywhere_client_mock.MockClient) {
+			setup: func(t testing.TB, r *require.Assertions) (*discovery_mock.MockService, *anywhere_client_mock.MockClient) {
 				r.NoError(os.Setenv("ANYWHERE_CLUSTER_NAME", "env-cluster-name"))
 
-				discoveryService := discovery_mock.NewMockService(ctrl)
-				anywhereClient := anywhere_client_mock.NewMockClient(ctrl)
+				discoveryService := discovery_mock.NewMockService(t)
+				anywhereClient := anywhere_client_mock.NewMockClient(t)
 
-				discoveryService.EXPECT().GetKubeSystemNamespaceID(gomock.Any()).Return(&kubeNsId, nil).Times(1)
-				anywhereClient.EXPECT().GetClusterName(gomock.Any()).Times(0)
+				discoveryService.EXPECT().GetKubeSystemNamespaceID(mock.Anything).Return(&kubeNsId, nil)
 
 				return discoveryService, anywhereClient
 			},
@@ -57,12 +56,12 @@ func Test_RegisterCluster(t *testing.T) {
 			expectedKubeNamespaceId: kubeNsId,
 		},
 		"should use cluster name from client when it's provided through env variables": {
-			setup: func(_ *require.Assertions, ctrl *gomock.Controller) (*discovery_mock.MockService, *anywhere_client_mock.MockClient) {
-				discoveryService := discovery_mock.NewMockService(ctrl)
-				anywhereClient := anywhere_client_mock.NewMockClient(ctrl)
+			setup: func(t testing.TB, _ *require.Assertions) (*discovery_mock.MockService, *anywhere_client_mock.MockClient) {
+				discoveryService := discovery_mock.NewMockService(t)
+				anywhereClient := anywhere_client_mock.NewMockClient(t)
 
-				discoveryService.EXPECT().GetKubeSystemNamespaceID(gomock.Any()).Return(&kubeNsId, nil).Times(1)
-				anywhereClient.EXPECT().GetClusterName(gomock.Any()).Return("client-cluster-name", nil).Times(1)
+				discoveryService.EXPECT().GetKubeSystemNamespaceID(mock.Anything).Return(&kubeNsId, nil)
+				anywhereClient.EXPECT().GetClusterName(mock.Anything).Return("client-cluster-name", nil)
 
 				return discoveryService, anywhereClient
 			},
@@ -74,22 +73,19 @@ func Test_RegisterCluster(t *testing.T) {
 	for name, test := range tests {
 		test := test
 		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
-
 			t.Cleanup(config.Reset)
 			t.Cleanup(os.Clearenv)
 
 			ctx := context.Background()
 			r := require.New(t)
 
-			discoveryService, anywhereClient := test.setup(r, ctrl)
-			castaiClient := mock_castai.NewMockClient(ctrl)
+			discoveryService, anywhereClient := test.setup(t, r)
+			castaiClient := mock_castai.NewMockClient(t)
 
 			provider := New(discoveryService, anywhereClient, logrus.New())
 
 			if test.expectedErr == nil {
-				castaiClient.EXPECT().RegisterCluster(gomock.Any(), &castai.RegisterClusterRequest{
+				castaiClient.EXPECT().RegisterCluster(mock.Anything, &castai.RegisterClusterRequest{
 					Name: test.expectedClusterName,
 					Anywhere: &castai.AnywhereParams{
 						ClusterName:           test.expectedClusterName,
