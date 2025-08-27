@@ -5,9 +5,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	v1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -16,7 +16,7 @@ import (
 	"castai-agent/internal/castai"
 	"castai-agent/internal/services/controller/delta"
 	"castai-agent/internal/services/controller/handlers/transformers"
-	mock_workqueue "castai-agent/internal/services/controller/mock/workqueue"
+	mock_workqueue "castai-agent/mocks/k8s.io/client-go/util/workqueue"
 )
 
 func Test_handler(t *testing.T) {
@@ -88,36 +88,33 @@ func Test_handler(t *testing.T) {
 	items := []delta.Object{pod, node, pv, pvc, rc, ns, service, hpa, pdb, cfgmap}
 
 	for _, item := range items {
-		item := item
 		t.Run(fmt.Sprintf("should handle all events for object type %v", item.GetName()), func(t *testing.T) {
-			queue := mock_workqueue.NewMockInterface(gomock.NewController(t))
+			queue := mock_workqueue.NewMockInterface(t)
 
 			h := NewHandler(logrus.New(), queue, reflect.TypeOf(item), nil, transformers.Transformers{})
-			queue.EXPECT().Add(gomock.Any()).Do(func(i interface{}) {
-				// Assert that the item is of the expected type
-				actual, ok := i.(*delta.Item)
-				assert.True(t, ok)
-				assert.Equal(t, item, actual.Obj)
-				assert.Equal(t, castai.EventAdd, actual.Event)
-			})
+			var queueAddCount int
+			queue.EXPECT().
+				Add(mock.Anything).
+				Run(func(i interface{}) {
+					queueAddCount++
+
+					// Assert that the item is of the expected type
+					actual, ok := i.(*delta.Item)
+					assert.True(t, ok)
+					assert.Equal(t, item, actual.Obj)
+
+					switch queueAddCount {
+					case 1:
+
+						assert.Equal(t, castai.EventAdd, actual.Event)
+					case 2:
+						assert.Equal(t, castai.EventUpdate, actual.Event)
+					case 3:
+						assert.Equal(t, castai.EventDelete, actual.Event)
+					}
+				})
 			h.OnAdd(item, true)
-
-			queue.EXPECT().Add(gomock.Any()).Do(func(i interface{}) {
-				// Assert that the item is of the expected type
-				actual, ok := i.(*delta.Item)
-				assert.True(t, ok)
-				assert.Equal(t, item, actual.Obj)
-				assert.Equal(t, castai.EventUpdate, actual.Event)
-			})
 			h.OnUpdate(item, item)
-
-			queue.EXPECT().Add(gomock.Any()).Do(func(i interface{}) {
-				// Assert that the item is of the expected type
-				actual, ok := i.(*delta.Item)
-				assert.True(t, ok)
-				assert.Equal(t, item, actual.Obj)
-				assert.Equal(t, castai.EventDelete, actual.Event)
-			})
 			h.OnDelete(item)
 		})
 	}

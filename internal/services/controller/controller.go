@@ -1,4 +1,3 @@
-//go:generate mockgen -destination ./mock/workqueue.go k8s.io/client-go/util/workqueue Interface
 package controller
 
 import (
