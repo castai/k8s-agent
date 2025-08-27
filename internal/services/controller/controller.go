@@ -24,6 +24,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	resourceapivalpha3 "k8s.io/api/resource/v1alpha3"
 	resourceapiv1beta2 "k8s.io/api/resource/v1beta2"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -1062,6 +1063,16 @@ func getConditionalInformers(
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
 				return f.Resource().V1beta2().ResourceSlices().Informer()
+			},
+		},
+		{
+			groupVersion:    resourceapivalpha3.SchemeGroupVersion,
+			resource:        "devicetaintrules",
+			kind:            "DeviceTaintRule",
+			apiType:         reflect.TypeOf(&resourceapivalpha3.DeviceTaintRule{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Resource().V1alpha3().DeviceTaintRules().Informer()
 			},
 		},
 	}

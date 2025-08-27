@@ -25,6 +25,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	resourceapivalpha3 "k8s.io/api/resource/v1alpha3"
 	resourceapiv1beta2 "k8s.io/api/resource/v1beta2"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -82,10 +83,10 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
-			expectedReceivedObjectsCount: 34,
+			expectedReceivedObjectsCount: 35,
 		},
 		"All supported objects are found and received in delta with pagination": {
-			expectedReceivedObjectsCount: 34,
+			expectedReceivedObjectsCount: 35,
 			paginationEnabled:            true,
 			pageSize:                     5,
 		},
@@ -93,12 +94,12 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 32,
+			expectedReceivedObjectsCount: 33,
 		},
 		"when fetching api resources produces single error should exclude that resource": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 33,
+			expectedReceivedObjectsCount: 34,
 		},
 	}
 
@@ -878,6 +879,18 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	}
 	resourceSliceData := asJson(t, resourceSlice)
 
+	deviceTaintRule := &resourceapivalpha3.DeviceTaintRule{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "DeviceTaintRule",
+			APIVersion: resourceapivalpha3.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "devicetaintrule",
+		},
+	}
+	deviceTaintRuleData := asJson(t, deviceTaintRule)
+
 	clientset := fake.NewSimpleClientset(
 		node,
 		pod,
@@ -898,6 +911,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		resourceClaim,
 		resourceClaimTemplate,
 		resourceSlice,
+		deviceTaintRule,
 	)
 
 	runtimeObjects := []runtime.Object{
@@ -1219,6 +1233,17 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 				},
 			},
 		},
+		{
+			GroupVersion: resourceapivalpha3.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group: resourceapivalpha3.GroupName,
+					Name:  "devicetaintrules",
+					Kind:  "DeviceTaintRule",
+					Verbs: []string{"get", "list", "watch"},
+				},
+			},
+		},
 	}
 	objects := []sampleObject{
 		{
@@ -1406,6 +1431,12 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Kind:     "ResourceSlice",
 			Resource: "resourceslices",
 			Data:     resourceSliceData,
+		},
+		{
+			GV:       resourceapivalpha3.SchemeGroupVersion,
+			Kind:     "DeviceTaintRule",
+			Resource: "devicetaintrules",
+			Data:     deviceTaintRuleData,
 		},
 	}
 	// There are a lot of manually entered samples. Running some sanity checks to ensure they don't contain basic errors.

@@ -10,6 +10,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	resourceapivalpha3 "k8s.io/api/resource/v1alpha3"
 	resourceapiv1beta2 "k8s.io/api/resource/v1beta2"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -34,6 +35,7 @@ var builder = runtime.SchemeBuilder{
 	networkingv1.AddToScheme,
 	rbacv1.AddToScheme,
 	resourceapiv1beta2.AddToScheme,
+	resourceapivalpha3.AddToScheme,
 }
 
 func init() {
