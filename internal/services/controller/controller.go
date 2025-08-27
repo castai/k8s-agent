@@ -24,6 +24,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	resourceapiv1beta2 "k8s.io/api/resource/v1beta2"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -1011,6 +1012,56 @@ func getConditionalInformers(
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
 				return df.ForResource(knowngv.RunbooksV1Alpha1.WithResource("recommendationsyncs")).Informer()
+			},
+		},
+		{
+			groupVersion:    resourceapiv1beta2.SchemeGroupVersion,
+			resource:        "deviceclasses",
+			kind:            "DeviceClass",
+			apiType:         reflect.TypeOf(&resourceapiv1beta2.DeviceClass{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Resource().V1beta2().DeviceClasses().Informer()
+			},
+		},
+		{
+			groupVersion:    resourceapiv1beta2.SchemeGroupVersion,
+			resource:        "resourceclaims",
+			kind:            "ResourceClaim",
+			apiType:         reflect.TypeOf(&resourceapiv1beta2.ResourceClaim{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Resource().V1beta2().ResourceClaims().Informer()
+			},
+		},
+		{
+			groupVersion:    resourceapiv1beta2.SchemeGroupVersion,
+			resource:        "resourceclaimtemplates",
+			kind:            "ResourceClaimTemplate",
+			apiType:         reflect.TypeOf(&resourceapiv1beta2.ResourceClaimTemplate{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Resource().V1beta2().ResourceClaimTemplates().Informer()
+			},
+		},
+		{
+			groupVersion:    resourceapiv1beta2.SchemeGroupVersion,
+			resource:        "resourceslices",
+			kind:            "ResourceSlice",
+			apiType:         reflect.TypeOf(&resourceapiv1beta2.ResourceSlice{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Resource().V1beta2().ResourceSlices().Informer()
+			},
+		},
+		{
+			groupVersion:    resourceapiv1beta2.SchemeGroupVersion,
+			resource:        "resourceslices",
+			kind:            "ResourceSlice",
+			apiType:         reflect.TypeOf(&resourceapiv1beta2.ResourceSlice{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Resource().V1beta2().ResourceSlices().Informer()
 			},
 		},
 	}

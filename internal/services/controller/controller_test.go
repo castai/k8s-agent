@@ -25,6 +25,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	resourceapiv1beta2 "k8s.io/api/resource/v1beta2"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -81,10 +82,10 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
-			expectedReceivedObjectsCount: 30,
+			expectedReceivedObjectsCount: 34,
 		},
 		"All supported objects are found and received in delta with pagination": {
-			expectedReceivedObjectsCount: 30,
+			expectedReceivedObjectsCount: 34,
 			paginationEnabled:            true,
 			pageSize:                     5,
 		},
@@ -92,12 +93,12 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 28,
+			expectedReceivedObjectsCount: 32,
 		},
 		"when fetching api resources produces single error should exclude that resource": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 29,
+			expectedReceivedObjectsCount: 33,
 		},
 	}
 
@@ -140,6 +141,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			clusterID := uuid.New()
 			var mockDiscovery *mock_discovery.MockDiscoveryInterface
 			_, apiResources, _ := clientset.Discovery().ServerGroupsAndResources()
+
 			if tt.apiResourceError != nil {
 				mockDiscovery = mock_discovery.NewMockDiscoveryInterface(mockctrl)
 				errors := extractGroupVersionsFromApiResourceError(log, tt.apiResourceError)
@@ -157,6 +159,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 				})
 				mockDiscovery.EXPECT().ServerGroupsAndResources().Return([]*metav1.APIGroup{}, apiResources, tt.apiResourceError).AnyTimes()
 			}
+
 			var invocations int64
 
 			castaiclient.EXPECT().
@@ -827,6 +830,54 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	}
 	limitRangeData := asJson(t, limitRange)
 
+	deviceClass := &resourceapiv1beta2.DeviceClass{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "DeviceClass",
+			APIVersion: resourceapiv1beta2.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "deviceclass",
+		},
+	}
+	deviceClassData := asJson(t, deviceClass)
+
+	resourceClaim := &resourceapiv1beta2.ResourceClaim{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ResourceClaim",
+			APIVersion: resourceapiv1beta2.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "resourceclaim",
+		},
+	}
+	resourceClaimData := asJson(t, resourceClaim)
+
+	resourceClaimTemplate := &resourceapiv1beta2.ResourceClaimTemplate{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ResourceClaimTemplate",
+			APIVersion: resourceapiv1beta2.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "resourceclaimtemplate",
+		},
+	}
+	resourceClaimTemplateData := asJson(t, resourceClaimTemplate)
+
+	resourceSlice := &resourceapiv1beta2.ResourceSlice{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ResourceSlice",
+			APIVersion: resourceapiv1beta2.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: v1.NamespaceDefault,
+			Name:      "resourceslice",
+		},
+	}
+	resourceSliceData := asJson(t, resourceSlice)
+
 	clientset := fake.NewSimpleClientset(
 		node,
 		pod,
@@ -843,7 +894,12 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		clusterRoleBinding,
 		resourceQuota,
 		limitRange,
+		deviceClass,
+		resourceClaim,
+		resourceClaimTemplate,
+		resourceSlice,
 	)
+
 	runtimeObjects := []runtime.Object{
 		unstructuredFromJson(t, provisionersData),
 		unstructuredFromJson(t, machinesData),
@@ -1134,6 +1190,35 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 				},
 			},
 		},
+		{
+			GroupVersion: resourceapiv1beta2.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group: resourceapiv1beta2.GroupName,
+					Name:  "deviceClasses",
+					Kind:  "DeviceClass",
+					Verbs: []string{"get", "list", "watch"},
+				},
+				{
+					Group: resourceapiv1beta2.GroupName,
+					Name:  "resourceclaims",
+					Kind:  "ResourceClaim",
+					Verbs: []string{"get", "list", "watch"},
+				},
+				{
+					Group: resourceapiv1beta2.GroupName,
+					Name:  "resourceclaimtemplates",
+					Kind:  "ResourceClaimTemplate",
+					Verbs: []string{"get", "list", "watch"},
+				},
+				{
+					Group: resourceapiv1beta2.GroupName,
+					Name:  "resourceslices",
+					Kind:  "ResourceSlice",
+					Verbs: []string{"get", "list", "watch"},
+				},
+			},
+		},
 	}
 	objects := []sampleObject{
 		{
@@ -1297,6 +1382,30 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Kind:     "RecommendationSync",
 			Resource: "recommendationsyncs",
 			Data:     recommendationSyncV1Alpha1,
+		},
+		{
+			GV:       resourceapiv1beta2.SchemeGroupVersion,
+			Kind:     "DeviceClass",
+			Resource: "deviceclasses",
+			Data:     deviceClassData,
+		},
+		{
+			GV:       resourceapiv1beta2.SchemeGroupVersion,
+			Kind:     "ResourceClaim",
+			Resource: "resourceclaims",
+			Data:     resourceClaimData,
+		},
+		{
+			GV:       resourceapiv1beta2.SchemeGroupVersion,
+			Kind:     "ResourceClaimTemplate",
+			Resource: "resourceclaimtemplates",
+			Data:     resourceClaimTemplateData,
+		},
+		{
+			GV:       resourceapiv1beta2.SchemeGroupVersion,
+			Kind:     "ResourceSlice",
+			Resource: "resourceslices",
+			Data:     resourceSliceData,
 		},
 	}
 	// There are a lot of manually entered samples. Running some sanity checks to ensure they don't contain basic errors.
