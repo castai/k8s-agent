@@ -10,27 +10,26 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
 	"castai-agent/internal/castai"
-	mock_castai "castai-agent/internal/castai/mock"
-	"castai-agent/internal/services/providers/eks/aws/mock"
 	"castai-agent/internal/services/providers/types"
+	mock_castai "castai-agent/mocks/internal_/castai"
+	mock_aws "castai-agent/mocks/internal_/services/providers/eks/aws"
 	"castai-agent/pkg/labels"
 )
 
 func TestProvider_RegisterCluster(t *testing.T) {
 	r := require.New(t)
 	ctx := context.Background()
-	mockctrl := gomock.NewController(t)
-	castClient := mock_castai.NewMockClient(mockctrl)
-	reqBuilder := mock_aws.NewMockRegisterClusterBuilder(mockctrl)
+	castClient := mock_castai.NewMockClient(t)
+	reqBuilder := mock_aws.NewMockRegisterClusterBuilder(t)
 
 	p := &Provider{
 		log:                    logrus.New(),
@@ -74,7 +73,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 func TestProvider_IsSpot(t *testing.T) {
 	t.Run("spot instance capacity label", func(t *testing.T) {
 		r := require.New(t)
-		awsClient := mock_aws.NewMockClient(gomock.NewController(t))
+		awsClient := mock_aws.NewMockClient(t)
 
 		p := &Provider{
 			log:                              logrus.New(),
@@ -95,7 +94,7 @@ func TestProvider_IsSpot(t *testing.T) {
 
 	t.Run("spot instance worker label", func(t *testing.T) {
 		r := require.New(t)
-		awsClient := mock_aws.NewMockClient(gomock.NewController(t))
+		awsClient := mock_aws.NewMockClient(t)
 
 		p := &Provider{
 			log:                              logrus.New(),
@@ -116,7 +115,7 @@ func TestProvider_IsSpot(t *testing.T) {
 
 	t.Run("spot instance CAST AI label", func(t *testing.T) {
 		r := require.New(t)
-		awsClient := mock_aws.NewMockClient(gomock.NewController(t))
+		awsClient := mock_aws.NewMockClient(t)
 
 		p := &Provider{
 			log:                              logrus.New(),
@@ -137,7 +136,7 @@ func TestProvider_IsSpot(t *testing.T) {
 
 	t.Run("spot instance lifecycle response", func(t *testing.T) {
 		r := require.New(t)
-		awsClient := mock_aws.NewMockClient(gomock.NewController(t))
+		awsClient := mock_aws.NewMockClient(t)
 
 		p := &Provider{
 			log:                              logrus.New(),
@@ -146,7 +145,7 @@ func TestProvider_IsSpot(t *testing.T) {
 			spotCache:                        map[string]bool{},
 		}
 
-		awsClient.EXPECT().GetInstancesByInstanceIDs(gomock.Any(), []string{"instanceID"}).Return([]ec2_types.Instance{
+		awsClient.EXPECT().GetInstancesByInstanceIDs(mock.Anything, []string{"instanceID"}).Return([]ec2_types.Instance{
 			{
 				InstanceId:        ptr.To("instanceID"),
 				InstanceLifecycle: ec2_types.InstanceLifecycleTypeSpot,
@@ -172,7 +171,7 @@ func TestProvider_IsSpot(t *testing.T) {
 
 	t.Run("on-demand instance", func(t *testing.T) {
 		r := require.New(t)
-		awsClient := mock_aws.NewMockClient(gomock.NewController(t))
+		awsClient := mock_aws.NewMockClient(t)
 
 		p := &Provider{
 			log:                              logrus.New(),
@@ -181,7 +180,7 @@ func TestProvider_IsSpot(t *testing.T) {
 			spotCache:                        map[string]bool{},
 		}
 
-		awsClient.EXPECT().GetInstancesByInstanceIDs(gomock.Any(), []string{"instanceID"}).Return([]ec2_types.Instance{
+		awsClient.EXPECT().GetInstancesByInstanceIDs(mock.Anything, []string{"instanceID"}).Return([]ec2_types.Instance{
 			{
 				InstanceId:        ptr.To("instanceID"),
 				InstanceLifecycle: ec2_types.InstanceLifecycleTypeScheduled,
@@ -202,7 +201,7 @@ func TestProvider_IsSpot(t *testing.T) {
 
 	t.Run("should not perform call out to AWS API if node types can be determined using labels", func(t *testing.T) {
 		r := require.New(t)
-		awsClient := mock_aws.NewMockClient(gomock.NewController(t))
+		awsClient := mock_aws.NewMockClient(t)
 
 		p := &Provider{
 			log:                              logrus.New(),
@@ -240,7 +239,7 @@ func TestProvider_IsSpot(t *testing.T) {
 
 	t.Run("should consider on-demand node lifecycle when node lifecycle could not be discovered using labels and API lifecycle discovery is disabled", func(t *testing.T) {
 		r := require.New(t)
-		awsClient := mock_aws.NewMockClient(gomock.NewController(t))
+		awsClient := mock_aws.NewMockClient(t)
 
 		p := &Provider{
 			log:                              logrus.New(),
@@ -248,8 +247,6 @@ func TestProvider_IsSpot(t *testing.T) {
 			apiNodeLifecycleDiscoveryEnabled: false,
 			spotCache:                        map[string]bool{},
 		}
-
-		awsClient.EXPECT().GetInstancesByInstanceIDs(gomock.Any(), gomock.Any()).Times(0)
 
 		node := &v1.Node{
 			Spec: v1.NodeSpec{

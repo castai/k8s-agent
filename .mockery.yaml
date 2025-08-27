@@ -1,0 +1,8 @@
+filename: 'mock_{{.InterfaceName}}.go'
+template: testify
+packages:
+  castai-agent/internal:
+    config:
+      dir: 'mocks/internal_/{{ trimPrefix "internal/" .InterfaceDirRelative }}'
+      recursive: true
+      all: True

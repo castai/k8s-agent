@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	ec2_types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,12 +18,12 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	"castai-agent/internal/castai"
-	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/discovery"
-	"castai-agent/internal/services/providers/eks/aws/mock"
 	"castai-agent/internal/services/providers/gke"
 	"castai-agent/internal/services/providers/types"
+	mock_castai "castai-agent/mocks/internal_/castai"
+	mock_aws "castai-agent/mocks/internal_/services/providers/eks/aws"
 	"castai-agent/pkg/cloud"
 	"castai-agent/pkg/labels"
 )
@@ -87,14 +87,14 @@ func TestProvider_RegisterCluster(t *testing.T) {
 		p, err := New(logrus.New(), discoveryService)
 		require.NoError(t, err)
 
-		castaiclient := mock_castai.NewMockClient(gomock.NewController(t))
+		castaiclient := mock_castai.NewMockClient(t)
 
 		registrationResp := &types.ClusterRegistration{
 			ClusterID:      namespaceID.String(),
 			OrganizationID: uuid.New().String(),
 		}
 
-		castaiclient.EXPECT().RegisterCluster(gomock.Any(), &castai.RegisterClusterRequest{
+		castaiclient.EXPECT().RegisterCluster(mock.Anything, &castai.RegisterClusterRequest{
 			ID:   namespaceID,
 			Name: "test.k8s.local",
 			KOPS: &castai.KOPSParams{
@@ -142,14 +142,14 @@ func TestProvider_RegisterCluster(t *testing.T) {
 		p, err := New(logrus.New(), discoveryService)
 		require.NoError(t, err)
 
-		castaiclient := mock_castai.NewMockClient(gomock.NewController(t))
+		castaiclient := mock_castai.NewMockClient(t)
 
 		registrationResp := &types.ClusterRegistration{
 			ClusterID:      namespaceID.String(),
 			OrganizationID: uuid.New().String(),
 		}
 
-		castaiclient.EXPECT().RegisterCluster(gomock.Any(), &castai.RegisterClusterRequest{
+		castaiclient.EXPECT().RegisterCluster(mock.Anything, &castai.RegisterClusterRequest{
 			ID:   namespaceID,
 			Name: "test.k8s.local",
 			KOPS: &castai.KOPSParams{
@@ -212,14 +212,14 @@ func TestProvider_IsSpot(t *testing.T) {
 			},
 		}
 
-		awsclient := mock_aws.NewMockClient(gomock.NewController(t))
+		awsclient := mock_aws.NewMockClient(t)
 
 		p := &Provider{
 			csp:       cloud.AWS,
 			awsClient: awsclient,
 		}
 
-		awsclient.EXPECT().GetInstancesByInstanceIDs(gomock.Any(), []string{"instanceID"}).Return([]ec2_types.Instance{
+		awsclient.EXPECT().GetInstancesByInstanceIDs(mock.Anything, []string{"instanceID"}).Return([]ec2_types.Instance{
 			{
 				InstanceLifecycle: ec2_types.InstanceLifecycleTypeSpot,
 			},
@@ -257,14 +257,14 @@ func TestProvider_IsSpot(t *testing.T) {
 			},
 		}
 
-		awsclient := mock_aws.NewMockClient(gomock.NewController(t))
+		awsclient := mock_aws.NewMockClient(t)
 
 		p := &Provider{
 			csp:       cloud.AWS,
 			awsClient: awsclient,
 		}
 
-		awsclient.EXPECT().GetInstancesByInstanceIDs(gomock.Any(), []string{"instanceID"}).Return([]ec2_types.Instance{
+		awsclient.EXPECT().GetInstancesByInstanceIDs(mock.Anything, []string{"instanceID"}).Return([]ec2_types.Instance{
 			{
 				InstanceLifecycle: ec2_types.InstanceLifecycleTypeScheduled,
 			},

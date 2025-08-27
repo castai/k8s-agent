@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -14,12 +14,12 @@ import (
 	fakedynamic "k8s.io/client-go/dynamic/fake"
 
 	"castai-agent/internal/castai"
-	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller/scheme"
 	"castai-agent/internal/services/discovery"
-	mock_discovery "castai-agent/internal/services/discovery/mock"
 	"castai-agent/internal/services/providers/types"
+	mock_castai "castai-agent/mocks/internal_/castai"
+	mock_discovery "castai-agent/mocks/internal_/services/discovery"
 	"castai-agent/pkg/cloud"
 )
 
@@ -48,10 +48,10 @@ func TestProvider_RegisterCluster(t *testing.T) {
 				r.NoError(os.Setenv("API_URL", "test"))
 			},
 			discoveryServiceMock: func(t *testing.T, discoveryService *mock_discovery.MockService) {
-				discoveryService.EXPECT().GetKubeSystemNamespaceID(gomock.Any()).Return(&regReq.ID, nil)
-				discoveryService.EXPECT().GetCSPAndRegion(gomock.Any()).Return(cloud.Cloud(regReq.Openshift.CSP), regReq.Openshift.Region, nil)
-				discoveryService.EXPECT().GetOpenshiftClusterID(gomock.Any()).Return(regReq.Openshift.InternalID, nil)
-				discoveryService.EXPECT().GetOpenshiftClusterName(gomock.Any()).Return(regReq.Name, nil)
+				discoveryService.EXPECT().GetKubeSystemNamespaceID(mock.Anything).Return(&regReq.ID, nil)
+				discoveryService.EXPECT().GetCSPAndRegion(mock.Anything).Return(cloud.Cloud(regReq.Openshift.CSP), regReq.Openshift.Region, nil)
+				discoveryService.EXPECT().GetOpenshiftClusterID(mock.Anything).Return(regReq.Openshift.InternalID, nil)
+				discoveryService.EXPECT().GetOpenshiftClusterName(mock.Anything).Return(regReq.Name, nil)
 			},
 		},
 		{
@@ -66,7 +66,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 				r.NoError(os.Setenv("OPENSHIFT_INTERNAL_ID", regReq.Openshift.InternalID))
 			},
 			discoveryServiceMock: func(t *testing.T, discoveryService *mock_discovery.MockService) {
-				discoveryService.EXPECT().GetKubeSystemNamespaceID(gomock.Any()).Return(&regReq.ID, nil)
+				discoveryService.EXPECT().GetKubeSystemNamespaceID(mock.Anything).Return(&regReq.ID, nil)
 			},
 		},
 	}
@@ -82,9 +82,8 @@ func TestProvider_RegisterCluster(t *testing.T) {
 				t.Cleanup(os.Clearenv)
 			}
 
-			mockctrl := gomock.NewController(t)
-			castaiclient := mock_castai.NewMockClient(mockctrl)
-			discoveryService := mock_discovery.NewMockService(mockctrl)
+			castaiclient := mock_castai.NewMockClient(t)
+			discoveryService := mock_discovery.NewMockService(t)
 
 			p := New(discoveryService, nil)
 
@@ -97,7 +96,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 				OrganizationID: uuid.New().String(),
 			}
 
-			castaiclient.EXPECT().RegisterCluster(gomock.Any(), regReq).
+			castaiclient.EXPECT().RegisterCluster(mock.Anything, regReq).
 				Return(&castai.RegisterClusterResponse{
 					Cluster: castai.Cluster{
 						ID:             regReq.ID.String(),
