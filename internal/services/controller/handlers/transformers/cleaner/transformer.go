@@ -6,7 +6,6 @@ import (
 	"github.com/samber/lo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	resourcev1beta2 "k8s.io/api/resource/v1beta2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"castai-agent/internal/castai"
@@ -31,21 +30,8 @@ func cleanObj(obj interface{}) {
 }
 
 func removeManagedFields(obj interface{}) {
-	switch obj.(type) {
-	// Setting managed fields to nil for resource API objects causes a race condition,
-	// but resource API objects don't have managed fields so it doesn't change anything
-	case *resourcev1beta2.ResourceSlice:
-		return
-	case *resourcev1beta2.ResourceClaim:
-		return
-	case *resourcev1beta2.ResourceClaimTemplate:
-		return
-	case *resourcev1beta2.DeviceClass:
-		return
-	default:
-		if metaobj, ok := obj.(metav1.Object); ok {
-			metaobj.SetManagedFields(nil)
-		}
+	if metaobj, ok := obj.(metav1.Object); ok {
+		metaobj.SetManagedFields(nil)
 	}
 }
 
