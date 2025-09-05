@@ -1,4 +1,3 @@
-//go:generate mockgen -destination ./mock/aws.go . RegisterClusterBuilder,Client
 package aws
 
 import (

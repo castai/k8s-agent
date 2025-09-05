@@ -1,4 +1,3 @@
-//go:generate mockgen -destination ./mock/client.go . Client
 package castai
 
 import (

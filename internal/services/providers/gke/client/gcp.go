@@ -1,4 +1,3 @@
-//go:generate mockgen -destination ./mock/client.go . Metadata
 package client
 
 import (

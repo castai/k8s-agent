@@ -1,4 +1,3 @@
-//go:generate mockgen -source $GOFILE -destination ./mock/discovery.go . Service
 package discovery
 
 import (
