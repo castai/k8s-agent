@@ -1,4 +1,3 @@
-//go:generate mockgen -destination ./mock/provider.go . Provider
 package types
 
 import (

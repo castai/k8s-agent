@@ -1,4 +1,3 @@
-//go:generate mockgen -destination ./mock/version.go . Interface
 package version
 
 import (
