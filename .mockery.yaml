@@ -6,3 +6,13 @@ packages:
       dir: 'mocks/internal_/{{ trimPrefix "internal/" .InterfaceDirRelative }}'
       recursive: true
       all: True
+  k8s.io/client-go/discovery:
+    config:
+      dir: 'mocks/{{.SrcPackagePath}}'
+    interfaces:
+      DiscoveryInterface:
+  k8s.io/client-go/util/workqueue:
+    config:
+      dir: 'mocks/{{.SrcPackagePath}}'
+    interfaces:
+      Interface:

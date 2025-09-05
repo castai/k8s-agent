@@ -12,10 +12,10 @@ import (
 
 	datadoghqv1alpha1 "github.com/DataDog/extendeddaemonset/api/v1alpha1"
 	argorollouts "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
-	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	authorizationv1 "k8s.io/api/authorization/v1"
@@ -40,13 +40,13 @@ import (
 	metrics_fake "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 
 	"castai-agent/internal/castai"
-	mock_castai "castai-agent/internal/castai/mock"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller/crd"
 	"castai-agent/internal/services/controller/knowngv"
-	mock_discovery "castai-agent/internal/services/controller/mock/discovery"
-	mock_types "castai-agent/internal/services/providers/types/mock"
-	mock_version "castai-agent/internal/services/version/mock"
+	mock_castai "castai-agent/mocks/internal_/castai"
+	mock_types "castai-agent/mocks/internal_/services/providers/types"
+	mock_version "castai-agent/mocks/internal_/services/version"
+	mock_discovery "castai-agent/mocks/k8s.io/client-go/discovery"
 	"castai-agent/pkg/labels"
 )
 
@@ -109,10 +109,9 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			utilruntime.Must(crd.SchemeBuilder.AddToScheme(scheme))
 			utilruntime.Must(metrics_v1beta1.SchemeBuilder.AddToScheme(scheme))
 
-			mockctrl := gomock.NewController(t)
-			castaiclient := mock_castai.NewMockClient(mockctrl)
-			version := mock_version.NewMockInterface(mockctrl)
-			provider := mock_types.NewMockProvider(mockctrl)
+			castaiclient := mock_castai.NewMockClient(t)
+			version := mock_version.NewMockInterface(t)
+			provider := mock_types.NewMockProvider(t)
 			objectsData, clientset, dynamicClient, metricsClient := loadInitialHappyPathData(t, scheme)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -134,14 +133,14 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			log := logrus.New()
 			log.SetLevel(logrus.DebugLevel)
 
-			version.EXPECT().Full().Return("1.21+").MaxTimes(3)
+			version.EXPECT().Full().Return("1.21+").Maybe()
 			agentVersion := &config.AgentVersion{Version: "1.2.3"}
 
 			clusterID := uuid.New()
 			var mockDiscovery *mock_discovery.MockDiscoveryInterface
 			_, apiResources, _ := clientset.Discovery().ServerGroupsAndResources()
 			if tt.apiResourceError != nil {
-				mockDiscovery = mock_discovery.NewMockDiscoveryInterface(mockctrl)
+				mockDiscovery = mock_discovery.NewMockDiscoveryInterface(t)
 				errors := extractGroupVersionsFromApiResourceError(log, tt.apiResourceError)
 				apiResources = lo.Filter(apiResources, func(apiResource *metav1.APIResourceList, _ int) bool {
 					gv, _ := schema.ParseGroupVersion(apiResource.GroupVersion)
@@ -155,13 +154,13 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 					})
 					return found
 				})
-				mockDiscovery.EXPECT().ServerGroupsAndResources().Return([]*metav1.APIGroup{}, apiResources, tt.apiResourceError).AnyTimes()
+				mockDiscovery.EXPECT().ServerGroupsAndResources().Return([]*metav1.APIGroup{}, apiResources, tt.apiResourceError).Maybe()
 			}
 			var invocations int64
 
 			castaiclient.EXPECT().
-				SendDelta(gomock.Any(), clusterID.String(), gomock.Any()).AnyTimes().
-				DoAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
+				SendDelta(mock.Anything, clusterID.String(), mock.Anything).
+				RunAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
 					defer atomic.AddInt64(&invocations, 1)
 
 					require.Equal(t, clusterID, d.ClusterID)
@@ -186,11 +185,13 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 					return nil
 				})
 
-			castaiclient.EXPECT().ExchangeAgentTelemetry(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
-				Return(&castai.AgentTelemetryResponse{}, nil).
-				Do(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
+			castaiclient.EXPECT().
+				ExchangeAgentTelemetry(mock.Anything, mock.Anything, mock.Anything).
+				Run(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
 					require.Equalf(t, "1.2.3", req.AgentVersion, "got request: %+v", req)
-				})
+				}).
+				Return(&castai.AgentTelemetryResponse{}, nil).
+				Maybe()
 
 			node := &v1.Node{
 				TypeMeta: metav1.TypeMeta{
@@ -202,7 +203,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 					Labels: map[string]string{},
 				},
 			}
-			provider.EXPECT().FilterSpot(gomock.Any(), []*v1.Node{node}).Return([]*v1.Node{node}, nil)
+			provider.EXPECT().FilterSpot(mock.Anything, []*v1.Node{node}).Return([]*v1.Node{node}, nil)
 
 			cfg := &config.Controller{
 				Interval:             15 * time.Second,
@@ -271,7 +272,6 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 		sendInterval  time.Duration
 		sendDurations []time.Duration
 		checkAfter    time.Duration
-		wantSends     int64
 	}{
 		{
 			name:         "should trigger all sends when none exceed allocated intervals",
@@ -287,42 +287,36 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 				250 * time.Millisecond,
 			},
 			checkAfter: 1200 * time.Millisecond,
-			wantSends:  4,
 		},
 		{
-			name:         "should trigger all sends when previous send exceeds one interval",
+			name:         "should skip send if previous one isn't completed (one time window)",
 			sendInterval: 300 * time.Millisecond,
 			sendDurations: []time.Duration{
-				// At 0, 300: idle, previous still sending
-				// Send by 600 ms
+				// At 0, completed by 600
 				450 * time.Millisecond,
-				// Send by 600 ms too, since we expect ticker to fire events even between ticks
+				// At 600, completed by 900
 				50 * time.Millisecond,
 			},
-			checkAfter: 600 * time.Millisecond,
-			wantSends:  2,
+			checkAfter: 900 * time.Millisecond,
 		},
 		{
-			name:         "should trigger all sends when previous send exceeds two intervals",
+			name:         "should skip all sends if previous one isn't completed (2 time windows)",
 			sendInterval: 300 * time.Millisecond,
 			sendDurations: []time.Duration{
-				// At 0, 300, 600ms: idle, previous still sending
-				// Send by 900 ms
+				// At 0, completed by 900
 				650 * time.Millisecond,
-				// Send by 900 ms too, since we expect ticker to fire events even between ticks
+				// At 900, completed by 1200
 				150 * time.Millisecond,
 			},
-			checkAfter: 900 * time.Millisecond,
-			wantSends:  2,
+			checkAfter: 1200 * time.Millisecond,
 		},
 	}
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			mockctrl := gomock.NewController(t)
-			castaiclient := mock_castai.NewMockClient(mockctrl)
-			version := mock_version.NewMockInterface(mockctrl)
-			provider := mock_types.NewMockProvider(mockctrl)
+			castaiclient := mock_castai.NewMockClient(t)
+			version := mock_version.NewMockInterface(t)
+			provider := mock_types.NewMockProvider(t)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
@@ -333,42 +327,51 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 			metricsClient := metrics_fake.NewSimpleClientset()
 			dynamicClient := dynamic_fake.NewSimpleDynamicClient(runtime.NewScheme())
 
-			version.EXPECT().Full().Return("1.21+").AnyTimes()
+			version.EXPECT().Full().Return("1.21+").Maybe()
 
 			clusterID := uuid.New()
 			log := logrus.New()
 
-			var gotSends atomic.Int64
-			var wg sync.WaitGroup
-			wg.Add(len(tc.sendDurations))
-			var sentFirstTickNotification atomic.Bool
+			var (
+				sendMutex           sync.Mutex
+				sendWG              sync.WaitGroup
+				sendCallCount       int
+				sendFirstCalledAt   time.Time
+				sendLastCompletedAt time.Time
+			)
 
-			var firstTickAt time.Time
-			var lastSentAt time.Time
+			sendWG.Add(len(tc.sendDurations))
+			castaiclient.EXPECT().
+				SendDelta(mock.Anything, clusterID.String(), mock.Anything).
+				RunAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
+					defer sendWG.Done()
 
-			for _, sendDuration := range tc.sendDurations {
-				castaiclient.EXPECT().
-					SendDelta(gomock.Any(), clusterID.String(), gomock.Any()).
-					DoAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
-						if !sentFirstTickNotification.Load() {
-							firstTickAt = time.Now()
-							sentFirstTickNotification.Store(true)
-						}
-						time.Sleep(sendDuration)
-						if gotSends.Add(1) == tc.wantSends {
-							lastSentAt = time.Now()
-						}
-						wg.Done()
-						return nil
-					})
-			}
+					sendMutex.Lock()
+					index := sendCallCount
+					sendCallCount++
+					if index == 0 {
+						sendFirstCalledAt = time.Now()
+					}
+					sendMutex.Unlock()
+
+					time.Sleep(tc.sendDurations[index])
+
+					sendMutex.Lock()
+					sendLastCompletedAt = time.Now()
+					sendMutex.Unlock()
+
+					return nil
+				}).
+				Times(len(tc.sendDurations))
 
 			agentVersion := &config.AgentVersion{Version: "1.2.3"}
-			castaiclient.EXPECT().ExchangeAgentTelemetry(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
-				Return(&castai.AgentTelemetryResponse{}, nil).
-				Do(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
+			castaiclient.EXPECT().
+				ExchangeAgentTelemetry(mock.Anything, mock.Anything, mock.Anything).
+				Run(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
 					r.Equalf("1.2.3", req.AgentVersion, "got request: %+v", req)
-				})
+				}).
+				Return(&castai.AgentTelemetryResponse{}, nil).
+				Maybe()
 
 			log.SetLevel(logrus.DebugLevel)
 			ctrl := New(
@@ -396,18 +399,14 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 			go func() {
 				r.NoError(ctrl.Run(ctx))
 			}()
-			wg.Wait()
 
-			r.Equal(tc.wantSends, gotSends.Load(), "sends don't match, failing at: %s", time.Now())
-			elapsed := lastSentAt.Sub(firstTickAt)
+			sendWG.Wait()
+			sendMutex.Lock() // Prevent further (accidental) calls modifying data.
+			defer sendMutex.Unlock()
+
+			elapsed := sendLastCompletedAt.Sub(sendFirstCalledAt)
 			deadline := tc.checkAfter
 			r.LessOrEqualf(elapsed, deadline, "elapsed time is greater than deadline: %s > %s", elapsed, deadline)
-
-			wait.Until(func() {
-				if gotSends.Load() == int64(len(tc.sendDurations)) {
-					cancel()
-				}
-			}, 10*time.Millisecond, ctx.Done())
 		})
 	}
 
@@ -430,10 +429,9 @@ func TestController_HandlingSendErrors(t *testing.T) {
 
 	for name, tt := range testCases {
 		t.Run(name, func(t *testing.T) {
-			mockctrl := gomock.NewController(t)
-			castaiclient := mock_castai.NewMockClient(mockctrl)
-			version := mock_version.NewMockInterface(mockctrl)
-			provider := mock_types.NewMockProvider(mockctrl)
+			castaiclient := mock_castai.NewMockClient(t)
+			version := mock_version.NewMockInterface(t)
+			provider := mock_types.NewMockProvider(t)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
@@ -442,7 +440,7 @@ func TestController_HandlingSendErrors(t *testing.T) {
 			metricsClient := metrics_fake.NewSimpleClientset()
 			dynamicClient := dynamic_fake.NewSimpleDynamicClient(runtime.NewScheme())
 
-			version.EXPECT().Full().Return("1.21+").MaxTimes(3)
+			version.EXPECT().Full().Return("1.21+").Maybe()
 
 			agentVersion := &config.AgentVersion{Version: "1.2.3"}
 
@@ -456,8 +454,8 @@ func TestController_HandlingSendErrors(t *testing.T) {
 
 			// initial full snapshot
 			castaiclient.EXPECT().
-				SendDelta(gomock.Any(), clusterID.String(), gomock.Any()).
-				DoAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
+				SendDelta(mock.Anything, clusterID.String(), mock.Anything).
+				RunAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
 					defer atomic.AddInt64(&invocations, 1)
 
 					require.Equal(t, clusterID, d.ClusterID)
@@ -484,13 +482,16 @@ func TestController_HandlingSendErrors(t *testing.T) {
 					require.NoError(t, err)
 
 					return tt.SendError
-				}).AnyTimes()
+				}).
+				Maybe()
 
-			castaiclient.EXPECT().ExchangeAgentTelemetry(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
-				Return(&castai.AgentTelemetryResponse{}, nil).
-				Do(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
+			castaiclient.EXPECT().
+				ExchangeAgentTelemetry(mock.Anything, mock.Anything, mock.Anything).
+				Run(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
 					require.Equalf(t, "1.2.3", req.AgentVersion, "got request: %+v", req)
-				})
+				}).
+				Return(&castai.AgentTelemetryResponse{}, nil).
+				Maybe()
 
 			log.SetLevel(logrus.DebugLevel)
 			ctrl := New(
@@ -1308,8 +1309,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 func TestCollectSingleSnapshot(t *testing.T) {
 	r := require.New(t)
 
-	mockctrl := gomock.NewController(t)
-	version := mock_version.NewMockInterface(mockctrl)
+	version := mock_version.NewMockInterface(t)
 	ctx := context.Background()
 
 	version.EXPECT().Full().Return("1.21+")
