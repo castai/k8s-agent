@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	datadoghqv1alpha1 "github.com/DataDog/extendeddaemonset/api/v1alpha1"
@@ -91,6 +92,10 @@ type Controller struct {
 	conditionalInformers    []conditionalInformer
 	selfSubjectAccessReview authorizationtypev1.SelfSubjectAccessReviewInterface
 	lastSend                time.Time
+
+	// isLeader indicates whether the controller is running as a leader in a HA setup.
+	// if controller is not a leader, it will not send any deltas to the backend.
+	isLeader atomic.Bool
 }
 
 type conditionalInformer struct {
@@ -542,6 +547,11 @@ func (c *Controller) processItem(i interface{}) {
 }
 
 func (c *Controller) send(ctx context.Context) {
+	// If not a leader, skip sending deltas.
+	if !c.isLeader.Load() {
+		c.deltaBatcher.GetMapAndClear()
+		return
+	}
 	c.trackSendMetrics(func() {
 		newBatch := c.deltaBatcher.GetMapAndClear()
 		c.prepareNodesForSend(ctx, newBatch)
@@ -723,6 +733,16 @@ func (c *Controller) Start(done <-chan struct{}) {
 		go informer.Run(done)
 	}
 }
+
+func (c *Controller) SetLeader(isLeader bool) {
+	c.isLeader.Store(isLeader)
+	if isLeader {
+		c.log.Info("controller is now running as leader")
+	} else {
+		c.log.Info("controller is now running as follower")
+	}
+}
+
 func extractGroupVersionsFromApiResourceError(log logrus.FieldLogger, err error) map[schema.GroupVersion]bool {
 	cleanedString := strings.Split(err.Error(), "unable to retrieve the complete list of server APIs: ")[1]
 	paths := strings.Split(cleanedString, ",")

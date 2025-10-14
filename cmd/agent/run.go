@@ -157,6 +157,9 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 	if err != nil {
 		return err
 	}
+	if restconfig == nil {
+		return fmt.Errorf("kubeconfig is nil")
+	}
 
 	if err := v1beta1.AddToScheme(scheme.Scheme); err != nil {
 		return fmt.Errorf("adding metrics objs to scheme: %w", err)
@@ -201,64 +204,73 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 	log.Data["provider"] = provider.Name()
 	log.Infof("using provider %q", provider.Name())
 
-	agentLoopFunc := func(ctx context.Context) error {
-		clusterID := ""
-		if cfg.Static != nil {
-			clusterID = cfg.Static.ClusterID
-		}
-
-		if clusterID != "" {
-			log.WithField("cluster_id", clusterID).Info("cluster ID provided by env variable")
-		}
-
-		if clusterID == "" {
-			reg, err := provider.RegisterCluster(ctx, castaiclient)
-			if err != nil {
-				return fmt.Errorf("registering cluster: %w", err)
-			}
-			clusterID = reg.ClusterID
-			log.WithField("cluster_id", clusterID).Infof("cluster registered: %v", reg)
-		}
-
-		// Final check to ensure we don't run without a cluster ID.
-		if clusterID == "" {
-			// This is not normal, but we see some requests with missing cluster IDs. Agent without cluster ID will not be
-			// able to upload snapshots which means it's serving no purpose. It's best to raise this issue and get it fixed.
-			return fmt.Errorf("cluster ID is still empty after initialization")
-		}
-
-		clusterIDChangedHandler(clusterID)
-
-		if err := saveMetadata(clusterID, cfg); err != nil {
-			return err
-		}
-
-		err = controller.Loop(
-			ctx,
-			log,
-			clientset,
-			metricsClient,
-			dynamicClient,
-			castaiclient,
-			provider,
-			clusterID,
-			cfg,
-			agentVersion,
-			ctrlHealthz,
-		)
-		if err != nil {
-			return fmt.Errorf("controller loop error: %w", err)
-		}
-
-		return nil
+	// Initialize cluster registration once
+	clusterID := ""
+	if cfg.Static != nil {
+		clusterID = cfg.Static.ClusterID
 	}
 
+	if clusterID != "" {
+		log.WithField("cluster_id", clusterID).Info("cluster ID provided by env variable")
+	}
+
+	if clusterID == "" {
+		reg, err := provider.RegisterCluster(ctx, castaiclient)
+		if err != nil {
+			return fmt.Errorf("registering cluster: %w", err)
+		}
+		clusterID = reg.ClusterID
+		log.WithField("cluster_id", clusterID).Infof("cluster registered: %v", reg)
+	}
+
+	// Final check to ensure we don't run without a cluster ID.
+	if clusterID == "" {
+		return fmt.Errorf("cluster ID is still empty after initialization")
+	}
+
+	clusterIDChangedHandler(clusterID)
+
+	if err := saveMetadata(clusterID, cfg); err != nil {
+		return err
+	}
+
+	// Initialize controller once using worker.CreateController
+	ctrl, err := controller.CreateController(
+		ctx,
+		log,
+		clientset,
+		metricsClient,
+		dynamicClient,
+		castaiclient,
+		provider,
+		clusterID,
+		cfg,
+		agentVersion,
+		ctrlHealthz,
+	)
+	if err != nil {
+		return fmt.Errorf("creating controller: %w", err)
+	}
+
+	// Start the controller - informers will run continuously
+	ctrl.Start(ctx.Done())
+
+	// Start controller loop in background with restart logic (generalized)
+	go func() {
+		if err := controller.RunControllerWithRestart(ctx, log, ctrl); err != nil {
+			exitCh <- fmt.Errorf("controller with restart error: %w", err)
+		}
+	}()
+
 	if cfg.LeaderElection.Enabled {
-		replicas.Run(ctx, log, cfg.LeaderElection, clientset, leaderWatchDog, func(ctx context.Context) {
-			exitCh <- agentLoopFunc(ctx)
-		})
+		// Run leader election with the shared controller
+		// Leadership changes will only affect whether data is sent to CAST AI
+		replicas.RunWithSharedController(ctx, log, cfg.LeaderElection, clientset, leaderWatchDog, ctrl)
 	} else {
-		exitCh <- agentLoopFunc(ctx)
+		// In non-HA mode, always act as leader
+		ctrl.SetLeader(true)
+		// Wait for context cancellation in non-HA mode
+		<-ctx.Done()
 	}
 
 	return nil
@@ -378,11 +390,11 @@ func portToServerAddr(port int) string {
 }
 
 func saveMetadata(clusterID string, cfg config.Config) error {
-	metadata := monitor.Metadata{
+	metadataObj := monitor.Metadata{
 		ClusterID: clusterID,
 		ProcessID: uint64(os.Getpid()),
 	}
-	if err := metadata.Save(cfg.MonitorMetadata); err != nil {
+	if err := metadataObj.Save(cfg.MonitorMetadata); err != nil {
 		return fmt.Errorf("saving metadata: %w", err)
 	}
 	return nil
