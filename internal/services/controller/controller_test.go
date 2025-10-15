@@ -47,9 +47,8 @@ import (
 	mock_castai "castai-agent/mocks/internal_/castai"
 	mock_types "castai-agent/mocks/internal_/services/providers/types"
 	mock_version "castai-agent/mocks/internal_/services/version"
-	"castai-agent/pkg/labels"
-
 	mock_discovery "castai-agent/mocks/k8s.io/client-go/discovery"
+	"castai-agent/pkg/labels"
 )
 
 var defaultHealthzCfg = config.Config{Controller: &config.Controller{
