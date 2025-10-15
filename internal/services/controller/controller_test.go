@@ -47,8 +47,9 @@ import (
 	mock_castai "castai-agent/mocks/internal_/castai"
 	mock_types "castai-agent/mocks/internal_/services/providers/types"
 	mock_version "castai-agent/mocks/internal_/services/version"
-	mock_discovery "castai-agent/mocks/k8s.io/client-go/discovery"
 	"castai-agent/pkg/labels"
+
+	mock_discovery "castai-agent/mocks/k8s.io/client-go/discovery"
 )
 
 var defaultHealthzCfg = config.Config{Controller: &config.Controller{
@@ -270,14 +271,12 @@ func TestController_ApiResourcesErrorProcessing(t *testing.T) {
 }
 
 func TestController_ShouldSendByInterval(t *testing.T) {
-	tt := []struct {
-		name          string
+	tt := map[string]struct {
 		sendInterval  time.Duration
 		sendDurations []time.Duration
 		checkAfter    time.Duration
 	}{
-		{
-			name:         "should trigger all sends when none exceed allocated intervals",
+		"should trigger all sends when none exceed allocated intervals": {
 			sendInterval: 300 * time.Millisecond,
 			sendDurations: []time.Duration{
 				// Send by 300ms
@@ -291,8 +290,7 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 			},
 			checkAfter: 1200 * time.Millisecond,
 		},
-		{
-			name:         "should skip gather if previous one isn't completed (one time window)",
+		"should skip gather if previous one isn't completed (one time window)": {
 			sendInterval: 300 * time.Millisecond,
 			sendDurations: []time.Duration{
 				// At 0, completed by 600
@@ -302,8 +300,7 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 			},
 			checkAfter: 900 * time.Millisecond,
 		},
-		{
-			name:         "should skip all sends if previous one isn't completed (2 time windows)",
+		"should skip all sends if previous one isn't completed (2 time windows)": {
 			sendInterval: 300 * time.Millisecond,
 			sendDurations: []time.Duration{
 				// At 0, completed by 900
@@ -315,8 +312,8 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tt {
-		t.Run(tc.name, func(t *testing.T) {
+	for name, tc := range tt {
+		t.Run(name, func(t *testing.T) {
 			castaiclient := mock_castai.NewMockClient(t)
 			version := mock_version.NewMockInterface(t)
 			provider := mock_types.NewMockProvider(t)
