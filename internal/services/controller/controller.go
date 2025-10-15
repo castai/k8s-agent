@@ -81,8 +81,8 @@ type Controller struct {
 	deltaBatcher  *delta.Batcher[*delta.Item]
 	deltaCompiler *delta.Compiler[*delta.Item]
 
-	// sendMu ensures that only one goroutine can send deltas
-	sendMu sync.Mutex
+	// gatherMu ensures that only one goroutine can gather deltas
+	gatherMu sync.Mutex
 
 	triggerRestart func()
 
@@ -94,7 +94,7 @@ type Controller struct {
 	lastSend                time.Time
 
 	// isLeader indicates whether the controller is running as a leader in a HA setup.
-	// if controller is not a leader, it will not send any deltas to the backend.
+	// if controller is not a leader, it will not gather any deltas to the backend.
 	isLeader atomic.Bool
 }
 
@@ -365,31 +365,35 @@ func (c *Controller) Run(ctx context.Context) error {
 
 		// Since both initial snapshot collection and event handlers writes to the same delta queue add
 		// some sleep to prevent sending few large deltas on initial agent startup.
-		c.log.Infof("sleeping for %s before starting to send cluster deltas", c.cfg.InitialSleepDuration)
+		if c.isLeader.Load() {
+			c.log.Infof("sleeping for %s before starting to gather cluster deltas", c.cfg.InitialSleepDuration)
+		}
 		time.Sleep(c.cfg.InitialSleepDuration)
 
 		c.healthzProvider.Initialized()
 
-		c.log.Infof("sending cluster deltas every %s", c.cfg.Interval)
+		if c.isLeader.Load() {
+			c.log.Infof("sending cluster deltas every %s", c.cfg.Interval)
+		}
 
-		sendDeltas := func() {
-			// Check if another goroutine is trying to send deltas.
-			if !c.sendMu.TryLock() {
-				// If it is, don't try to send deltas on this turn to avoid a backlog of sends.
+		gatherDeltas := func() {
+			// Check if another goroutine is trying to gather deltas.
+			if !c.gatherMu.TryLock() {
+				// If it is, don't try to gather deltas on this turn to avoid a backlog of sends.
 				return
 			}
 			// Since Mutex.TryLock() acquires a lock on success,
 			// release it immediately to allow the new sending goroutine to do its job.
-			defer c.sendMu.Unlock()
-			c.send(ctx)
+			defer c.gatherMu.Unlock()
+			c.gather(ctx)
 		}
 		mempr := memorypressure.MemoryPressure{
 			Ctx:      ctx,
 			Interval: c.cfg.MemoryPressureInterval,
 			Log:      c.log,
 		}
-		go mempr.OnMemoryPressure(sendDeltas)
-		wait.NonSlidingUntil(sendDeltas, c.cfg.Interval, ctx.Done())
+		go mempr.OnMemoryPressure(gatherDeltas)
+		wait.NonSlidingUntil(gatherDeltas, c.cfg.Interval, ctx.Done())
 		return nil
 	})
 
@@ -546,8 +550,8 @@ func (c *Controller) processItem(i interface{}) {
 	c.deltaBatcher.Write(di)
 }
 
-func (c *Controller) send(ctx context.Context) {
-	// If not a leader, skip sending deltas.
+func (c *Controller) gather(ctx context.Context) {
+	// If not a leader, gather but skip sending deltas.
 	if !c.isLeader.Load() {
 		c.deltaBatcher.GetMapAndClear()
 		return

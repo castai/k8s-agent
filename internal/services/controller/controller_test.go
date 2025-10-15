@@ -47,8 +47,9 @@ import (
 	mock_castai "castai-agent/mocks/internal_/castai"
 	mock_types "castai-agent/mocks/internal_/services/providers/types"
 	mock_version "castai-agent/mocks/internal_/services/version"
-	mock_discovery "castai-agent/mocks/k8s.io/client-go/discovery"
 	"castai-agent/pkg/labels"
+
+	mock_discovery "castai-agent/mocks/k8s.io/client-go/discovery"
 )
 
 var defaultHealthzCfg = config.Config{Controller: &config.Controller{
@@ -290,7 +291,7 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 			checkAfter: 1200 * time.Millisecond,
 		},
 		{
-			name:         "should skip send if previous one isn't completed (one time window)",
+			name:         "should skip gather if previous one isn't completed (one time window)",
 			sendInterval: 300 * time.Millisecond,
 			sendDurations: []time.Duration{
 				// At 0, completed by 600
