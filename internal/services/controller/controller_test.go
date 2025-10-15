@@ -239,6 +239,8 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 				ctrl.discovery = mockDiscovery
 			}
 
+			ctrl.isLeader.Store(true)
+
 			ctrl.Start(ctx.Done())
 
 			go func() {
@@ -396,6 +398,8 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 				"",
 			)
 
+			ctrl.isLeader.Store(true)
+
 			ctrl.Start(ctx.Done())
 
 			go func() {
@@ -515,6 +519,8 @@ func TestController_HandlingSendErrors(t *testing.T) {
 				clientset.AuthorizationV1().SelfSubjectAccessReviews(),
 				"",
 			)
+
+			ctrl.isLeader.Store(true)
 
 			ctrl.Start(ctx.Done())
 
