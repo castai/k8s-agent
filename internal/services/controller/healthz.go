@@ -27,27 +27,25 @@ type HealthzProvider struct {
 	lastHealthyActionAt *time.Time
 }
 
-func (h *HealthzProvider) Check(_ *http.Request) (err error) {
-	defer func() {
-		if err != nil {
-			h.log.Warnf("Health check failed due to: %v", err)
-		}
-	}()
-
-	if h.lastHealthyActionAt != nil {
-		if time.Since(*h.lastHealthyActionAt) > h.cfg.Controller.HealthySnapshotIntervalLimit {
-			return fmt.Errorf("time since initialization or last snapshot sent is over the considered healthy limit of %s", h.cfg.Controller.HealthySnapshotIntervalLimit)
-		}
-		return nil
+// Readiness: Only ready if lastHealthyActionAt is set and within healthy interval.
+func (h *HealthzProvider) CheckReadiness(_ *http.Request) error {
+	if h.lastHealthyActionAt == nil {
+		return fmt.Errorf("controller not initialized or snapshot not sent")
 	}
-
-	if h.initializeStartedAt != nil {
-		if time.Since(*h.initializeStartedAt) > h.initHardTimeout {
-			return fmt.Errorf("controller initialization is taking longer than the hard timeout of %s", h.initHardTimeout)
-		}
-		return nil
+	if time.Since(*h.lastHealthyActionAt) > h.cfg.Controller.HealthySnapshotIntervalLimit {
+		return fmt.Errorf("last healthy action is over the healthy limit of %s", h.cfg.Controller.HealthySnapshotIntervalLimit)
 	}
+	return nil
+}
 
+// Liveness: Ok if initialization started, fail if not started or timeout exceeded.
+func (h *HealthzProvider) CheckLiveness(_ *http.Request) error {
+	if h.initializeStartedAt == nil {
+		return fmt.Errorf("controller initialization not started")
+	}
+	if time.Since(*h.initializeStartedAt) > h.initHardTimeout {
+		return fmt.Errorf("controller initialization exceeded hard timeout of %s", h.initHardTimeout)
+	}
 	return nil
 }
 
@@ -59,6 +57,10 @@ func (h *HealthzProvider) Initializing() {
 }
 
 func (h *HealthzProvider) Initialized() {
+	h.healthyAction()
+}
+
+func (h *HealthzProvider) DeltasRead() {
 	h.healthyAction()
 }
 

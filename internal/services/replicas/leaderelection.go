@@ -56,57 +56,6 @@ func RunWithSharedController(
 				log.Info("stopped leading")
 				controller.SetLeader(false)
 			},
-			OnNewLeader: func(identity string) {
-				if identity == replicaIdentity {
-					return
-				}
-				log.WithField("leader_identity", identity).Info("new leader elected")
-			},
-		},
-	}
-
-	leaderelection.RunOrDie(ctx, leConfig)
-}
-
-// Legacy Run function for backward compatibility
-func Run(
-	ctx context.Context,
-	log logrus.FieldLogger,
-	cfg config.LeaderElectionConfig,
-	client kubernetes.Interface,
-	watchDog *leaderelection.HealthzAdaptor,
-	runController func(ctx context.Context, ctrl *controller.Controller),
-) {
-	replicaIdentity := uuid.New().String()
-	log = log.WithField("own_identity", replicaIdentity)
-	log.Info("starting with leader election")
-
-	lock := &resourcelock.LeaseLock{
-		LeaseMeta: metav1.ObjectMeta{
-			Name:      cfg.LockName,
-			Namespace: cfg.Namespace,
-		},
-		Client: client.CoordinationV1(),
-		LockConfig: resourcelock.ResourceLockConfig{
-			Identity: replicaIdentity,
-		},
-	}
-
-	leConfig := leaderelection.LeaderElectionConfig{
-		Lock:            lock,
-		ReleaseOnCancel: true,
-		LeaseDuration:   15 * time.Second,
-		RenewDeadline:   10 * time.Second,
-		RetryPeriod:     2 * time.Second,
-		WatchDog:        watchDog,
-		Callbacks: leaderelection.LeaderCallbacks{
-			OnStartedLeading: func(ctx context.Context) {
-				log.Info("started leading")
-				runController(ctx, nil)
-			},
-			OnStoppedLeading: func() {
-				log.Info("stopped leading")
-			},
 		},
 	}
 
