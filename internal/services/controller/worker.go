@@ -65,6 +65,7 @@ func CreateController(
 // but the controller logic can restart on errors.
 func RunControllerWithRestart(ctx context.Context, log logrus.FieldLogger, ctrl *Controller) error {
 	defer func() {
+		log.Info("stopping controller")
 		if err := recover(); err != nil {
 			log.Errorf("controller panic: %v", err)
 		}
@@ -88,6 +89,7 @@ func repeatUntilContextClosed(ctx context.Context, fn func(context.Context) erro
 		default:
 		}
 
+		logrus.Info("controller iteration starting")
 		if err := fn(ctx); err != nil {
 			return fmt.Errorf("running controller function: %w", err)
 		}

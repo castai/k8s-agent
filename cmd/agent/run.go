@@ -34,6 +34,17 @@ import (
 	castailog "castai-agent/pkg/log"
 )
 
+const (
+	// exitChannelBufferSize defines the buffer size for the exit error channel
+	exitChannelBufferSize = 10
+
+	// leaderHealthzTimeout defines how long to wait for leader health check
+	leaderHealthzTimeout = 2 * time.Minute
+
+	// Memory conversion constants
+	bytesToMiB = 1024 * 1024
+)
+
 func run(ctx context.Context) error {
 	cfg := config.Get()
 	if cfg.API.Key == "" {
@@ -65,20 +76,22 @@ func run(ctx context.Context) error {
 
 	if cfg.Log.PrintMemoryUsageEvery != nil {
 		go func() {
-			timer := time.NewTicker(*cfg.Log.PrintMemoryUsageEvery)
+			ticker := time.NewTicker(*cfg.Log.PrintMemoryUsageEvery)
+			defer ticker.Stop()
+
 			for {
 				select {
-				case <-timer.C:
+				case <-ticker.C:
 					var m runtime.MemStats
 					runtime.ReadMemStats(&m)
 					log.WithFields(logrus.Fields{
-						"Alloc_MiB":      m.Alloc / 1024 / 1024,
-						"TotalAlloc_MiB": m.TotalAlloc / 1024 / 1024,
-						"Sys_MiB":        m.Sys / 1024 / 1024,
+						"Alloc_MiB":      m.Alloc / bytesToMiB,
+						"TotalAlloc_MiB": m.TotalAlloc / bytesToMiB,
+						"Sys_MiB":        m.Sys / bytesToMiB,
 						"NumGC":          m.NumGC,
-					}).Infof("memory usage")
+					}).Info("memory usage")
 				case <-ctx.Done():
-					break
+					return
 				}
 			}
 		}()
@@ -123,7 +136,7 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 
 	// buffer will allow for all senders to push, even though we will only read first error and cancel context after it;
 	// all errors from exitCh are logged
-	exitCh := make(chan error, 10)
+	exitCh := make(chan error, exitChannelBufferSize)
 	go watchExitErrors(ctx, log, exitCh, ctxCancel)
 
 	agentVersion := config.VersionInfo
@@ -138,7 +151,7 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 	ctrlHealthz := controller.NewHealthzProvider(cfg, log)
 
 	// if pod is holding invalid leader lease, this health check will ensure to kill it by failing pod health check
-	leaderWatchDog := leaderelection.NewLeaderHealthzAdaptor(time.Minute * 2)
+	leaderWatchDog := leaderelection.NewLeaderHealthzAdaptor(leaderHealthzTimeout)
 	checks := map[string]healthz.Checker{
 		"liveness":  ctrlHealthz.CheckLiveness,
 		"readiness": ctrlHealthz.CheckReadiness,
@@ -344,7 +357,9 @@ func runHealthzEndpoints(cfg config.Config, log *logrus.Entry, checks map[string
 			}
 
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("ok"))
+			if _, err := w.Write([]byte("ok")); err != nil {
+				log.Errorf("failed to write response: %v", err)
+			}
 		}
 	}
 
