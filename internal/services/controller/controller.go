@@ -133,7 +133,6 @@ func CollectSingleSnapshot(ctx context.Context,
 	cfg *config.Controller,
 	v version.Interface,
 	castwareNamespace string,
-	leaderStatusCh <-chan bool,
 ) (*castai.Delta, error) {
 	tweakListOptions := func(options *metav1.ListOptions) {
 		if cfg.ForcePagination && options.ResourceVersion == "0" {

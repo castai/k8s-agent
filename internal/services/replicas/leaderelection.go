@@ -2,6 +2,7 @@ package replicas
 
 import (
 	"context"
+	"math/rand"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,6 +30,18 @@ func RunLeaderElection(
 	replicaIdentity := uuid.New().String()
 	log = log.WithField("own_identity", replicaIdentity)
 	log.Info("starting leader election")
+
+	initialDelay := calculateInitialDelay()
+	if initialDelay > 0 {
+		log.Infof("waiting %v before attempting leader election to allow existing leaders to stabilize", initialDelay)
+		select {
+		case <-time.After(initialDelay):
+			log.Info("initial delay completed, proceeding with leader election")
+		case <-ctx.Done():
+			log.Info("leader election stopped during initial delay due to context cancellation")
+			return
+		}
+	}
 
 	// Run leader election with automatic restart logic
 	// This ensures that if RunOrDie exits for any reason other than context cancellation,
@@ -64,6 +77,13 @@ func RunLeaderElection(
 			return
 		}
 	}
+}
+
+func calculateInitialDelay() time.Duration {
+	minDelay := 1 * time.Second
+	maxDelay := 5 * time.Second
+	jitter := time.Duration(rand.Int63n(int64(maxDelay - minDelay)))
+	return minDelay + jitter
 }
 
 func runLeaderElection(
