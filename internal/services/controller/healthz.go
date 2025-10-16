@@ -51,23 +51,37 @@ func (h *HealthzProvider) CheckReadiness(r *http.Request) error {
 	return nil
 }
 
-// Liveness: Ok if initialization started, fail if not started or timeout exceeded.
+// Liveness: Ok if initializing (within timeout) or if initialized with recent healthy action.
 func (h *HealthzProvider) CheckLiveness(r *http.Request) error {
-	if h.initializeStartedAt == nil {
-		h.log.Debug("liveness check failed: controller initialization not started")
-		return fmt.Errorf("controller initialization not started")
+	// Case 1: Initialized - check for recent healthy action (check this first)
+	if h.lastHealthyActionAt != nil {
+		timeSinceLastHealthy := time.Since(*h.lastHealthyActionAt)
+		if timeSinceLastHealthy > h.cfg.Controller.HealthySnapshotIntervalLimit {
+			h.log.WithField("time_since_last_healthy", timeSinceLastHealthy).
+				WithField("healthy_limit", h.cfg.Controller.HealthySnapshotIntervalLimit).
+				Debug("liveness check failed: last healthy action exceeded limit")
+			return fmt.Errorf("last healthy action is over the healthy limit of %s", h.cfg.Controller.HealthySnapshotIntervalLimit)
+		}
+		h.log.Debug("liveness check passed: healthy")
+		return nil
 	}
 
-	timeSinceInit := time.Since(*h.initializeStartedAt)
-	if timeSinceInit > h.initHardTimeout {
-		h.log.WithField("time_since_init", timeSinceInit).
-			WithField("hard_timeout", h.initHardTimeout).
-			Debug("liveness check failed: initialization timeout exceeded")
-		return fmt.Errorf("controller initialization exceeded hard timeout of %s", h.initHardTimeout)
+	// Case 2: Still initializing
+	if h.initializeStartedAt != nil {
+		timeSinceInit := time.Since(*h.initializeStartedAt)
+		if timeSinceInit > h.initHardTimeout {
+			h.log.WithField("time_since_init", timeSinceInit).
+				WithField("hard_timeout", h.initHardTimeout).
+				Debug("liveness check failed: initialization timeout exceeded")
+			return fmt.Errorf("controller initialization exceeded hard timeout of %s", h.initHardTimeout)
+		}
+		h.log.Debug("liveness check passed: initializing")
+		return nil
 	}
 
-	h.log.Debug("liveness check passed")
-	return nil
+	// Case 3: Neither initializing nor initialized
+	h.log.Debug("liveness check failed: controller not started")
+	return fmt.Errorf("controller not started")
 }
 
 func (h *HealthzProvider) Initializing() {
