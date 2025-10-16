@@ -16,65 +16,67 @@ import (
 	"castai-agent/internal/services/version"
 )
 
-// CreateController creates a new controller instance without the restart loop.
-// This is used for the continuous informer pattern where the controller runs continuously
-// and only leadership status controls data sending.
-func CreateController(
-	ctx context.Context,
-	log logrus.FieldLogger,
-	clientset kubernetes.Interface,
-	metricsClient versioned.Interface,
-	dynamicClient dynamic.Interface,
-	castaiclient castai.Client,
-	provider types.Provider,
-	clusterID string,
-	cfg config.Config,
-	agentVersion *config.AgentVersion,
-	healthzProvider *HealthzProvider,
-) (*Controller, error) {
-	log = log.WithField("controller_id", uuid.New().String())
-
-	v, err := version.Get(log, clientset)
-	if err != nil {
-		return nil, fmt.Errorf("getting kubernetes version: %w", err)
-	}
-
-	log = log.WithField("k8s_version", v.Full())
-
-	ctrl := New(
-		log,
-		clientset,
-		dynamicClient,
-		castaiclient,
-		metricsClient,
-		provider,
-		clusterID,
-		cfg.Controller,
-		v,
-		agentVersion,
-		healthzProvider,
-		clientset.AuthorizationV1().SelfSubjectAccessReviews(),
-		cfg.SelfPod.Namespace,
-	)
-
-	return ctrl, nil
+// ControllerFactory contains all dependencies needed to create a controller
+type ControllerFactory struct {
+	Log             logrus.FieldLogger
+	Clientset       kubernetes.Interface
+	MetricsClient   versioned.Interface
+	DynamicClient   dynamic.Interface
+	CastaiClient    castai.Client
+	Provider        types.Provider
+	ClusterID       string
+	Config          config.Config
+	AgentVersion    *config.AgentVersion
+	HealthzProvider *HealthzProvider
+	LeaderStatusCh  <-chan bool
 }
 
 // RunControllerWithRestart runs a controller with restart logic when ctrl.Run() fails.
-// This is used for the continuous informer pattern where informers stay running
-// but the controller logic can restart on errors.
-func RunControllerWithRestart(ctx context.Context, log logrus.FieldLogger, ctrl *Controller) error {
+// This properly recreates the controller on each restart to ensure all initialization logic runs.
+func RunControllerWithRestart(
+	ctx context.Context,
+	factory *ControllerFactory,
+) error {
 	defer func() {
-		log.Info("stopping controller")
+		factory.Log.Info("stopping controller")
 		if err := recover(); err != nil {
-			log.Errorf("controller panic: %v", err)
+			factory.Log.Errorf("controller panic: %v", err)
 		}
 	}()
 
-	// Use the same restart pattern as repeatUntilContextClosed
 	return repeatUntilContextClosed(ctx, func(ctx context.Context) error {
+		log := factory.Log.WithField("controller_id", uuid.New().String())
+
+		v, err := version.Get(log, factory.Clientset)
+		if err != nil {
+			return fmt.Errorf("getting kubernetes version: %w", err)
+		}
+
+		log = log.WithField("k8s_version", v.Full())
+
+		ctrl := New(
+			factory.Log,
+			factory.Clientset,
+			factory.DynamicClient,
+			factory.CastaiClient,
+			factory.MetricsClient,
+			factory.Provider,
+			factory.ClusterID,
+			factory.Config.Controller,
+			v,
+			factory.AgentVersion,
+			factory.HealthzProvider,
+			factory.Clientset.AuthorizationV1().SelfSubjectAccessReviews(),
+			factory.Config.SelfPod.Namespace,
+			factory.LeaderStatusCh,
+		)
+
+		// Start informers
+		ctrl.Start(ctx.Done())
+
+		// Run the controller
 		if err := ctrl.Run(ctx); err != nil {
-			log.Errorf("controller run error, restarting: %w", err)
+			factory.Log.Errorf("controller run error, will recreate and restart: %v", err)
 			return err
 		}
 		return nil

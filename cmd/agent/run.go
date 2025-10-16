@@ -247,47 +247,69 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 		return err
 	}
 
-	// Initialize controller once using worker.CreateController
-	ctrl, err := controller.CreateController(
-		ctx,
-		log,
-		clientset,
-		metricsClient,
-		dynamicClient,
-		castaiclient,
-		provider,
-		clusterID,
-		cfg,
-		agentVersion,
-		ctrlHealthz,
-	)
-	if err != nil {
-		return fmt.Errorf("creating controller: %w", err)
-	}
-
-	// Start the controller - informers will run continuously
-	ctrl.Start(ctx.Done())
-
-	// Start controller loop in background with restart logic (generalized)
-	go func() {
-		if err := controller.RunControllerWithRestart(ctx, log, ctrl); err != nil {
-			exitCh <- fmt.Errorf("controller with restart error: %w", err)
-		}
-	}()
-
 	if cfg.LeaderElection.Enabled {
-		// Run leader election with the shared controller
-		// Leadership changes will only affect whether data is sent to CAST AI
+		// Create a channel for leader status changes (bool instead of LeaderStatusChange)
+		// Buffered channel to avoid blocking leader election on slow consumers
+		leaderStatusCh := make(chan bool, 10)
+
+		factory := &controller.ControllerFactory{
+			Log:             log,
+			Clientset:       clientset,
+			MetricsClient:   metricsClient,
+			DynamicClient:   dynamicClient,
+			CastaiClient:    castaiclient,
+			Provider:        provider,
+			ClusterID:       clusterID,
+			Config:          cfg,
+			AgentVersion:    agentVersion,
+			HealthzProvider: ctrlHealthz,
+			LeaderStatusCh:  leaderStatusCh,
+		}
+
 		go func() {
-			replicas.RunWithSharedController(ctx, log, cfg.LeaderElection, clientset, leaderWatchDog, ctrl)
+			if err := controller.RunControllerWithRestart(ctx, factory); err != nil {
+				exitCh <- fmt.Errorf("controller with restart error: %w", err)
+			}
 		}()
+
+		// Run leader election - it communicates via the channel
+		go func() {
+			replicas.RunLeaderElection(ctx, log, cfg.LeaderElection, clientset, leaderWatchDog, leaderStatusCh)
+		}()
+
 		// Wait for context cancellation in leader election mode
 		<-ctx.Done()
+		log.Info("shutdown signal received, initiating graceful shutdown")
 	} else {
-		// In non-HA mode, always act as leader
-		ctrl.SetLeader(true)
+		// In non-HA mode, create a simple channel that always reports as leader
+		leaderStatusCh := make(chan bool, 1)
+		leaderStatusCh <- true // Set initial leader status
+
+		// Create controller factory
+		factory := &controller.ControllerFactory{
+			Log:             log,
+			Clientset:       clientset,
+			MetricsClient:   metricsClient,
+			DynamicClient:   dynamicClient,
+			CastaiClient:    castaiclient,
+			Provider:        provider,
+			ClusterID:       clusterID,
+			Config:          cfg,
+			AgentVersion:    agentVersion,
+			HealthzProvider: ctrlHealthz,
+			LeaderStatusCh:  leaderStatusCh,
+		}
+
+		// Start controller with restart logic
+		go func() {
+			if err := controller.RunControllerWithRestart(ctx, factory); err != nil {
+				exitCh <- fmt.Errorf("controller with restart error: %w", err)
+			}
+		}()
+
 		// Wait for context cancellation in non-HA mode
 		<-ctx.Done()
+		log.Info("shutdown signal received, initiating graceful shutdown")
 	}
 
 	return nil
@@ -303,7 +325,11 @@ func watchExitErrors(ctx context.Context, log *logrus.Entry, exitCh chan error, 
 			}
 			ctxCancel()
 		case <-ctx.Done():
-			log.Infof("context done")
+			if errors.Is(ctx.Err(), context.Canceled) {
+				log.Info("shutdown initiated: received termination signal")
+			} else {
+				log.Infof("context done: %v", ctx.Err())
+			}
 			return
 		}
 	}

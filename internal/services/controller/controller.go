@@ -96,6 +96,10 @@ type Controller struct {
 	// isLeader indicates whether the controller is running as a leader in a HA setup.
 	// if controller is not a leader, it will not gather any deltas to the backend.
 	isLeader atomic.Bool
+
+	// leaderStatusCh receives leadership status changes from leader election
+	// The controller watches this channel and updates isLeader accordingly
+	leaderStatusCh <-chan bool
 }
 
 type conditionalInformer struct {
@@ -129,6 +133,7 @@ func CollectSingleSnapshot(ctx context.Context,
 	cfg *config.Controller,
 	v version.Interface,
 	castwareNamespace string,
+	leaderStatusCh <-chan bool,
 ) (*castai.Delta, error) {
 	tweakListOptions := func(options *metav1.ListOptions) {
 		if cfg.ForcePagination && options.ResourceVersion == "0" {
@@ -222,6 +227,7 @@ func New(
 	healthzProvider *HealthzProvider,
 	selfSubjectAccessReview authorizationtypev1.SelfSubjectAccessReviewInterface,
 	castwareNamespace string,
+	leaderStatusCh <-chan bool,
 ) *Controller {
 	healthzProvider.Initializing()
 
@@ -315,6 +321,7 @@ func New(
 		informerFactory:         f,
 		conditionalInformers:    conditionalInformers,
 		selfSubjectAccessReview: selfSubjectAccessReview,
+		leaderStatusCh:          leaderStatusCh,
 	}
 }
 
@@ -325,6 +332,11 @@ func (c *Controller) Run(ctx context.Context) error {
 	defer cancel()
 
 	c.triggerRestart = cancel
+
+	// Start watching for leader status changes if channel is provided
+	if c.leaderStatusCh != nil {
+		go c.watchLeaderStatus(ctx)
+	}
 
 	err := waitInformersSync(ctx, c.log, c.informers)
 	if err != nil {
@@ -1190,5 +1202,30 @@ func isResourceAvailable(kind string, apiResourceList *metav1.APIResourceList) b
 func createAdditionalTransformers(cfg *config.Controller) []transformers.Transformer {
 	return []transformers.Transformer{
 		annotations.NewTransformer(cfg.RemoveAnnotationsPrefixes, cfg.AnnotationsMaxLength),
+	}
+}
+
+// watchLeaderStatus listens for leader status changes on the controller's channel
+// and updates the controller's leader status accordingly.
+// This method is called internally by Run() and should not be called directly.
+func (c *Controller) watchLeaderStatus(ctx context.Context) {
+	c.log.Info("starting leader status watcher")
+	for {
+		select {
+		case <-ctx.Done():
+			c.log.Info("leader status watcher stopped due to context cancellation")
+			return
+		case isLeader, ok := <-c.leaderStatusCh:
+			if !ok {
+				c.log.Info("leader status channel closed, stopping watcher")
+				return
+			}
+			c.isLeader.Store(isLeader)
+			if isLeader {
+				c.log.Info("controller is now running as leader")
+			} else {
+				c.log.Info("controller is now running as follower")
+			}
+		}
 	}
 }
