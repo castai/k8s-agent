@@ -47,8 +47,9 @@ import (
 	mock_castai "castai-agent/mocks/internal_/castai"
 	mock_types "castai-agent/mocks/internal_/services/providers/types"
 	mock_version "castai-agent/mocks/internal_/services/version"
-	mock_discovery "castai-agent/mocks/k8s.io/client-go/discovery"
 	"castai-agent/pkg/labels"
+
+	mock_discovery "castai-agent/mocks/k8s.io/client-go/discovery"
 )
 
 var defaultHealthzCfg = config.Config{Controller: &config.Controller{
@@ -238,7 +239,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 				ctrl.discovery = mockDiscovery
 			}
 
-			ctrl.isLeader.Store(true)
+			ctrl.SetLeader(true)
 
 			ctrl.Start(ctx.Done())
 
@@ -393,7 +394,7 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 				"",
 			)
 
-			ctrl.isLeader.Store(true)
+			ctrl.SetLeader(true)
 
 			ctrl.Start(ctx.Done())
 
@@ -515,7 +516,7 @@ func TestController_HandlingSendErrors(t *testing.T) {
 				"",
 			)
 
-			ctrl.isLeader.Store(true)
+			ctrl.SetLeader(true)
 
 			ctrl.Start(ctx.Done())
 
@@ -535,6 +536,84 @@ func TestController_HandlingSendErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestController_ShouldNotSendDeltasIfNotLeader(t *testing.T) {
+	t.Run("should not send any deltas if not leader", func(t *testing.T) {
+		castaiclient := mock_castai.NewMockClient(t)
+		version := mock_version.NewMockInterface(t)
+		provider := mock_types.NewMockProvider(t)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		r := require.New(t)
+
+		_, clientset, dynamicClient, metricsClient := loadInitialHappyPathData(t, runtime.NewScheme())
+
+		version.EXPECT().Full().Return("1.21+").Maybe()
+
+		clusterID := uuid.New()
+		log := logrus.New()
+
+		agentVersion := &config.AgentVersion{Version: "1.2.3"}
+		castaiclient.EXPECT().
+			ExchangeAgentTelemetry(mock.Anything, mock.Anything, mock.Anything).
+			Run(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
+				r.Equalf("1.2.3", req.AgentVersion, "got request: %+v", req)
+			}).
+			Return(&castai.AgentTelemetryResponse{}, nil).
+			Maybe()
+
+		// Track if SendDelta is called - it should never be called
+		var sendDeltaCalled bool
+		castaiclient.EXPECT().SendDelta(mock.Anything, mock.Anything, mock.Anything).
+			Run(func(ctx context.Context, clusterID string, delta *castai.Delta) {
+				sendDeltaCalled = true
+				r.Fail("SendDelta should not be called when controller is not leader")
+			}).
+			Return(nil).
+			Maybe()
+
+		log.SetLevel(logrus.DebugLevel)
+		intervalDuration := 1 * time.Second
+		initialSnapPrepDuration := 5 * time.Second
+		initialSleepDuration := 2 * time.Second
+		ctrl := New(
+			log,
+			clientset,
+			dynamicClient,
+			castaiclient,
+			metricsClient,
+			provider,
+			clusterID.String(),
+			&config.Controller{
+				Interval:             intervalDuration,
+				PrepTimeout:          initialSnapPrepDuration,
+				InitialSleepDuration: initialSleepDuration,
+			},
+			version,
+			agentVersion,
+			NewHealthzProvider(defaultHealthzCfg, log),
+			clientset.AuthorizationV1().SelfSubjectAccessReviews(),
+			"",
+		)
+
+		ctrl.SetLeader(false)
+
+		ctrl.Start(ctx.Done())
+
+		go func() {
+			r.NoError(ctrl.Run(ctx))
+		}()
+
+		wait.Until(func() {
+			<-ctx.Done()
+		}, 2*time.Second, ctx.Done())
+
+		// Verify SendDelta was never called
+		r.False(sendDeltaCalled, "SendDelta should not have been called when controller is not leader")
+	})
 }
 
 func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObject, *fake.Clientset, *dynamic_fake.FakeDynamicClient, *metrics_fake.Clientset) {
