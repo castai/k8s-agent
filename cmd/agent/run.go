@@ -278,7 +278,11 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 	if cfg.LeaderElection.Enabled {
 		// Run leader election with the shared controller
 		// Leadership changes will only affect whether data is sent to CAST AI
-		replicas.RunWithSharedController(ctx, log, cfg.LeaderElection, clientset, leaderWatchDog, ctrl)
+		go func() {
+			replicas.RunWithSharedController(ctx, log, cfg.LeaderElection, clientset, leaderWatchDog, ctrl)
+		}()
+		// Wait for context cancellation in leader election mode
+		<-ctx.Done()
 	} else {
 		// In non-HA mode, always act as leader
 		ctrl.SetLeader(true)
