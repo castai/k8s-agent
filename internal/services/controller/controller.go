@@ -335,6 +335,9 @@ func (c *Controller) Run(ctx context.Context) error {
 	// Start watching for leader status changes if channel is provided
 	if c.leaderStatusCh != nil {
 		go c.watchLeaderStatus(ctx)
+	} else {
+		// If no leader election is used, assume we are the leader
+		c.isLeader.Store(true)
 	}
 
 	err := waitInformersSync(ctx, c.log, c.informers)
@@ -748,15 +751,6 @@ func (c *Controller) Start(done <-chan struct{}) {
 	c.informerFactory.Start(done)
 	for _, informer := range c.independentInformers {
 		go informer.Run(done)
-	}
-}
-
-func (c *Controller) SetLeader(isLeader bool) {
-	c.isLeader.Store(isLeader)
-	if isLeader {
-		c.log.Info("controller is now running as leader")
-	} else {
-		c.log.Info("controller is now running as follower")
 	}
 }
 

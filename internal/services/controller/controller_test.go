@@ -116,7 +116,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			provider := mock_types.NewMockProvider(t)
 			objectsData, clientset, dynamicClient, metricsClient := loadInitialHappyPathData(t, scheme)
 
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 
 			fakeAuthorization := &authfakev1.FakeAuthorizationV1{
@@ -233,13 +233,12 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 				NewHealthzProvider(defaultHealthzCfg, log),
 				fakeAuthorization.SelfSubjectAccessReviews(),
 				"",
+				nil,
 			)
 
 			if mockDiscovery != nil {
 				ctrl.discovery = mockDiscovery
 			}
-
-			ctrl.SetLeader(true)
 
 			ctrl.Start(ctx.Done())
 
@@ -318,7 +317,7 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 			version := mock_version.NewMockInterface(t)
 			provider := mock_types.NewMockProvider(t)
 
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 
 			r := require.New(t)
@@ -392,9 +391,8 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 				NewHealthzProvider(defaultHealthzCfg, log),
 				clientset.AuthorizationV1().SelfSubjectAccessReviews(),
 				"",
+				nil,
 			)
-
-			ctrl.SetLeader(true)
 
 			ctrl.Start(ctx.Done())
 
@@ -435,7 +433,7 @@ func TestController_HandlingSendErrors(t *testing.T) {
 			version := mock_version.NewMockInterface(t)
 			provider := mock_types.NewMockProvider(t)
 
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 
 			clientset := fake.NewSimpleClientset()
@@ -514,9 +512,8 @@ func TestController_HandlingSendErrors(t *testing.T) {
 				NewHealthzProvider(defaultHealthzCfg, log),
 				clientset.AuthorizationV1().SelfSubjectAccessReviews(),
 				"",
+				nil,
 			)
-
-			ctrl.SetLeader(true)
 
 			ctrl.Start(ctx.Done())
 
@@ -544,7 +541,7 @@ func TestController_ShouldNotSendDeltasIfNotLeader(t *testing.T) {
 		version := mock_version.NewMockInterface(t)
 		provider := mock_types.NewMockProvider(t)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 		defer cancel()
 
 		r := require.New(t)
@@ -575,6 +572,8 @@ func TestController_ShouldNotSendDeltasIfNotLeader(t *testing.T) {
 			Return(nil).
 			Maybe()
 
+		leaderCh := make(chan bool, 1)
+
 		log.SetLevel(logrus.DebugLevel)
 		intervalDuration := 1 * time.Second
 		initialSnapPrepDuration := 5 * time.Second
@@ -597,9 +596,10 @@ func TestController_ShouldNotSendDeltasIfNotLeader(t *testing.T) {
 			NewHealthzProvider(defaultHealthzCfg, log),
 			clientset.AuthorizationV1().SelfSubjectAccessReviews(),
 			"",
+			leaderCh,
 		)
 
-		ctrl.SetLeader(false)
+		leaderCh <- false
 
 		ctrl.Start(ctx.Done())
 
@@ -1498,7 +1498,7 @@ func TestCollectSingleSnapshot(t *testing.T) {
 	r := require.New(t)
 
 	version := mock_version.NewMockInterface(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	version.EXPECT().Full().Return("1.21+")
 	ctx = context.WithValue(ctx, "agentVersion", &config.AgentVersion{
