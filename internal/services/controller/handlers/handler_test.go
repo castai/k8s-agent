@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	v1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,6 +17,7 @@ import (
 	"castai-agent/internal/castai"
 	"castai-agent/internal/services/controller/delta"
 	"castai-agent/internal/services/controller/handlers/transformers"
+
 	mock_workqueue "castai-agent/mocks/k8s.io/client-go/util/workqueue"
 )
 
@@ -74,6 +76,12 @@ func Test_handler(t *testing.T) {
 		},
 	}
 
+	hpaV2 := &autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "horizontalpodautoscaler",
+			Namespace: v1.NamespaceDefault,
+		},
+	}
 	pdb := &policyv1.PodDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "poddisruptionbudget",
@@ -85,7 +93,7 @@ func Test_handler(t *testing.T) {
 		Data:       map[string]string{"field1": "value1"},
 	}
 
-	items := []delta.Object{pod, node, pv, pvc, rc, ns, service, hpa, pdb, cfgmap}
+	items := []delta.Object{pod, node, pv, pvc, rc, ns, service, hpa, hpaV2, pdb, cfgmap}
 
 	for _, item := range items {
 		t.Run(fmt.Sprintf("should handle all events for object type %v", item.GetName()), func(t *testing.T) {
