@@ -16,8 +16,7 @@ import (
 	"castai-agent/internal/services/version"
 )
 
-// ControllerFactory contains all dependencies needed to create a controller
-type ControllerFactory struct {
+type Params struct {
 	Log             logrus.FieldLogger
 	Clientset       kubernetes.Interface
 	MetricsClient   versioned.Interface
@@ -32,22 +31,21 @@ type ControllerFactory struct {
 }
 
 // RunControllerWithRestart runs a controller with restart logic when ctrl.Run() fails.
-// This properly recreates the controller on each restart to ensure all initialization logic runs.
 func RunControllerWithRestart(
 	ctx context.Context,
-	factory *ControllerFactory,
+	params *Params,
 ) error {
 	defer func() {
-		factory.Log.Info("stopping controller")
+		params.Log.Info("stopping controller")
 		if err := recover(); err != nil {
-			factory.Log.Errorf("controller panic: %v", err)
+			params.Log.Errorf("controller panic: %v", err)
 		}
 	}()
 
 	return repeatUntilContextClosed(ctx, func(ctx context.Context) error {
-		log := factory.Log.WithField("controller_id", uuid.New().String())
+		log := params.Log.WithField("controller_id", uuid.New().String())
 
-		v, err := version.Get(log, factory.Clientset)
+		v, err := version.Get(log, params.Clientset)
 		if err != nil {
 			return fmt.Errorf("getting kubernetes version: %w", err)
 		}
@@ -55,28 +53,27 @@ func RunControllerWithRestart(
 		log = log.WithField("k8s_version", v.Full())
 
 		ctrl := New(
-			factory.Log,
-			factory.Clientset,
-			factory.DynamicClient,
-			factory.CastaiClient,
-			factory.MetricsClient,
-			factory.Provider,
-			factory.ClusterID,
-			factory.Config.Controller,
+			params.Log,
+			params.Clientset,
+			params.DynamicClient,
+			params.CastaiClient,
+			params.MetricsClient,
+			params.Provider,
+			params.ClusterID,
+			params.Config.Controller,
 			v,
-			factory.AgentVersion,
-			factory.HealthzProvider,
-			factory.Clientset.AuthorizationV1().SelfSubjectAccessReviews(),
-			factory.Config.SelfPod.Namespace,
-			factory.LeaderStatusCh,
+			params.AgentVersion,
+			params.HealthzProvider,
+			params.Clientset.AuthorizationV1().SelfSubjectAccessReviews(),
+			params.Config.SelfPod.Namespace,
+			params.LeaderStatusCh,
 		)
 
 		// Start informers
 		ctrl.Start(ctx.Done())
 
-		// Run the controller
 		if err := ctrl.Run(ctx); err != nil {
-			factory.Log.Errorf("controller run error, will recreate and restart: %v", err)
+			params.Log.Errorf("controller run error, will recreate and restart: %v", err)
 			return err
 		}
 		return nil

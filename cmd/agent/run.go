@@ -35,14 +35,9 @@ import (
 )
 
 const (
-	// exitChannelBufferSize defines the buffer size for the exit error channel
 	exitChannelBufferSize = 10
-
-	// leaderHealthzTimeout defines how long to wait for leader health check
-	leaderHealthzTimeout = 2 * time.Minute
-
-	// Memory conversion constants
-	bytesToMiB = 1024 * 1024
+	leaderHealthzTimeout  = 2 * time.Minute
+	bytesToMiB            = 1024 * 1024
 )
 
 func run(ctx context.Context) error {
@@ -217,7 +212,6 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 	log.Data["provider"] = provider.Name()
 	log.Infof("using provider %q", provider.Name())
 
-	// Initialize cluster registration once
 	clusterID := ""
 	if cfg.Static != nil {
 		clusterID = cfg.Static.ClusterID
@@ -248,11 +242,10 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 	}
 
 	if cfg.LeaderElection.Enabled {
-		// Create a channel for leader status changes (bool instead of LeaderStatusChange)
 		// Buffered channel to avoid blocking leader election on slow consumers
 		leaderStatusCh := make(chan bool, 10)
 
-		factory := &controller.ControllerFactory{
+		params := &controller.Params{
 			Log:             log,
 			Clientset:       clientset,
 			MetricsClient:   metricsClient,
@@ -267,7 +260,7 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 		}
 
 		go func() {
-			if err := controller.RunControllerWithRestart(ctx, factory); err != nil {
+			if err := controller.RunControllerWithRestart(ctx, params); err != nil {
 				exitCh <- fmt.Errorf("controller with restart error: %w", err)
 			}
 		}()
@@ -277,16 +270,10 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 			replicas.RunLeaderElection(ctx, log, cfg.LeaderElection, clientset, leaderWatchDog, leaderStatusCh)
 		}()
 
-		// Wait for context cancellation in leader election mode
 		<-ctx.Done()
 		log.Info("shutdown signal received, initiating graceful shutdown")
 	} else {
-		// In non-HA mode, create a simple channel that always reports as leader
-		leaderStatusCh := make(chan bool, 1)
-		leaderStatusCh <- true // Set initial leader status
-
-		// Create controller factory
-		factory := &controller.ControllerFactory{
+		params := &controller.Params{
 			Log:             log,
 			Clientset:       clientset,
 			MetricsClient:   metricsClient,
@@ -297,17 +284,15 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 			Config:          cfg,
 			AgentVersion:    agentVersion,
 			HealthzProvider: ctrlHealthz,
-			LeaderStatusCh:  leaderStatusCh,
+			LeaderStatusCh:  nil,
 		}
 
-		// Start controller with restart logic
 		go func() {
-			if err := controller.RunControllerWithRestart(ctx, factory); err != nil {
+			if err := controller.RunControllerWithRestart(ctx, params); err != nil {
 				exitCh <- fmt.Errorf("controller with restart error: %w", err)
 			}
 		}()
 
-		// Wait for context cancellation in non-HA mode
 		<-ctx.Done()
 		log.Info("shutdown signal received, initiating graceful shutdown")
 	}
@@ -363,20 +348,16 @@ func runPProf(cfg config.Config, log *logrus.Entry, exitCh chan error) (closeFun
 func runHealthzEndpoints(cfg config.Config, log *logrus.Entry, checks map[string]healthz.Checker, exitCh chan error) func() {
 	log.Infof("starting healthz server on port: %d", cfg.HealthzPort)
 
-	// Define which checks belong to which endpoint
 	livenessChecks := []string{"liveness", "leader"}
 	readinessChecks := []string{"readiness", "leader"}
 
-	// Common health check handler
 	healthCheckHandler := func(checkNames []string) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			// Always check ping first
 			if err := healthz.Ping(r); err != nil {
 				http.Error(w, fmt.Sprintf("ping check failed: %v", err), http.StatusServiceUnavailable)
 				return
 			}
 
-			// Iterate through specified checks
 			for _, checkName := range checkNames {
 				if checker, ok := checks[checkName]; ok {
 					if err := checker(r); err != nil {

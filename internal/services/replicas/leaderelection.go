@@ -16,7 +16,6 @@ import (
 )
 
 // RunLeaderElection runs leader election and sends status changes to the provided channel.
-// The channel is non-blocking - if no receiver is ready, status changes are logged but not blocked.
 // Leader election runs continuously until the application context is cancelled.
 // If RunOrDie exits unexpectedly, it will automatically restart the leader election process.
 func RunLeaderElection(
@@ -43,7 +42,6 @@ func RunLeaderElection(
 		}
 	}
 
-	// Run leader election with automatic restart logic
 	// This ensures that if RunOrDie exits for any reason other than context cancellation,
 	// the leader election process will restart automatically
 	for {
@@ -57,14 +55,13 @@ func RunLeaderElection(
 		log.Info("initializing leader election attempt")
 		runLeaderElection(ctx, log, cfg, client, watchDog, leaderStatusCh, replicaIdentity)
 
-		// RunOrDie has exited - check if it's due to context cancellation (clean shutdown)
+		// check if it's due to context cancellation (clean shutdown)
 		// or an unexpected error (needs restart)
 		if ctx.Err() != nil {
 			log.Info("leader election stopped due to context cancellation")
 			return
 		}
 
-		// Context is not cancelled, so RunOrDie exited unexpectedly - restart it
 		log.Warn("leader election unexpectedly stopped, restarting in 5 seconds")
 
 		// Wait 5 seconds before restart, but also watch for context cancellation

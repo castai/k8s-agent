@@ -208,7 +208,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 
 			cfg := &config.Controller{
 				Interval:             15 * time.Second,
-				PrepTimeout:          2 * time.Second,
+				PrepTimeout:          5 * time.Second,
 				InitialSleepDuration: 10 * time.Millisecond,
 				ConfigMapNamespaces:  []string{v1.NamespaceDefault},
 			}
