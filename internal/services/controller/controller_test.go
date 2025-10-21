@@ -48,9 +48,8 @@ import (
 	mock_castai "castai-agent/mocks/internal_/castai"
 	mock_types "castai-agent/mocks/internal_/services/providers/types"
 	mock_version "castai-agent/mocks/internal_/services/version"
-	"castai-agent/pkg/labels"
-
 	mock_discovery "castai-agent/mocks/k8s.io/client-go/discovery"
+	"castai-agent/pkg/labels"
 )
 
 var defaultHealthzCfg = config.Config{Controller: &config.Controller{
@@ -111,6 +110,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			utilruntime.Must(argorollouts.SchemeBuilder.AddToScheme(scheme))
 			utilruntime.Must(crd.SchemeBuilder.AddToScheme(scheme))
 			utilruntime.Must(metrics_v1beta1.SchemeBuilder.AddToScheme(scheme))
+			utilruntime.Must(autoscalingv2.SchemeBuilder.AddToScheme(scheme))
 
 			castaiclient := mock_castai.NewMockClient(t)
 			version := mock_version.NewMockInterface(t)
@@ -933,6 +933,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		recommendation,
 		podMutation,
 		unstructuredFromJson(t, recommendationSyncV1Alpha1),
+		hpaV2,
 	}
 	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, runtimeObjects...)
 

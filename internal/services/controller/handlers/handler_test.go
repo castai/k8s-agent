@@ -17,7 +17,6 @@ import (
 	"castai-agent/internal/castai"
 	"castai-agent/internal/services/controller/delta"
 	"castai-agent/internal/services/controller/handlers/transformers"
-
 	mock_workqueue "castai-agent/mocks/k8s.io/client-go/util/workqueue"
 )
 

@@ -788,7 +788,7 @@ func getConditionalInformers(
 			apiType:         reflect.TypeOf(&autoscalingv2.HorizontalPodAutoscaler{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
-				return f.Autoscaling().V2().HorizontalPodAutoscalers().Informer()
+				return df.ForResource(autoscalingv2.SchemeGroupVersion.WithResource("horizontalpodautoscalers")).Informer()
 			},
 		},
 		{
