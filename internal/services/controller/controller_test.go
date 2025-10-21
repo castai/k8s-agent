@@ -593,7 +593,7 @@ func TestController_ShouldNotSendDeltasIfNotLeader(t *testing.T) {
 			},
 			version,
 			agentVersion,
-			NewHealthzProvider(defaultHealthzCfg, log),
+			health.NewHealthzProvider(defaultHealthzCfg, log),
 			clientset.AuthorizationV1().SelfSubjectAccessReviews(),
 			"",
 			leaderCh,

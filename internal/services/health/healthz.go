@@ -104,10 +104,6 @@ func (h *HealthzProvider) SnapshotSent() {
 	h.healthyAction()
 }
 
-func (h *HealthzProvider) DeltasRead() {
-	h.healthyAction()
-}
-
 func (h *HealthzProvider) healthyAction() {
 	h.initializeStartedAt = nil
 	h.lastHealthyActionAt = lo.ToPtr(time.Now())
