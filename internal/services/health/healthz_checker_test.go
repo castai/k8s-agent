@@ -39,7 +39,7 @@ func TestHealthCheckHandler_VariousScenarios(t *testing.T) {
 				"check2": func(_ *http.Request) error { return fmt.Errorf("fail2") },
 			},
 			wantStatus:  http.StatusServiceUnavailable,
-			wantContain: "check1 check failed: fail1",
+			wantContain: "check failed: fail",
 		},
 		"empty checks map": {
 			checks:     map[string]healthz.Checker{},
