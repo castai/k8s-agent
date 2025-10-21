@@ -53,6 +53,7 @@ import (
 	"castai-agent/internal/services/controller/handlers/transformers/annotations"
 	custominformers "castai-agent/internal/services/controller/informers"
 	"castai-agent/internal/services/controller/knowngv"
+	"castai-agent/internal/services/health"
 	"castai-agent/internal/services/memorypressure"
 	"castai-agent/internal/services/metrics"
 	"castai-agent/internal/services/providers/types"
@@ -87,7 +88,7 @@ type Controller struct {
 	triggerRestart func()
 
 	agentVersion    *config.AgentVersion
-	healthzProvider *HealthzProvider
+	healthzProvider *health.HealthzProvider
 
 	conditionalInformers    []conditionalInformer
 	selfSubjectAccessReview authorizationtypev1.SelfSubjectAccessReviewInterface
@@ -223,7 +224,7 @@ func New(
 	cfg *config.Controller,
 	v version.Interface,
 	agentVersion *config.AgentVersion,
-	healthzProvider *HealthzProvider,
+	healthzProvider *health.HealthzProvider,
 	selfSubjectAccessReview authorizationtypev1.SelfSubjectAccessReviewInterface,
 	castwareNamespace string,
 	leaderStatusCh <-chan bool,

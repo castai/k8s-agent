@@ -1,10 +1,11 @@
-package controller
+package health
 
 import (
 	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 
 	"castai-agent/internal/config"
@@ -86,7 +87,7 @@ func (h *HealthzProvider) CheckLiveness(r *http.Request) error {
 
 func (h *HealthzProvider) Initializing() {
 	if h.initializeStartedAt == nil {
-		h.initializeStartedAt = nowPtr()
+		h.initializeStartedAt = lo.ToPtr(time.Now())
 		h.lastHealthyActionAt = nil
 	}
 }
@@ -109,10 +110,5 @@ func (h *HealthzProvider) DeltasRead() {
 
 func (h *HealthzProvider) healthyAction() {
 	h.initializeStartedAt = nil
-	h.lastHealthyActionAt = nowPtr()
-}
-
-func nowPtr() *time.Time {
-	now := time.Now()
-	return &now
+	h.lastHealthyActionAt = lo.ToPtr(time.Now())
 }

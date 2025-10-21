@@ -44,6 +44,7 @@ import (
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller/crd"
 	"castai-agent/internal/services/controller/knowngv"
+	"castai-agent/internal/services/health"
 	mock_castai "castai-agent/mocks/internal_/castai"
 	mock_types "castai-agent/mocks/internal_/services/providers/types"
 	mock_version "castai-agent/mocks/internal_/services/version"
@@ -229,7 +230,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 				cfg,
 				version,
 				agentVersion,
-				NewHealthzProvider(defaultHealthzCfg, log),
+				health.NewHealthzProvider(defaultHealthzCfg, log),
 				fakeAuthorization.SelfSubjectAccessReviews(),
 				"",
 				nil,
@@ -387,7 +388,7 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 				},
 				version,
 				agentVersion,
-				NewHealthzProvider(defaultHealthzCfg, log),
+				health.NewHealthzProvider(defaultHealthzCfg, log),
 				clientset.AuthorizationV1().SelfSubjectAccessReviews(),
 				"",
 				nil,
@@ -508,7 +509,7 @@ func TestController_HandlingSendErrors(t *testing.T) {
 				},
 				version,
 				agentVersion,
-				NewHealthzProvider(defaultHealthzCfg, log),
+				health.NewHealthzProvider(defaultHealthzCfg, log),
 				clientset.AuthorizationV1().SelfSubjectAccessReviews(),
 				"",
 				nil,
