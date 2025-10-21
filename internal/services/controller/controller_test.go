@@ -175,10 +175,6 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 					for _, expected := range objectsData {
 						expectedGVString := expected.GV.String()
 						actual, found := lo.Find(d.Items, func(item *castai.DeltaItem) bool {
-							if item.Kind == "HorizontalPodAutoscaler" {
-								it := string(*item.Data)
-								fmt.Println(it)
-							}
 							return item.Event == castai.EventAdd &&
 								item.Kind == expected.Kind &&
 								item.Data != nil &&
