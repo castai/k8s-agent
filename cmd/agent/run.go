@@ -11,7 +11,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/dynamic"
@@ -149,7 +148,8 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 	// if pod is holding invalid leader lease, this health check will ensure to kill it by failing pod health check
 	leaderWatchDog := leaderelection.NewLeaderHealthzAdaptor(leaderHealthzTimeout)
 	checks := map[string]healthz.Checker{
-		"controller": ctrlHealthz.Check,
+		"liveness":  ctrlHealthz.CheckLiveness,
+		"readiness": ctrlHealthz.CheckReadiness,
 	}
 	if cfg.LeaderElection.Enabled {
 		checks["leader"] = leaderWatchDog.Check
@@ -347,11 +347,45 @@ func runPProf(cfg config.Config, log *logrus.Entry, exitCh chan error) (closeFun
 
 func runHealthzEndpoints(cfg config.Config, log *logrus.Entry, checks map[string]healthz.Checker, exitCh chan error) func() {
 	log.Infof("starting healthz server on port: %d", cfg.HealthzPort)
-	allChecks := lo.Assign(map[string]healthz.Checker{
-		"server": healthz.Ping,
-	}, checks)
+
+	// Define which checks belong to which endpoint
+	livenessChecks := []string{"liveness", "leader"}
+	readinessChecks := []string{"readiness", "leader"}
+
+	// Common health check handler
+	healthCheckHandler := func(checkNames []string) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			// Always check ping first
+			if err := healthz.Ping(r); err != nil {
+				http.Error(w, fmt.Sprintf("ping check failed: %v", err), http.StatusServiceUnavailable)
+				return
+			}
+
+			// Iterate through specified checks
+			for _, checkName := range checkNames {
+				if checker, ok := checks[checkName]; ok {
+					if err := checker(r); err != nil {
+						http.Error(w, fmt.Sprintf("%s check failed: %v", checkName, err), http.StatusServiceUnavailable)
+						return
+					}
+				}
+			}
+
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("ok"))
+		}
+	}
+
+	mux := http.NewServeMux()
+
+	// Handle /healthz (liveness) endpoint
+	mux.HandleFunc("/healthz", healthCheckHandler(livenessChecks))
+
+	// Handle /readyz (readiness) endpoint
+	mux.HandleFunc("/readyz", healthCheckHandler(readinessChecks))
+
 	addr := portToServerAddr(cfg.HealthzPort)
-	healthzSrv := &http.Server{Addr: addr, Handler: &healthz.Handler{Checks: allChecks}}
+	healthzSrv := &http.Server{Addr: addr, Handler: mux}
 	closeFunc := func() {
 		log.Infof("closing healthz server")
 		if err := healthzSrv.Close(); err != nil {
@@ -362,12 +396,10 @@ func runHealthzEndpoints(cfg config.Config, log *logrus.Entry, checks map[string
 	go func() {
 		log.Infof("healthz server ready")
 		err := healthzSrv.ListenAndServe()
-		if err != nil {
-			if !errors.Is(err, http.ErrServerClosed) {
-				exitCh <- fmt.Errorf("healthz server: %w", err)
-			} else {
-				log.Warnf("healthz server closed")
-			}
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			exitCh <- fmt.Errorf("healthz server: %w", err)
+		} else {
+			log.Warnf("healthz server closed")
 		}
 	}()
 	return closeFunc
