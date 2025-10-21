@@ -16,31 +16,36 @@ import (
 	"castai-agent/internal/services/version"
 )
 
-func Loop(
+type Params struct {
+	Log             logrus.FieldLogger
+	Clientset       kubernetes.Interface
+	MetricsClient   versioned.Interface
+	DynamicClient   dynamic.Interface
+	CastaiClient    castai.Client
+	Provider        types.Provider
+	ClusterID       string
+	Config          config.Config
+	AgentVersion    *config.AgentVersion
+	HealthzProvider *HealthzProvider
+	LeaderStatusCh  <-chan bool
+}
+
+// RunControllerWithRestart runs a controller with restart logic when ctrl.Run() fails.
+func RunControllerWithRestart(
 	ctx context.Context,
-	log logrus.FieldLogger,
-	clientset kubernetes.Interface,
-	metricsClient versioned.Interface,
-	dynamicClient dynamic.Interface,
-	castaiclient castai.Client,
-	provider types.Provider,
-	clusterID string,
-	cfg config.Config,
-	agentVersion *config.AgentVersion,
-	healthzProvider *HealthzProvider,
+	params *Params,
 ) error {
+	defer func() {
+		params.Log.Info("stopping controller")
+		if err := recover(); err != nil {
+			params.Log.Errorf("controller panic: %v", err)
+		}
+	}()
+
 	return repeatUntilContextClosed(ctx, func(ctx context.Context) error {
-		log = log.WithField("controller_id", uuid.New().String())
-		defer func() {
-			if err := recover(); err != nil {
-				log.Errorf("panic: runtime error: %v", err)
-			}
-		}()
+		log := params.Log.WithField("controller_id", uuid.New().String())
 
-		ctrlCtx, cancelCtrlCtx := context.WithCancel(ctx)
-		defer cancelCtrlCtx()
-
-		v, err := version.Get(log, clientset)
+		v, err := version.Get(log, params.Clientset)
 		if err != nil {
 			return fmt.Errorf("getting kubernetes version: %w", err)
 		}
@@ -48,25 +53,30 @@ func Loop(
 		log = log.WithField("k8s_version", v.Full())
 
 		ctrl := New(
-			log,
-			clientset,
-			dynamicClient,
-			castaiclient,
-			metricsClient,
-			provider,
-			clusterID,
-			cfg.Controller,
+			params.Log,
+			params.Clientset,
+			params.DynamicClient,
+			params.CastaiClient,
+			params.MetricsClient,
+			params.Provider,
+			params.ClusterID,
+			params.Config.Controller,
 			v,
-			agentVersion,
-			healthzProvider,
-			clientset.AuthorizationV1().SelfSubjectAccessReviews(),
-			cfg.SelfPod.Namespace,
+			params.AgentVersion,
+			params.HealthzProvider,
+			params.Clientset.AuthorizationV1().SelfSubjectAccessReviews(),
+			params.Config.SelfPod.Namespace,
+			params.LeaderStatusCh,
 		)
 
-		ctrl.Start(ctrlCtx.Done())
+		// Start informers
+		ctrl.Start(ctx.Done())
 
-		// Loop the controller. This is a blocking call.
-		return ctrl.Run(ctrlCtx)
+		if err := ctrl.Run(ctx); err != nil {
+			params.Log.Errorf("controller run error, will recreate and restart: %v", err)
+			return err
+		}
+		return nil
 	})
 }
 
