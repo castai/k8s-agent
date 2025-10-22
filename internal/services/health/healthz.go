@@ -3,6 +3,7 @@ package health
 import (
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/samber/lo"
@@ -11,6 +12,7 @@ import (
 	"castai-agent/internal/config"
 )
 
+// TODO a separate task will be created to rework the health check logic
 func NewHealthzProvider(cfg config.Config, log logrus.FieldLogger) *HealthzProvider {
 	return &HealthzProvider{
 		cfg:             cfg,
@@ -26,6 +28,8 @@ type HealthzProvider struct {
 
 	initializeStartedAt *time.Time
 	lastHealthyActionAt *time.Time
+
+	healthMu sync.Mutex
 }
 
 // Readiness: Only ready if lastHealthyActionAt is set and within healthy interval.
@@ -86,6 +90,8 @@ func (h *HealthzProvider) CheckLiveness(r *http.Request) error {
 }
 
 func (h *HealthzProvider) Initializing() {
+	h.healthMu.Lock()
+	defer h.healthMu.Unlock()
 	if h.initializeStartedAt == nil {
 		h.initializeStartedAt = lo.ToPtr(time.Now())
 		h.lastHealthyActionAt = nil
@@ -105,6 +111,8 @@ func (h *HealthzProvider) SnapshotSent() {
 }
 
 func (h *HealthzProvider) healthyAction() {
+	h.healthMu.Lock()
+	defer h.healthMu.Unlock()
 	h.initializeStartedAt = nil
 	h.lastHealthyActionAt = lo.ToPtr(time.Now())
 }
