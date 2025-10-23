@@ -676,6 +676,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	nodePoolsDataV1 := emptyObjectData("karpenter.sh", "v1", "NodePool", "fake-nodepool-v1")
 	nodeClaimsDataV1 := emptyObjectData("karpenter.sh", "v1", "NodeClaim", "fake-nodeclaim-v1")
 	ec2NodeClassesDataV1 := emptyObjectData("karpenter.k8s.aws", "v1", "EC2NodeClass", "fake-ec2nodeclass-v1")
+	nodeOverlaysDataV1Alpha1 := emptyObjectData(knowngv.KarpenterCoreV1Alpha1.Group, knowngv.KarpenterCoreV1Alpha1.Version, "NodeOverlay", "fake-nodeoverlay-v1alpha1")
 	recommendationSyncV1Alpha1 := emptyObjectData("runbooks.cast.ai", "v1alpha1", "RecommendationSync", "fake-recommendationsync")
 
 	datadogExtendedDSReplicaSet := &datadoghqv1alpha1.ExtendedDaemonSetReplicaSet{
@@ -930,6 +931,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		podMutation,
 		unstructuredFromJson(t, recommendationSyncV1Alpha1),
 		hpaV2,
+		unstructuredFromJson(t, nodeOverlaysDataV1Alpha1),
 	}
 	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, runtimeObjects...)
 
@@ -1106,6 +1108,18 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 					Name:    "ec2nodeclasses",
 					Version: "v1",
 					Kind:    "EC2NodeClass",
+					Verbs:   []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
+			GroupVersion: "karpenter.sh/v1alpha1",
+			APIResources: []metav1.APIResource{
+				{
+					Group:   "karpenter.sh",
+					Name:    "nodeoverlays",
+					Version: "v1alpha1",
+					Kind:    "NodeOverlay",
 					Verbs:   []string{"get", "list", "watch"},
 				},
 			},
@@ -1336,6 +1350,12 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Kind:     "EC2NodeClass",
 			Resource: "ec2nodeclasses",
 			Data:     ec2NodeClassesDataV1Beta1,
+		},
+		{
+			GV:       knowngv.KarpenterCoreV1Alpha1,
+			Kind:     "NodeOverlay",
+			Resource: "nodeoverlays",
+			Data:     nodeOverlaysDataV1Alpha1,
 		},
 		{
 			GV:       datadogExtendedDSReplicaSetsGvr.GroupVersion(),
