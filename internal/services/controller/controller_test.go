@@ -83,10 +83,10 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
-			expectedReceivedObjectsCount: 35,
+			expectedReceivedObjectsCount: 36,
 		},
 		"All supported objects are found and received in delta with pagination": {
-			expectedReceivedObjectsCount: 35,
+			expectedReceivedObjectsCount: 36,
 			paginationEnabled:            true,
 			pageSize:                     5,
 		},
@@ -94,12 +94,12 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 33,
+			expectedReceivedObjectsCount: 34,
 		},
 		"when fetching api resources produces single error should exclude that resource": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 34,
+			expectedReceivedObjectsCount: 35,
 		},
 	}
 
@@ -915,29 +915,41 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		resourceSlice,
 	)
 
-	runtimeObjects := []runtime.Object{
-		unstructuredFromJson(t, provisionersData),
-		unstructuredFromJson(t, machinesData),
-		unstructuredFromJson(t, awsNodeTemplatesData),
-		unstructuredFromJson(t, nodePoolsDataV1Beta1),
-		unstructuredFromJson(t, nodeClaimsDataV1Beta1),
-		unstructuredFromJson(t, ec2NodeClassesDataV1Beta1),
-		unstructuredFromJson(t, nodePoolsDataV1),
-		unstructuredFromJson(t, nodeClaimsDataV1),
-		unstructuredFromJson(t, ec2NodeClassesDataV1),
-		datadogExtendedDSReplicaSet,
-		rollout,
-		recommendation,
-		podMutation,
-		unstructuredFromJson(t, recommendationSyncV1Alpha1),
-		hpaV2,
-		unstructuredFromJson(t, nodeOverlaysDataV1Alpha1),
+	dynamicObjects := []*DynamicObject{
+		{Obj: unstructuredFromJson(t, nodeOverlaysDataV1Alpha1)},
+		{Obj: unstructuredFromJson(t, provisionersData)},
+		{Obj: unstructuredFromJson(t, machinesData)},
+		{Obj: unstructuredFromJson(t, awsNodeTemplatesData)},
+		{Obj: unstructuredFromJson(t, nodePoolsDataV1Beta1)},
+		{Obj: unstructuredFromJson(t, nodeClaimsDataV1Beta1)},
+		{Obj: unstructuredFromJson(t, ec2NodeClassesDataV1Beta1)},
+		{Obj: unstructuredFromJson(t, nodePoolsDataV1)},
+		{Obj: unstructuredFromJson(t, nodeClaimsDataV1)},
+		{Obj: unstructuredFromJson(t, ec2NodeClassesDataV1)},
+		{Obj: unstructuredFromJson(t, nodeOverlaysDataV1Alpha1), Create: true},
+		{Obj: datadogExtendedDSReplicaSet},
+		{Obj: rollout},
+		{Obj: recommendation},
+		{Obj: podMutation},
+		{Obj: unstructuredFromJson(t, recommendationSyncV1Alpha1)},
+		{Obj: hpaV2},
 	}
-	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, runtimeObjects...)
+
+	// Create a dynamic client but skip analyzing some GVRs to avoid issues with plural forms. This is mostly needed for List kinds.
+	// For example, "NodeOverlay" plural is "nodeoverlays" but the dynamic client thinks it's "nodeoverlaies"...
+	overrideGVRs := map[schema.GroupVersionResource]string{
+		schema.GroupVersionResource{
+			Group:    knowngv.KarpenterCoreV1Alpha1.Group,
+			Version:  knowngv.KarpenterCoreV1Alpha1.Version,
+			Resource: "nodeoverlays",
+		}: "NodeOverlayList",
+	}
+	dynamicClient, err := NewDynamicClient(t, scheme, overrideGVRs, dynamicObjects...)
+	require.NoError(t, err)
 
 	metricsClient := metrics_fake.NewSimpleClientset()
 	// PodMetrics must be added to the tracker using Create method as it allows specifying custom resource. Otherwise heuristics are used and incorrect resource is associated.
-	err := metricsClient.Tracker().Create(podMetricsResource, podMetrics, v1.NamespaceDefault)
+	err = metricsClient.Tracker().Create(podMetricsResource, podMetrics, v1.NamespaceDefault)
 	require.NoError(t, err)
 
 	clientset.Fake.Resources = []*metav1.APIResourceList{
