@@ -676,7 +676,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	nodePoolsDataV1 := emptyObjectData("karpenter.sh", "v1", "NodePool", "fake-nodepool-v1")
 	nodeClaimsDataV1 := emptyObjectData("karpenter.sh", "v1", "NodeClaim", "fake-nodeclaim-v1")
 	ec2NodeClassesDataV1 := emptyObjectData("karpenter.k8s.aws", "v1", "EC2NodeClass", "fake-ec2nodeclass-v1")
-	nodeOverlaysDataV1Alpha1 := emptyObjectData(knowngv.KarpenterCoreV1Alpha1.Group, knowngv.KarpenterCoreV1Alpha1.Version, "NodeOverlay", "fake-nodeoverlay-v1alpha1")
+	nodeOverlaysDataV1Alpha1 := emptyObjectData("karpenter.sh", "v1alpha1", "NodeOverlay", "fake-nodeoverlay-v1alpha1")
 	recommendationSyncV1Alpha1 := emptyObjectData("runbooks.cast.ai", "v1alpha1", "RecommendationSync", "fake-recommendationsync")
 
 	datadogExtendedDSReplicaSet := &datadoghqv1alpha1.ExtendedDaemonSetReplicaSet{
