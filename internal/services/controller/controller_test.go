@@ -20,6 +20,7 @@ import (
 	"go.uber.org/goleak"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -82,10 +83,10 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
-			expectedReceivedObjectsCount: 34,
+			expectedReceivedObjectsCount: 35,
 		},
 		"All supported objects are found and received in delta with pagination": {
-			expectedReceivedObjectsCount: 34,
+			expectedReceivedObjectsCount: 35,
 			paginationEnabled:            true,
 			pageSize:                     5,
 		},
@@ -93,12 +94,12 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 32,
+			expectedReceivedObjectsCount: 33,
 		},
 		"when fetching api resources produces single error should exclude that resource": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 33,
+			expectedReceivedObjectsCount: 34,
 		},
 	}
 
@@ -109,6 +110,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			utilruntime.Must(argorollouts.SchemeBuilder.AddToScheme(scheme))
 			utilruntime.Must(crd.SchemeBuilder.AddToScheme(scheme))
 			utilruntime.Must(metrics_v1beta1.SchemeBuilder.AddToScheme(scheme))
+			utilruntime.Must(autoscalingv2.SchemeBuilder.AddToScheme(scheme))
 
 			castaiclient := mock_castai.NewMockClient(t)
 			version := mock_version.NewMockInterface(t)
@@ -628,6 +630,18 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	}
 	hpaData := asJson(t, hpa)
 
+	hpaV2 := &autoscalingv2.HorizontalPodAutoscaler{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "HorizontalPodAutoscaler",
+			APIVersion: autoscalingv2.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "horizontalpodautoscalers-v2",
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+	hpaV2Data := asJson(t, hpaV2)
+
 	csi := &storagev1.CSINode{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "CSINode",
@@ -884,6 +898,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		cfgMap,
 		pdb,
 		hpa,
+		hpaV2,
 		csi,
 		ingress,
 		netpolicy,
@@ -914,6 +929,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		recommendation,
 		podMutation,
 		unstructuredFromJson(t, recommendationSyncV1Alpha1),
+		hpaV2,
 	}
 	dynamicClient := dynamic_fake.NewSimpleDynamicClient(scheme, runtimeObjects...)
 
@@ -925,6 +941,17 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	clientset.Fake.Resources = []*metav1.APIResourceList{
 		{
 			GroupVersion: autoscalingv1.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group: "autoscaling",
+					Name:  "horizontalpodautoscalers",
+					Kind:  "HorizontalPodAutoscaler",
+					Verbs: []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
+			GroupVersion: autoscalingv2.SchemeGroupVersion.String(),
 			APIResources: []metav1.APIResource{
 				{
 					Group: "autoscaling",
@@ -1261,6 +1288,12 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Kind:     "HorizontalPodAutoscaler",
 			Resource: "horizontalpodautoscalers",
 			Data:     hpaData,
+		},
+		{
+			GV:       autoscalingv2.SchemeGroupVersion,
+			Kind:     "HorizontalPodAutoscaler",
+			Resource: "horizontalpodautoscalers",
+			Data:     hpaV2Data,
 		},
 		{
 			GV:       storagev1.SchemeGroupVersion,

@@ -18,6 +18,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -778,6 +779,16 @@ func getConditionalInformers(
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
 				return f.Autoscaling().V1().HorizontalPodAutoscalers().Informer()
+			},
+		},
+		{
+			groupVersion:    autoscalingv2.SchemeGroupVersion,
+			resource:        "horizontalpodautoscalers",
+			kind:            "HorizontalPodAutoscaler",
+			apiType:         reflect.TypeOf(&autoscalingv2.HorizontalPodAutoscaler{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(autoscalingv2.SchemeGroupVersion.WithResource("horizontalpodautoscalers")).Informer()
 			},
 		},
 		{
