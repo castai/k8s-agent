@@ -568,8 +568,6 @@ func (c *Controller) gather(ctx context.Context) {
 	// If not a leader, gather but skip sending deltas.
 	if !c.isLeader.Load() {
 		c.log.Info("Not a leader, clearing delta queue and skipping sending deltas")
-		c.deltaBatcher.GetMapAndClear()
-		c.healthzProvider.DeltasRead()
 		return
 	}
 	c.trackSendMetrics(func() {
