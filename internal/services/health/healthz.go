@@ -34,6 +34,8 @@ type HealthzProvider struct {
 
 // Readiness: Only ready if lastHealthyActionAt is set and within healthy interval.
 func (h *HealthzProvider) CheckReadiness(r *http.Request) error {
+	h.healthMu.Lock()
+	defer h.healthMu.Unlock()
 	if h.lastHealthyActionAt == nil {
 		// Add more detailed logging to understand the state
 		if h.initializeStartedAt == nil {
@@ -58,6 +60,8 @@ func (h *HealthzProvider) CheckReadiness(r *http.Request) error {
 
 // Liveness: Ok if initializing (within timeout) or if initialized with recent healthy action.
 func (h *HealthzProvider) CheckLiveness(r *http.Request) error {
+	h.healthMu.Lock()
+	defer h.healthMu.Unlock()
 	// Case 1: Initialized - check for recent healthy action (check this first)
 	if h.lastHealthyActionAt != nil {
 		timeSinceLastHealthy := time.Since(*h.lastHealthyActionAt)
