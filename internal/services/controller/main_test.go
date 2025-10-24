@@ -65,7 +65,7 @@ func NewDynamicClient(
 		u := &unstructured.Unstructured{Object: o}
 
 		if gvk := u.GroupVersionKind(); gvk.Group == "" || gvk.Version == "" {
-			require.Fail(t, "object must have GVK set")
+			require.Fail(t, "Object must have GVK set. Object: %+v", o)
 		}
 
 		allObjects = append(allObjects, u)
