@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -23,12 +22,18 @@ type DynamicObject struct {
 
 // NewDynamicClient creates a fake dynamic client with the given scheme and objects.
 //
+// This function is based on `fake.NewSimpleDynamicClient`. It builds on top to solve incorrect GVR guessing. Reference:
+// https://github.com/kubernetes/client-go/blob/4953849642e8eef9957516964dad0585e0c4cf71/dynamic/fake/simple.go#L37
+//
 // Some GVRs may be overriden. The default behavior is to try guessing the plural version of the kind, but that guess
 // may be wrong in some cases (e.g. "NodeOverlay" becomes "nodeoverlaies" instead of "nodeoverlays"). In those cases,
 // the caller has to provide the correct mapping in the override map.
 //
 // Furthermore, if a GVR was overriden, then objects of that GVR can't be "Added" and must be "Created" instead. So, for
-// those objects, set the create flag to true.
+// those objects, set the create flag to true. Fake dynamic client uses the same fragile GVR guessing logic when adding
+// objects, so we have to create them by specifying the GVR explicitly. If you try to add a NodeOverlay, then it will
+// get added to "nodeoverlaies" resource, and then any subsequent Get/List on "nodeoverlays" will not find it.
+// Reference: https://github.com/kubernetes/client-go/blob/4953849642e8eef9957516964dad0585e0c4cf71/testing/fixture.go#L431
 func NewDynamicClient(
 	t *testing.T,
 	scheme *runtime.Scheme,
@@ -103,13 +108,7 @@ func NewDynamicClient(
 			}
 		}
 
-		// If not found, try to guess it. This should is a last resort and will probably fail in most cases.
-		// We might consider failing the test instead if not found in the override map.
-		if resource == "" {
-			t.Errorf("object was specified to be created but could not find its override, trying to guess: %v", gvk)
-			plural, _ := meta.UnsafeGuessKindToResource(gvk)
-			resource = plural.Resource
-		}
+		require.NotEmpty(t, resource, "Object was supposed to be created but its plural GVR was not found in the GVR overrides map. Did you forget to add it? GVK: %v", gvk)
 
 		gvr := schema.GroupVersionResource{
 			Group:    gvk.Group,
