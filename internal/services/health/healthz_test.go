@@ -65,7 +65,7 @@ func TestHealthzProvider_CheckReadiness(t *testing.T) {
 			},
 			setup: func(p *HealthzProvider) {
 				p.Initializing()
-				p.DeltasRead()
+				p.FollowerActive()
 			},
 			expectError: "",
 		},
@@ -182,7 +182,7 @@ func TestHealthzProvider_CheckLiveness(t *testing.T) {
 			},
 			setup: func(p *HealthzProvider) {
 				p.Initializing()
-				p.DeltasRead()
+				p.FollowerActive()
 			},
 			expectError: "",
 		},

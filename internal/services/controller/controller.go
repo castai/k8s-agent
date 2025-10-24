@@ -569,7 +569,7 @@ func (c *Controller) gather(ctx context.Context) {
 	// If not a leader, gather but skip sending deltas.
 	if !c.isLeader.Load() {
 		c.log.Info("Not a leader, skipping sending deltas")
-		c.healthzProvider.DeltasRead()
+		c.healthzProvider.FollowerActive()
 		return
 	}
 	c.trackSendMetrics(func() {

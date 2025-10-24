@@ -106,7 +106,7 @@ func (h *HealthzProvider) Initialized() {
 	h.healthyAction()
 }
 
-func (h *HealthzProvider) DeltasRead() {
+func (h *HealthzProvider) FollowerActive() {
 	h.healthyAction()
 }
 
