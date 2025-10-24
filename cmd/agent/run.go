@@ -27,6 +27,7 @@ import (
 	"castai-agent/internal/services/controller"
 	"castai-agent/internal/services/controller/scheme"
 	"castai-agent/internal/services/discovery"
+	"castai-agent/internal/services/health"
 	"castai-agent/internal/services/metadata"
 	"castai-agent/internal/services/metrics"
 	"castai-agent/internal/services/monitor"
@@ -144,18 +145,24 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 		defer closePprof()
 	}
 
-	ctrlHealthz := controller.NewHealthzProvider(cfg, log)
+	ctrlHealthz := health.NewHealthzProvider(cfg, log)
 
 	// if pod is holding invalid leader lease, this health check will ensure to kill it by failing pod health check
 	leaderWatchDog := leaderelection.NewLeaderHealthzAdaptor(leaderHealthzTimeout)
 	checks := map[string]healthz.Checker{
-		"controller": ctrlHealthz.Check,
+		"ping": healthz.Ping,
 	}
 	if cfg.LeaderElection.Enabled {
 		checks["leader"] = leaderWatchDog.Check
 	}
+	readinessChecks := lo.Assign(checks, map[string]healthz.Checker{
+		"readiness": ctrlHealthz.CheckReadiness,
+	})
+	livenessChecks := lo.Assign(checks, map[string]healthz.Checker{
+		"liveness": ctrlHealthz.CheckLiveness,
+	})
 
-	closeHealthz := runHealthzEndpoints(cfg, log, checks, exitCh)
+	closeHealthz := runHealthzEndpoints(cfg, log, livenessChecks, readinessChecks, exitCh)
 	defer closeHealthz()
 
 	closeMetrics := runMetricsEndpoints(cfg, log, exitCh)
@@ -345,13 +352,25 @@ func runPProf(cfg config.Config, log *logrus.Entry, exitCh chan error) (closeFun
 	return closeFn
 }
 
-func runHealthzEndpoints(cfg config.Config, log *logrus.Entry, checks map[string]healthz.Checker, exitCh chan error) func() {
+func runHealthzEndpoints(
+	cfg config.Config,
+	log *logrus.Entry,
+	livenessChecks map[string]healthz.Checker,
+	readinessChecks map[string]healthz.Checker,
+	exitCh chan error,
+) func() {
 	log.Infof("starting healthz server on port: %d", cfg.HealthzPort)
-	allChecks := lo.Assign(map[string]healthz.Checker{
-		"server": healthz.Ping,
-	}, checks)
+
+	mux := http.NewServeMux()
+
+	// Handle /healthz (liveness) endpoint
+	mux.HandleFunc("/healthz", health.HealthCheckHandler(livenessChecks))
+
+	// Handle /readyz (readiness) endpoint
+	mux.HandleFunc("/readyz", health.HealthCheckHandler(readinessChecks))
+
 	addr := portToServerAddr(cfg.HealthzPort)
-	healthzSrv := &http.Server{Addr: addr, Handler: &healthz.Handler{Checks: allChecks}}
+	healthzSrv := &http.Server{Addr: addr, Handler: mux}
 	closeFunc := func() {
 		log.Infof("closing healthz server")
 		if err := healthzSrv.Close(); err != nil {
@@ -362,12 +381,10 @@ func runHealthzEndpoints(cfg config.Config, log *logrus.Entry, checks map[string
 	go func() {
 		log.Infof("healthz server ready")
 		err := healthzSrv.ListenAndServe()
-		if err != nil {
-			if !errors.Is(err, http.ErrServerClosed) {
-				exitCh <- fmt.Errorf("healthz server: %w", err)
-			} else {
-				log.Warnf("healthz server closed")
-			}
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			exitCh <- fmt.Errorf("healthz server: %w", err)
+		} else {
+			log.Warnf("healthz server closed")
 		}
 	}()
 	return closeFunc

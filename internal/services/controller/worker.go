@@ -12,6 +12,7 @@ import (
 
 	"castai-agent/internal/castai"
 	"castai-agent/internal/config"
+	"castai-agent/internal/services/health"
 	"castai-agent/internal/services/providers/types"
 	"castai-agent/internal/services/version"
 )
@@ -26,7 +27,7 @@ type Params struct {
 	ClusterID       string
 	Config          config.Config
 	AgentVersion    *config.AgentVersion
-	HealthzProvider *HealthzProvider
+	HealthzProvider *health.HealthzProvider
 	LeaderStatusCh  <-chan bool
 }
 
