@@ -914,6 +914,16 @@ func getConditionalInformers(
 			},
 		},
 		{
+			groupVersion:    knowngv.KarpenterCoreV1Alpha1,
+			resource:        "nodeoverlays",
+			kind:            "NodeOverlay",
+			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(knowngv.KarpenterCoreV1Alpha1.WithResource("nodeoverlays")).Informer()
+			},
+		},
+		{
 			groupVersion:    datadoghqv1alpha1.GroupVersion,
 			resource:        "extendeddaemonsetreplicasets",
 			kind:            "ExtendedDaemonSetReplicaSet",
