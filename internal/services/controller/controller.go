@@ -385,7 +385,7 @@ func (c *Controller) Run(ctx context.Context) error {
 		}
 		time.Sleep(c.cfg.InitialSleepDuration)
 
-		c.healthzProvider.Initialized()
+		c.healthzProvider.MarkHealthy()
 
 		if c.isLeader.Load() {
 			c.log.Infof("sending cluster deltas every %s", c.cfg.Interval)
@@ -566,10 +566,11 @@ func (c *Controller) processItem(i interface{}) {
 }
 
 func (c *Controller) gather(ctx context.Context) {
-	// If not a leader, gather but skip sending deltas.
+	// If not leader, we assume that changes are still being saved to deltaBatcher, but  not taking it.
+	// Full snapshot will be sent when the controller becomes a leader
 	if !c.isLeader.Load() {
 		c.log.Info("Not a leader, skipping sending deltas")
-		c.healthzProvider.FollowerActive()
+		c.healthzProvider.MarkHealthy()
 		return
 	}
 	c.trackSendMetrics(func() {
@@ -594,7 +595,7 @@ func (c *Controller) gather(ctx context.Context) {
 			// items on the next one.
 			return
 		}
-		c.healthzProvider.SnapshotSent()
+		c.healthzProvider.MarkHealthy() // data gathered and sent to Cast
 		c.deltaCompiler.Clear()
 		c.fullSnapshot = false
 	})

@@ -41,7 +41,7 @@ func TestHealthzProvider_CheckReadiness(t *testing.T) {
 				},
 			},
 			setup: func(p *HealthzProvider) {
-				p.Initialized()
+				p.MarkHealthy()
 			},
 			expectError: "",
 		},
@@ -53,7 +53,7 @@ func TestHealthzProvider_CheckReadiness(t *testing.T) {
 			},
 			setup: func(p *HealthzProvider) {
 				p.Initializing()
-				p.SnapshotSent()
+				p.MarkHealthy()
 			},
 			expectError: "",
 		},
@@ -65,7 +65,7 @@ func TestHealthzProvider_CheckReadiness(t *testing.T) {
 			},
 			setup: func(p *HealthzProvider) {
 				p.Initializing()
-				p.FollowerActive()
+				p.MarkHealthy()
 			},
 			expectError: "",
 		},
@@ -76,7 +76,7 @@ func TestHealthzProvider_CheckReadiness(t *testing.T) {
 				},
 			},
 			setup: func(p *HealthzProvider) {
-				p.Initialized()
+				p.MarkHealthy()
 				time.Sleep(2 * time.Millisecond)
 			},
 			expectError: "last healthy action is over the healthy limit",
@@ -88,7 +88,7 @@ func TestHealthzProvider_CheckReadiness(t *testing.T) {
 				},
 			},
 			setup: func(p *HealthzProvider) {
-				p.Initialized()
+				p.MarkHealthy()
 				time.Sleep(5 * time.Millisecond)
 			},
 			expectError: "",
@@ -158,7 +158,7 @@ func TestHealthzProvider_CheckLiveness(t *testing.T) {
 				},
 			},
 			setup: func(p *HealthzProvider) {
-				p.Initialized()
+				p.MarkHealthy()
 			},
 			expectError: "",
 		},
@@ -169,7 +169,7 @@ func TestHealthzProvider_CheckLiveness(t *testing.T) {
 				},
 			},
 			setup: func(p *HealthzProvider) {
-				p.Initialized()
+				p.MarkHealthy()
 				time.Sleep(2 * time.Millisecond)
 			},
 			expectError: "last healthy action is over the healthy limit",
@@ -182,7 +182,7 @@ func TestHealthzProvider_CheckLiveness(t *testing.T) {
 			},
 			setup: func(p *HealthzProvider) {
 				p.Initializing()
-				p.FollowerActive()
+				p.MarkHealthy()
 			},
 			expectError: "",
 		},
@@ -194,7 +194,7 @@ func TestHealthzProvider_CheckLiveness(t *testing.T) {
 			},
 			setup: func(p *HealthzProvider) {
 				p.Initializing()
-				p.SnapshotSent()
+				p.MarkHealthy()
 			},
 			expectError: "",
 		},

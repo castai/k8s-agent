@@ -62,7 +62,7 @@ func (h *HealthzProvider) CheckReadiness(r *http.Request) error {
 func (h *HealthzProvider) CheckLiveness(r *http.Request) error {
 	h.healthMu.Lock()
 	defer h.healthMu.Unlock()
-	// Case 1: Initialized - check for recent healthy action (check this first)
+	// Case 1: MarkHealthy - check for recent healthy action (check this first)
 	if h.lastHealthyActionAt != nil {
 		timeSinceLastHealthy := time.Since(*h.lastHealthyActionAt)
 		if timeSinceLastHealthy > h.cfg.Controller.HealthySnapshotIntervalLimit {
@@ -102,19 +102,7 @@ func (h *HealthzProvider) Initializing() {
 	}
 }
 
-func (h *HealthzProvider) Initialized() {
-	h.healthyAction()
-}
-
-func (h *HealthzProvider) FollowerActive() {
-	h.healthyAction()
-}
-
-func (h *HealthzProvider) SnapshotSent() {
-	h.healthyAction()
-}
-
-func (h *HealthzProvider) healthyAction() {
+func (h *HealthzProvider) MarkHealthy() {
 	h.healthMu.Lock()
 	defer h.healthMu.Unlock()
 	h.initializeStartedAt = nil
