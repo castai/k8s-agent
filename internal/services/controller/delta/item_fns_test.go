@@ -6,6 +6,8 @@ import (
 
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/require"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -33,6 +35,36 @@ func TestItemCacheKey(t *testing.T) {
 				},
 			},
 			Key: "Pod::namespace-1/pod-1",
+		},
+		"key for a HPA autoscaling/v1": {
+			Item: &delta.Item{
+				Obj: &autoscalingv1.HorizontalPodAutoscaler{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "HorizontalPodAutoscaler",
+						APIVersion: autoscalingv1.SchemeGroupVersion.String(),
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "namespace-1",
+						Name:      "hpa-1",
+					},
+				},
+			},
+			Key: "HorizontalPodAutoscaler::namespace-1/hpa-1",
+		},
+		"key for a HPA autoscaling/v2 is same as autoscaling/v1": {
+			Item: &delta.Item{
+				Obj: &autoscalingv2.HorizontalPodAutoscaler{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "HorizontalPodAutoscaler",
+						APIVersion: autoscalingv2.SchemeGroupVersion.String(),
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "namespace-1",
+						Name:      "hpa-1",
+					},
+				},
+			},
+			Key: "HorizontalPodAutoscaler::namespace-1/hpa-1",
 		},
 		"key for a Node": {
 			Item: &delta.Item{
