@@ -34,7 +34,7 @@ func TestItemCacheKey(t *testing.T) {
 					},
 				},
 			},
-			Key: "Pod::namespace-1/pod-1",
+			Key: "/v1, Kind=Pod::namespace-1/pod-1",
 		},
 		"key for a HPA autoscaling/v1": {
 			Item: &delta.Item{
@@ -49,9 +49,9 @@ func TestItemCacheKey(t *testing.T) {
 					},
 				},
 			},
-			Key: "HorizontalPodAutoscaler::namespace-1/hpa-1",
+			Key: "autoscaling/v1, Kind=HorizontalPodAutoscaler::namespace-1/hpa-1",
 		},
-		"key for a HPA autoscaling/v2 is same as autoscaling/v1": {
+		"key for a HPA autoscaling/v2 is not same as autoscaling/v1": {
 			Item: &delta.Item{
 				Obj: &autoscalingv2.HorizontalPodAutoscaler{
 					TypeMeta: metav1.TypeMeta{
@@ -64,7 +64,7 @@ func TestItemCacheKey(t *testing.T) {
 					},
 				},
 			},
-			Key: "HorizontalPodAutoscaler::namespace-1/hpa-1",
+			Key: "autoscaling/v2, Kind=HorizontalPodAutoscaler::namespace-1/hpa-1",
 		},
 		"key for a Node": {
 			Item: &delta.Item{
@@ -74,7 +74,7 @@ func TestItemCacheKey(t *testing.T) {
 					},
 				},
 			},
-			Key: "Node::/node-1",
+			Key: "/v1, Kind=Node::/node-1",
 		},
 		"prefer kind from TypeMeta": {
 			Item: &delta.Item{
@@ -88,7 +88,7 @@ func TestItemCacheKey(t *testing.T) {
 					},
 				},
 			},
-			Key: "Custom::default/pod-1",
+			Key: "/, Kind=Custom::default/pod-1",
 		},
 		"key for unknown type with TypeMeta": {
 			Item: &delta.Item{
@@ -104,7 +104,7 @@ func TestItemCacheKey(t *testing.T) {
 					},
 				},
 			},
-			Key: "Custom::default/pod-1",
+			Key: "/, Kind=Custom::default/pod-1",
 		},
 		"error on unknown type without type information": {
 			Item: &delta.Item{
