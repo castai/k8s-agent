@@ -12,14 +12,13 @@ import (
 )
 
 func ItemCacheKey(i *Item) (string, error) {
-	if len(i.kind) == 0 {
-		gvk, err := determineObjectGVK(i.Obj)
-		if err != nil {
-			return "", fmt.Errorf("failed to determine Object kind: %v", err)
-		}
-		i.kind = gvk.Kind
+	gvk, err := determineObjectGVK(i.Obj)
+	if err != nil {
+		return "", fmt.Errorf("failed to determine Object kind: %v", err)
 	}
-	key := fmt.Sprintf("%s::%s/%s", i.kind, i.Obj.GetNamespace(), i.Obj.GetName())
+	i.kind = gvk.Kind
+
+	key := fmt.Sprintf("%s::%s/%s", gvk, i.Obj.GetNamespace(), i.Obj.GetName())
 	return key, nil
 }
 

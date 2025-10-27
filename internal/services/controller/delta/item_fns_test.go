@@ -6,6 +6,8 @@ import (
 
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/require"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -32,7 +34,37 @@ func TestItemCacheKey(t *testing.T) {
 					},
 				},
 			},
-			Key: "Pod::namespace-1/pod-1",
+			Key: "/v1, Kind=Pod::namespace-1/pod-1",
+		},
+		"key for a HPA autoscaling/v1": {
+			Item: &delta.Item{
+				Obj: &autoscalingv1.HorizontalPodAutoscaler{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "HorizontalPodAutoscaler",
+						APIVersion: autoscalingv1.SchemeGroupVersion.String(),
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "namespace-1",
+						Name:      "hpa-1",
+					},
+				},
+			},
+			Key: "autoscaling/v1, Kind=HorizontalPodAutoscaler::namespace-1/hpa-1",
+		},
+		"key for a HPA autoscaling/v2 is not same as autoscaling/v1": {
+			Item: &delta.Item{
+				Obj: &autoscalingv2.HorizontalPodAutoscaler{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "HorizontalPodAutoscaler",
+						APIVersion: autoscalingv2.SchemeGroupVersion.String(),
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "namespace-1",
+						Name:      "hpa-1",
+					},
+				},
+			},
+			Key: "autoscaling/v2, Kind=HorizontalPodAutoscaler::namespace-1/hpa-1",
 		},
 		"key for a Node": {
 			Item: &delta.Item{
@@ -42,7 +74,7 @@ func TestItemCacheKey(t *testing.T) {
 					},
 				},
 			},
-			Key: "Node::/node-1",
+			Key: "/v1, Kind=Node::/node-1",
 		},
 		"prefer kind from TypeMeta": {
 			Item: &delta.Item{
@@ -56,7 +88,7 @@ func TestItemCacheKey(t *testing.T) {
 					},
 				},
 			},
-			Key: "Custom::default/pod-1",
+			Key: "/, Kind=Custom::default/pod-1",
 		},
 		"key for unknown type with TypeMeta": {
 			Item: &delta.Item{
@@ -72,7 +104,7 @@ func TestItemCacheKey(t *testing.T) {
 					},
 				},
 			},
-			Key: "Custom::default/pod-1",
+			Key: "/, Kind=Custom::default/pod-1",
 		},
 		"error on unknown type without type information": {
 			Item: &delta.Item{
