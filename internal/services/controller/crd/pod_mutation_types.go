@@ -235,8 +235,12 @@ type JSONPatch struct {
 	Path string `json:"path"`
 
 	// Value defines the value to be patched
-	// +kubebuilder:validation:Required
-	Value apiextensionsv1.JSON `json:"value"`
+	// +kubebuilder:validation:Optional
+	Value apiextensionsv1.JSON `json:"value,omitempty"`
+
+	// From defines the source path for move and copy operations
+	// +kubebuilder:validation:Optional
+	From string `json:"from,omitempty"`
 }
 
 type JSONPatchV2 struct {
@@ -256,10 +260,11 @@ type JSONPatchOperation struct {
 
 	// Value defines the value to be patched
 	// +kubebuilder:validation:Optional
-	Value apiextensionsv1.JSON `json:"value"`
+	Value apiextensionsv1.JSON `json:"value,omitempty"`
 
 	// From defines the source path for move and copy operations
-	From string `json:"from"`
+	// +kubebuilder:validation:Optional
+	From string `json:"from,omitempty"`
 }
 
 // RestartPolicy defines the policy for restarting the pod when the mutation is applied
@@ -330,6 +335,7 @@ type DistributionGroupConfiguration struct {
 }
 
 // +kubebuilder:object:root=true
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // PodMutationList contains a list of PodMutation
 type PodMutationList struct {
