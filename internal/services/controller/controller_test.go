@@ -83,10 +83,10 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
-			expectedReceivedObjectsCount: 36,
+			expectedReceivedObjectsCount: 37,
 		},
 		"All supported objects are found and received in delta with pagination": {
-			expectedReceivedObjectsCount: 36,
+			expectedReceivedObjectsCount: 37,
 			paginationEnabled:            true,
 			pageSize:                     5,
 		},
@@ -94,12 +94,12 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 34,
+			expectedReceivedObjectsCount: 35,
 		},
 		"when fetching api resources produces single error should exclude that resource": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 35,
+			expectedReceivedObjectsCount: 36,
 		},
 	}
 
@@ -678,6 +678,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	ec2NodeClassesDataV1 := emptyObjectData("karpenter.k8s.aws", "v1", "EC2NodeClass", "fake-ec2nodeclass-v1")
 	nodeOverlaysDataV1Alpha1 := emptyObjectData("karpenter.sh", "v1alpha1", "NodeOverlay", "fake-nodeoverlay-v1alpha1")
 	recommendationSyncV1Alpha1 := emptyObjectData("runbooks.cast.ai", "v1alpha1", "RecommendationSync", "fake-recommendationsync")
+	migrationsDataV1 := emptyObjectData("live.cast.ai", "v1", "Migration", "fake-migration-v1")
 
 	datadogExtendedDSReplicaSet := &datadoghqv1alpha1.ExtendedDaemonSetReplicaSet{
 		TypeMeta: metav1.TypeMeta{
@@ -916,6 +917,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	)
 
 	dynamicObjects := []*DynamicObject{
+		{Obj: unstructuredFromJson(t, migrationsDataV1)},
 		{Obj: unstructuredFromJson(t, nodeOverlaysDataV1Alpha1)},
 		{Obj: unstructuredFromJson(t, provisionersData)},
 		{Obj: unstructuredFromJson(t, machinesData)},
@@ -1243,6 +1245,18 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			},
 		},
 		{
+			GroupVersion: "live.cast.ai/v1",
+			APIResources: []metav1.APIResource{
+				{
+					Group:   "live.cast.ai",
+					Name:    "migrations",
+					Version: "v1",
+					Kind:    "Migration",
+					Verbs:   []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
 			GroupVersion: resourcev1beta2.SchemeGroupVersion.String(),
 			APIResources: []metav1.APIResource{
 				{
@@ -1272,6 +1286,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			},
 		},
 	}
+
 	objects := []sampleObject{
 		{
 			GV:       v1.SchemeGroupVersion,
@@ -1471,7 +1486,14 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Resource: "resourceslices",
 			Data:     resourceSliceData,
 		},
+		{
+			GV:       knowngv.LiveV1,
+			Kind:     "Migration",
+			Resource: "migrations",
+			Data:     migrationsDataV1,
+		},
 	}
+
 	// There are a lot of manually entered samples. Running some sanity checks to ensure they don't contain basic errors.
 	verifySampleObjectsAreValid(t, objects)
 
