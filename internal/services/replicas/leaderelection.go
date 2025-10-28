@@ -15,6 +15,12 @@ import (
 	"castai-agent/internal/config"
 )
 
+const (
+	leaseDuration = 15 * time.Second
+	renewDeadline = 10 * time.Second
+	retryPeriod   = 2 * time.Second
+)
+
 // RunLeaderElection runs leader election and sends status changes to the provided channel.
 func RunLeaderElection(
 	ctx context.Context,
@@ -88,27 +94,27 @@ func runLeaderElection(
 	leConfig := leaderelection.LeaderElectionConfig{
 		Lock:            lock,
 		ReleaseOnCancel: true,
-		LeaseDuration:   15 * time.Second,
-		RenewDeadline:   10 * time.Second,
-		RetryPeriod:     2 * time.Second,
+		LeaseDuration:   leaseDuration,
+		RenewDeadline:   renewDeadline,
+		RetryPeriod:     retryPeriod,
 		WatchDog:        watchDog,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(leaderCtx context.Context) {
 				log.Info("started leading")
-				// Send leadership status change (non-blocking)
 				select {
 				case leaderStatusCh <- true:
-				default:
-					log.Warn("leadership status channel full, status change not sent")
+					log.Debug("successfully sent leadership status: true")
+				case <-ctx.Done():
+					log.Warn("context cancelled while sending leadership status")
 				}
 			},
 			OnStoppedLeading: func() {
 				log.Info("stopped leading")
-				// Send leadership status change (non-blocking)
 				select {
 				case leaderStatusCh <- false:
-				default:
-					log.Warn("leadership status channel full, status change not sent")
+					log.Debug("successfully sent leadership status: false")
+				case <-ctx.Done():
+					log.Warn("context cancelled while sending leadership status")
 				}
 			},
 			OnNewLeader: func(identity string) {

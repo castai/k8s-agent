@@ -335,8 +335,39 @@ func (c *Controller) Run(ctx context.Context) error {
 	c.triggerRestart = cancel
 
 	// Start watching for leader status changes if channel is provided
+	// Wait for initial status before proceeding to ensure we know our leadership state
 	if c.leaderStatusCh != nil {
-		go c.watchLeaderStatus(ctx)
+		// Wait for initial leader status with timeout
+		select {
+		case isLeader, ok := <-c.leaderStatusCh:
+			if !ok {
+				c.log.Warn("leader status channel closed, assuming no leader election is used")
+				c.isLeader.Store(false)
+			} else {
+				c.isLeader.Store(isLeader)
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(30 * time.Second):
+			c.log.Warn("timeout waiting for initial leader status, assuming not leader")
+			c.isLeader.Store(false)
+		}
+
+		// Continue watching for leadership changes in background
+		go func() {
+			for {
+				select {
+				case isLeader, ok := <-c.leaderStatusCh:
+					if !ok {
+						c.log.Warn("leader status channel closed")
+						return
+					}
+					c.isLeader.Store(isLeader)
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
 	} else {
 		// If no leader election is used, assume we are the leader
 		c.isLeader.Store(true)
@@ -1217,30 +1248,5 @@ func isResourceAvailable(kind string, apiResourceList *metav1.APIResourceList) b
 func createAdditionalTransformers(cfg *config.Controller) []transformers.Transformer {
 	return []transformers.Transformer{
 		annotations.NewTransformer(cfg.RemoveAnnotationsPrefixes, cfg.AnnotationsMaxLength),
-	}
-}
-
-// watchLeaderStatus listens for leader status changes on the controller's channel
-// and updates the controller's leader status accordingly.
-// This method is called internally by Run() and should not be called directly.
-func (c *Controller) watchLeaderStatus(ctx context.Context) {
-	c.log.Info("starting leader status watcher")
-	for {
-		select {
-		case <-ctx.Done():
-			c.log.Info("leader status watcher stopped due to context cancellation")
-			return
-		case isLeader, ok := <-c.leaderStatusCh:
-			if !ok {
-				c.log.Info("leader status channel closed, stopping watcher")
-				return
-			}
-			c.isLeader.Store(isLeader)
-			if isLeader {
-				c.log.Info("controller is now running as leader")
-			} else {
-				c.log.Info("controller is now running as follower")
-			}
-		}
 	}
 }
