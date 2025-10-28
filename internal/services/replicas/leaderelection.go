@@ -103,7 +103,7 @@ func runLeaderElection(
 				log.Info("started leading")
 				select {
 				case leaderStatusCh <- true:
-					log.Debug("successfully sent leadership status: true")
+					log.Info("successfully sent leadership status: true")
 				case <-ctx.Done():
 					log.Warn("context cancelled while sending leadership status")
 				}
@@ -112,7 +112,7 @@ func runLeaderElection(
 				log.Info("stopped leading")
 				select {
 				case leaderStatusCh <- false:
-					log.Debug("successfully sent leadership status: false")
+					log.Info("successfully sent leadership status: false")
 				case <-ctx.Done():
 					log.Warn("context cancelled while sending leadership status")
 				}
@@ -121,7 +121,13 @@ func runLeaderElection(
 				if identity == replicaIdentity {
 					return
 				}
-				log.WithField("leader_identity", identity).Info("new leader elected")
+				select {
+				case leaderStatusCh <- false:
+					log.Info("successfully sent leadership status: false (new leader detected)")
+				case <-ctx.Done():
+					log.Warn("context cancelled while sending leadership status")
+				}
+				log.WithField("leader_identity", identity).Info("current leader")
 			},
 		},
 	}
@@ -129,7 +135,6 @@ func runLeaderElection(
 	// Run leader election. This runs continuously, automatically handling:
 	// - Acquiring leadership when available
 	// - Renewing the lease while leader
-	// - Releasing leadership and retrying when lease is lost
-	// - Only exits when ctx is cancelled (app shutdown) or on panic
+	// - Exits when leadership is lost or context is cancelled
 	leaderelection.RunOrDie(ctx, leConfig)
 }
