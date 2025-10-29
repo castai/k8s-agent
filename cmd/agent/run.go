@@ -27,12 +27,19 @@ import (
 	"castai-agent/internal/services/controller"
 	"castai-agent/internal/services/controller/scheme"
 	"castai-agent/internal/services/discovery"
+	"castai-agent/internal/services/health"
 	"castai-agent/internal/services/metadata"
 	"castai-agent/internal/services/metrics"
 	"castai-agent/internal/services/monitor"
 	"castai-agent/internal/services/providers"
 	"castai-agent/internal/services/replicas"
 	castailog "castai-agent/pkg/log"
+)
+
+const (
+	exitChannelBufferSize = 10
+	leaderHealthzTimeout  = 2 * time.Minute
+	bytesInMiB            = 1024 * 1024
 )
 
 func run(ctx context.Context) error {
@@ -66,20 +73,22 @@ func run(ctx context.Context) error {
 
 	if cfg.Log.PrintMemoryUsageEvery != nil {
 		go func() {
-			timer := time.NewTicker(*cfg.Log.PrintMemoryUsageEvery)
+			ticker := time.NewTicker(*cfg.Log.PrintMemoryUsageEvery)
+			defer ticker.Stop()
+
 			for {
 				select {
-				case <-timer.C:
+				case <-ticker.C:
 					var m runtime.MemStats
 					runtime.ReadMemStats(&m)
 					log.WithFields(logrus.Fields{
-						"Alloc_MiB":      m.Alloc / 1024 / 1024,
-						"TotalAlloc_MiB": m.TotalAlloc / 1024 / 1024,
-						"Sys_MiB":        m.Sys / 1024 / 1024,
+						"Alloc_MiB":      m.Alloc / bytesInMiB,
+						"TotalAlloc_MiB": m.TotalAlloc / bytesInMiB,
+						"Sys_MiB":        m.Sys / bytesInMiB,
 						"NumGC":          m.NumGC,
-					}).Infof("memory usage")
+					}).Info("memory usage")
 				case <-ctx.Done():
-					break
+					return
 				}
 			}
 		}()
@@ -124,7 +133,7 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 
 	// buffer will allow for all senders to push, even though we will only read first error and cancel context after it;
 	// all errors from exitCh are logged
-	exitCh := make(chan error, 10)
+	exitCh := make(chan error, exitChannelBufferSize)
 	go watchExitErrors(ctx, log, exitCh, ctxCancel)
 
 	agentVersion := config.VersionInfo
@@ -136,18 +145,24 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 		defer closePprof()
 	}
 
-	ctrlHealthz := controller.NewHealthzProvider(cfg, log)
+	ctrlHealthz := health.NewHealthzProvider(cfg, log)
 
 	// if pod is holding invalid leader lease, this health check will ensure to kill it by failing pod health check
-	leaderWatchDog := leaderelection.NewLeaderHealthzAdaptor(time.Minute * 2)
+	leaderWatchDog := leaderelection.NewLeaderHealthzAdaptor(leaderHealthzTimeout)
 	checks := map[string]healthz.Checker{
-		"controller": ctrlHealthz.Check,
+		"ping": healthz.Ping,
 	}
 	if cfg.LeaderElection.Enabled {
 		checks["leader"] = leaderWatchDog.Check
 	}
+	readinessChecks := lo.Assign(checks, map[string]healthz.Checker{
+		"readiness": ctrlHealthz.CheckReadiness,
+	})
+	livenessChecks := lo.Assign(checks, map[string]healthz.Checker{
+		"liveness": ctrlHealthz.CheckLiveness,
+	})
 
-	closeHealthz := runHealthzEndpoints(cfg, log, checks, exitCh)
+	closeHealthz := runHealthzEndpoints(cfg, log, livenessChecks, readinessChecks, exitCh)
 	defer closeHealthz()
 
 	closeMetrics := runMetricsEndpoints(cfg, log, exitCh)
@@ -156,6 +171,9 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 	restconfig, err := cfg.RetrieveKubeConfig(log)
 	if err != nil {
 		return err
+	}
+	if restconfig == nil {
+		return fmt.Errorf("kubeconfig is nil")
 	}
 
 	if err := v1beta1.AddToScheme(scheme.Scheme); err != nil {
@@ -201,64 +219,89 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 	log.Data["provider"] = provider.Name()
 	log.Infof("using provider %q", provider.Name())
 
-	agentLoopFunc := func(ctx context.Context) error {
-		clusterID := ""
-		if cfg.Static != nil {
-			clusterID = cfg.Static.ClusterID
-		}
+	clusterID := ""
+	if cfg.Static != nil {
+		clusterID = cfg.Static.ClusterID
+	}
 
-		if clusterID != "" {
-			log.WithField("cluster_id", clusterID).Info("cluster ID provided by env variable")
-		}
+	if clusterID != "" {
+		log.WithField("cluster_id", clusterID).Info("cluster ID provided by env variable")
+	}
 
-		if clusterID == "" {
-			reg, err := provider.RegisterCluster(ctx, castaiclient)
-			if err != nil {
-				return fmt.Errorf("registering cluster: %w", err)
-			}
-			clusterID = reg.ClusterID
-			log.WithField("cluster_id", clusterID).Infof("cluster registered: %v", reg)
-		}
-
-		// Final check to ensure we don't run without a cluster ID.
-		if clusterID == "" {
-			// This is not normal, but we see some requests with missing cluster IDs. Agent without cluster ID will not be
-			// able to upload snapshots which means it's serving no purpose. It's best to raise this issue and get it fixed.
-			return fmt.Errorf("cluster ID is still empty after initialization")
-		}
-
-		clusterIDChangedHandler(clusterID)
-
-		if err := saveMetadata(clusterID, cfg); err != nil {
-			return err
-		}
-
-		err = controller.Loop(
-			ctx,
-			log,
-			clientset,
-			metricsClient,
-			dynamicClient,
-			castaiclient,
-			provider,
-			clusterID,
-			cfg,
-			agentVersion,
-			ctrlHealthz,
-		)
+	if clusterID == "" {
+		reg, err := provider.RegisterCluster(ctx, castaiclient)
 		if err != nil {
-			return fmt.Errorf("controller loop error: %w", err)
+			return fmt.Errorf("registering cluster: %w", err)
 		}
+		clusterID = reg.ClusterID
+		log.WithField("cluster_id", clusterID).Infof("cluster registered: %v", reg)
+	}
 
-		return nil
+	// Final check to ensure we don't run without a cluster ID.
+	if clusterID == "" {
+		return fmt.Errorf("cluster ID is still empty after initialization")
+	}
+
+	clusterIDChangedHandler(clusterID)
+
+	if err := saveMetadata(clusterID, cfg); err != nil {
+		return err
 	}
 
 	if cfg.LeaderElection.Enabled {
-		replicas.Run(ctx, log, cfg.LeaderElection, clientset, leaderWatchDog, func(ctx context.Context) {
-			exitCh <- agentLoopFunc(ctx)
-		})
+		// Buffered channel to avoid blocking leader election on slow consumers
+		leaderStatusCh := make(chan bool, 10)
+
+		params := &controller.Params{
+			Log:             log,
+			Clientset:       clientset,
+			MetricsClient:   metricsClient,
+			DynamicClient:   dynamicClient,
+			CastaiClient:    castaiclient,
+			Provider:        provider,
+			ClusterID:       clusterID,
+			Config:          cfg,
+			AgentVersion:    agentVersion,
+			HealthzProvider: ctrlHealthz,
+			LeaderStatusCh:  leaderStatusCh,
+		}
+
+		go func() {
+			if err := controller.RunControllerWithRestart(ctx, params); err != nil {
+				exitCh <- fmt.Errorf("controller with restart error: %w", err)
+			}
+		}()
+
+		// Run leader election - it communicates via the channel
+		go func() {
+			replicas.RunLeaderElection(ctx, log, cfg.LeaderElection, clientset, leaderWatchDog, leaderStatusCh)
+		}()
+
+		<-ctx.Done()
+		log.Info("shutdown signal received, initiating graceful shutdown")
 	} else {
-		exitCh <- agentLoopFunc(ctx)
+		params := &controller.Params{
+			Log:             log,
+			Clientset:       clientset,
+			MetricsClient:   metricsClient,
+			DynamicClient:   dynamicClient,
+			CastaiClient:    castaiclient,
+			Provider:        provider,
+			ClusterID:       clusterID,
+			Config:          cfg,
+			AgentVersion:    agentVersion,
+			HealthzProvider: ctrlHealthz,
+			LeaderStatusCh:  nil,
+		}
+
+		go func() {
+			if err := controller.RunControllerWithRestart(ctx, params); err != nil {
+				exitCh <- fmt.Errorf("controller with restart error: %w", err)
+			}
+		}()
+
+		<-ctx.Done()
+		log.Info("shutdown signal received, initiating graceful shutdown")
 	}
 
 	return nil
@@ -274,7 +317,11 @@ func watchExitErrors(ctx context.Context, log *logrus.Entry, exitCh chan error, 
 			}
 			ctxCancel()
 		case <-ctx.Done():
-			log.Infof("context done")
+			if errors.Is(ctx.Err(), context.Canceled) {
+				log.Info("shutdown initiated: received termination signal")
+			} else {
+				log.Infof("context done: %v", ctx.Err())
+			}
 			return
 		}
 	}
@@ -305,13 +352,25 @@ func runPProf(cfg config.Config, log *logrus.Entry, exitCh chan error) (closeFun
 	return closeFn
 }
 
-func runHealthzEndpoints(cfg config.Config, log *logrus.Entry, checks map[string]healthz.Checker, exitCh chan error) func() {
+func runHealthzEndpoints(
+	cfg config.Config,
+	log *logrus.Entry,
+	livenessChecks map[string]healthz.Checker,
+	readinessChecks map[string]healthz.Checker,
+	exitCh chan error,
+) func() {
 	log.Infof("starting healthz server on port: %d", cfg.HealthzPort)
-	allChecks := lo.Assign(map[string]healthz.Checker{
-		"server": healthz.Ping,
-	}, checks)
+
+	mux := http.NewServeMux()
+
+	// Handle /healthz (liveness) endpoint
+	mux.HandleFunc("/healthz", health.HealthCheckHandler(livenessChecks))
+
+	// Handle /readyz (readiness) endpoint
+	mux.HandleFunc("/readyz", health.HealthCheckHandler(readinessChecks))
+
 	addr := portToServerAddr(cfg.HealthzPort)
-	healthzSrv := &http.Server{Addr: addr, Handler: &healthz.Handler{Checks: allChecks}}
+	healthzSrv := &http.Server{Addr: addr, Handler: mux}
 	closeFunc := func() {
 		log.Infof("closing healthz server")
 		if err := healthzSrv.Close(); err != nil {
@@ -322,12 +381,10 @@ func runHealthzEndpoints(cfg config.Config, log *logrus.Entry, checks map[string
 	go func() {
 		log.Infof("healthz server ready")
 		err := healthzSrv.ListenAndServe()
-		if err != nil {
-			if !errors.Is(err, http.ErrServerClosed) {
-				exitCh <- fmt.Errorf("healthz server: %w", err)
-			} else {
-				log.Warnf("healthz server closed")
-			}
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			exitCh <- fmt.Errorf("healthz server: %w", err)
+		} else {
+			log.Warnf("healthz server closed")
 		}
 	}()
 	return closeFunc
@@ -378,11 +435,11 @@ func portToServerAddr(port int) string {
 }
 
 func saveMetadata(clusterID string, cfg config.Config) error {
-	metadata := monitor.Metadata{
+	metadataObj := monitor.Metadata{
 		ClusterID: clusterID,
 		ProcessID: uint64(os.Getpid()),
 	}
-	if err := metadata.Save(cfg.MonitorMetadata); err != nil {
+	if err := metadataObj.Save(cfg.MonitorMetadata); err != nil {
 		return fmt.Errorf("saving metadata: %w", err)
 	}
 	return nil
