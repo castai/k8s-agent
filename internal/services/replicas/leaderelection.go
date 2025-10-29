@@ -166,7 +166,13 @@ func queryCurrentLeaseHolder(
 
 	// Check if lease is expired
 	if lease.Spec.RenewTime != nil {
-		leaseExpiry := lease.Spec.RenewTime.Add(leaseDuration)
+		var duration time.Duration
+		if lease.Spec.LeaseDurationSeconds != nil {
+			duration = time.Duration(*lease.Spec.LeaseDurationSeconds) * time.Second
+		} else {
+			duration = leaseDuration // your default
+		}
+		leaseExpiry := lease.Spec.RenewTime.Add(duration)
 		if time.Now().After(leaseExpiry) {
 			log.WithFields(logrus.Fields{
 				"holder":     holderIdentity,
