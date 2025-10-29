@@ -47,6 +47,10 @@ func RunLeaderElection(
 	}
 
 	log.Info("initializing leader election attempt")
+
+	// Start watchdog to regularly send leader status updates
+	go runLeaseWatchdog(ctx, log, cfg, client, leaderStatusCh, replicaIdentity)
+
 	runLeaderElection(ctx, log, cfg, client, watchDog, leaderStatusCh, replicaIdentity)
 
 	if ctx.Err() != nil {
@@ -137,4 +141,81 @@ func runLeaderElection(
 	// - Renewing the lease while leader
 	// - Exits when leadership is lost or context is cancelled
 	leaderelection.RunOrDie(ctx, leConfig)
+}
+
+// queryCurrentLeaseHolder queries the Kubernetes API to check who currently holds the lease.
+// Returns empty string if no one holds the lease or if there's an error querying.
+func queryCurrentLeaseHolder(
+	ctx context.Context,
+	log logrus.FieldLogger,
+	cfg config.LeaderElectionConfig,
+	client kubernetes.Interface,
+) string {
+	lease, err := client.CoordinationV1().Leases(cfg.Namespace).Get(ctx, cfg.LockName, metav1.GetOptions{})
+	if err != nil {
+		log.WithError(err).Debug("failed to query current lease holder (may not exist yet)")
+		return ""
+	}
+
+	if lease.Spec.HolderIdentity == nil {
+		log.Debug("lease exists but has no holder")
+		return ""
+	}
+
+	holderIdentity := *lease.Spec.HolderIdentity
+
+	// Check if lease is expired
+	if lease.Spec.RenewTime != nil {
+		leaseExpiry := lease.Spec.RenewTime.Add(leaseDuration)
+		if time.Now().After(leaseExpiry) {
+			log.WithFields(logrus.Fields{
+				"holder":     holderIdentity,
+				"renew_time": lease.Spec.RenewTime.Time,
+				"expiry":     leaseExpiry,
+			}).Debug("lease exists but is expired")
+			return ""
+		}
+	}
+
+	log.WithField("holder", holderIdentity).Debug("found current lease holder")
+	return holderIdentity
+}
+
+// runLeaseWatchdog periodically verifies the lease state and sends regular updates to leader chanel
+func runLeaseWatchdog(
+	ctx context.Context,
+	log logrus.FieldLogger,
+	cfg config.LeaderElectionConfig,
+	client kubernetes.Interface,
+	leaderStatusCh chan<- bool,
+	replicaIdentity string,
+) {
+	ticker := time.NewTicker(leaseDuration)
+	defer ticker.Stop()
+
+	log.Debug("starting lease watchdog")
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Debug("lease watchdog stopped due to context cancellation")
+			return
+		case <-ticker.C:
+			currentHolder := queryCurrentLeaseHolder(ctx, log, cfg, client)
+
+			isLeader := false
+			if currentHolder == "" {
+				log.WithField("own_identity", replicaIdentity).Debug("watchdog: no current lease holder")
+			} else if currentHolder == replicaIdentity {
+				log.WithField("own_identity", replicaIdentity).Debug("watchdog: this replica holds the lease")
+				isLeader = true
+			} else {
+				log.WithFields(logrus.Fields{
+					"current_holder": currentHolder,
+					"own_identity":   replicaIdentity,
+				}).Debug("watchdog: another replica holds the lease")
+			}
+			leaderStatusCh <- isLeader
+		}
+	}
 }
