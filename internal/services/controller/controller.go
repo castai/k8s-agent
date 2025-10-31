@@ -1074,6 +1074,16 @@ func getConditionalInformers(
 				return f.Resource().V1beta2().ResourceSlices().Informer()
 			},
 		},
+		{
+			groupVersion:    knowngv.LiveV1,
+			resource:        "migrations",
+			kind:            "Migration",
+			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(knowngv.LiveV1.WithResource("migrations")).Informer()
+			},
+		},
 	}
 
 	for _, cmNamespace := range cfg.ConfigMapNamespaces {
