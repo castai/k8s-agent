@@ -339,6 +339,10 @@ func Reset() {
 	cfg = nil
 }
 
+func required(variable string) {
+	panic(fmt.Errorf("env variable %s is required", variable))
+}
+
 func requiredWhenDiscoveryDisabled(variable string) {
 	panic(fmt.Errorf("env variable %s is required when discovery is disabled", variable))
 }
