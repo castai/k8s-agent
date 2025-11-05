@@ -45,7 +45,6 @@ import (
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller/crd"
 	"castai-agent/internal/services/controller/knowngv"
-	"castai-agent/internal/services/health"
 	mock_castai "castai-agent/mocks/internal_/castai"
 	mock_types "castai-agent/mocks/internal_/services/providers/types"
 	mock_version "castai-agent/mocks/internal_/services/version"
@@ -118,7 +117,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			provider := mock_types.NewMockProvider(t)
 			objectsData, clientset, dynamicClient, metricsClient := loadInitialHappyPathData(t, scheme)
 
-			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
 			fakeAuthorization := &authfakev1.FakeAuthorizationV1{
@@ -211,7 +210,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 
 			cfg := &config.Controller{
 				Interval:             15 * time.Second,
-				PrepTimeout:          5 * time.Second,
+				PrepTimeout:          2 * time.Second,
 				InitialSleepDuration: 10 * time.Millisecond,
 				ConfigMapNamespaces:  []string{v1.NamespaceDefault},
 			}
@@ -232,10 +231,9 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 				cfg,
 				version,
 				agentVersion,
-				health.NewHealthzProvider(defaultHealthzCfg, log),
+				NewHealthzProvider(defaultHealthzCfg, log),
 				fakeAuthorization.SelfSubjectAccessReviews(),
 				"",
-				nil,
 			)
 
 			if mockDiscovery != nil {
@@ -272,12 +270,14 @@ func TestController_ApiResourcesErrorProcessing(t *testing.T) {
 }
 
 func TestController_ShouldSendByInterval(t *testing.T) {
-	tt := map[string]struct {
+	tt := []struct {
+		name          string
 		sendInterval  time.Duration
 		sendDurations []time.Duration
 		checkAfter    time.Duration
 	}{
-		"should trigger all sends when none exceed allocated intervals": {
+		{
+			name:         "should trigger all sends when none exceed allocated intervals",
 			sendInterval: 300 * time.Millisecond,
 			sendDurations: []time.Duration{
 				// Send by 300ms
@@ -291,7 +291,8 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 			},
 			checkAfter: 1200 * time.Millisecond,
 		},
-		"should skip gather if previous one isn't completed (one time window)": {
+		{
+			name:         "should skip send if previous one isn't completed (one time window)",
 			sendInterval: 300 * time.Millisecond,
 			sendDurations: []time.Duration{
 				// At 0, completed by 600
@@ -301,7 +302,8 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 			},
 			checkAfter: 900 * time.Millisecond,
 		},
-		"should skip all sends if previous one isn't completed (2 time windows)": {
+		{
+			name:         "should skip all sends if previous one isn't completed (2 time windows)",
 			sendInterval: 300 * time.Millisecond,
 			sendDurations: []time.Duration{
 				// At 0, completed by 900
@@ -313,13 +315,13 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 		},
 	}
 
-	for name, tc := range tt {
-		t.Run(name, func(t *testing.T) {
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
 			castaiclient := mock_castai.NewMockClient(t)
 			version := mock_version.NewMockInterface(t)
 			provider := mock_types.NewMockProvider(t)
 
-			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
 			r := require.New(t)
@@ -390,10 +392,9 @@ func TestController_ShouldSendByInterval(t *testing.T) {
 				},
 				version,
 				agentVersion,
-				health.NewHealthzProvider(defaultHealthzCfg, log),
+				NewHealthzProvider(defaultHealthzCfg, log),
 				clientset.AuthorizationV1().SelfSubjectAccessReviews(),
 				"",
-				nil,
 			)
 
 			ctrl.Start(ctx.Done())
@@ -435,7 +436,7 @@ func TestController_HandlingSendErrors(t *testing.T) {
 			version := mock_version.NewMockInterface(t)
 			provider := mock_types.NewMockProvider(t)
 
-			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
 			clientset := fake.NewSimpleClientset()
@@ -511,10 +512,9 @@ func TestController_HandlingSendErrors(t *testing.T) {
 				},
 				version,
 				agentVersion,
-				health.NewHealthzProvider(defaultHealthzCfg, log),
+				NewHealthzProvider(defaultHealthzCfg, log),
 				clientset.AuthorizationV1().SelfSubjectAccessReviews(),
 				"",
-				nil,
 			)
 
 			ctrl.Start(ctx.Done())
@@ -535,87 +535,6 @@ func TestController_HandlingSendErrors(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestController_ShouldNotSendDeltasIfNotLeader(t *testing.T) {
-	t.Run("should not send any deltas if not leader", func(t *testing.T) {
-		castaiclient := mock_castai.NewMockClient(t)
-		version := mock_version.NewMockInterface(t)
-		provider := mock_types.NewMockProvider(t)
-
-		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-		defer cancel()
-
-		r := require.New(t)
-
-		_, clientset, dynamicClient, metricsClient := loadInitialHappyPathData(t, runtime.NewScheme())
-
-		version.EXPECT().Full().Return("1.21+").Maybe()
-
-		clusterID := uuid.New()
-		log := logrus.New()
-
-		agentVersion := &config.AgentVersion{Version: "1.2.3"}
-		castaiclient.EXPECT().
-			ExchangeAgentTelemetry(mock.Anything, mock.Anything, mock.Anything).
-			Run(func(ctx context.Context, clusterID string, req *castai.AgentTelemetryRequest) {
-				r.Equalf("1.2.3", req.AgentVersion, "got request: %+v", req)
-			}).
-			Return(&castai.AgentTelemetryResponse{}, nil).
-			Maybe()
-
-		// Track if SendDelta is called - it should never be called
-		var sendDeltaCalled bool
-		castaiclient.EXPECT().SendDelta(mock.Anything, mock.Anything, mock.Anything).
-			Run(func(ctx context.Context, clusterID string, delta *castai.Delta) {
-				sendDeltaCalled = true
-				r.Fail("SendDelta should not be called when controller is not leader")
-			}).
-			Return(nil).
-			Maybe()
-
-		leaderCh := make(chan bool, 1)
-
-		log.SetLevel(logrus.DebugLevel)
-		intervalDuration := 1 * time.Second
-		initialSnapPrepDuration := 5 * time.Second
-		initialSleepDuration := 2 * time.Second
-		ctrl := New(
-			log,
-			clientset,
-			dynamicClient,
-			castaiclient,
-			metricsClient,
-			provider,
-			clusterID.String(),
-			&config.Controller{
-				Interval:             intervalDuration,
-				PrepTimeout:          initialSnapPrepDuration,
-				InitialSleepDuration: initialSleepDuration,
-			},
-			version,
-			agentVersion,
-			health.NewHealthzProvider(defaultHealthzCfg, log),
-			clientset.AuthorizationV1().SelfSubjectAccessReviews(),
-			"",
-			leaderCh,
-		)
-
-		leaderCh <- false
-
-		ctrl.Start(ctx.Done())
-
-		go func() {
-			r.NoError(ctrl.Run(ctx))
-		}()
-
-		wait.Until(func() {
-			<-ctx.Done()
-		}, 2*time.Second, ctx.Done())
-
-		// Verify SendDelta was never called
-		r.False(sendDeltaCalled, "SendDelta should not have been called when controller is not leader")
-	})
 }
 
 func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObject, *fake.Clientset, *dynamic_fake.FakeDynamicClient, *metrics_fake.Clientset) {
@@ -1585,7 +1504,7 @@ func TestCollectSingleSnapshot(t *testing.T) {
 	r := require.New(t)
 
 	version := mock_version.NewMockInterface(t)
-	ctx := t.Context()
+	ctx := context.Background()
 
 	version.EXPECT().Full().Return("1.21+")
 	ctx = context.WithValue(ctx, "agentVersion", &config.AgentVersion{

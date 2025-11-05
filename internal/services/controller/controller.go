@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	datadoghqv1alpha1 "github.com/DataDog/extendeddaemonset/api/v1alpha1"
@@ -54,7 +53,6 @@ import (
 	"castai-agent/internal/services/controller/handlers/transformers/annotations"
 	custominformers "castai-agent/internal/services/controller/informers"
 	"castai-agent/internal/services/controller/knowngv"
-	"castai-agent/internal/services/health"
 	"castai-agent/internal/services/memorypressure"
 	"castai-agent/internal/services/metrics"
 	"castai-agent/internal/services/providers/types"
@@ -83,25 +81,17 @@ type Controller struct {
 	deltaBatcher  *delta.Batcher[*delta.Item]
 	deltaCompiler *delta.Compiler[*delta.Item]
 
-	// gatherMu ensures that only one goroutine can gather deltas
-	gatherMu sync.Mutex
+	// sendMu ensures that only one goroutine can send deltas
+	sendMu sync.Mutex
 
 	triggerRestart func()
 
 	agentVersion    *config.AgentVersion
-	healthzProvider *health.HealthzProvider
+	healthzProvider *HealthzProvider
 
 	conditionalInformers    []conditionalInformer
 	selfSubjectAccessReview authorizationtypev1.SelfSubjectAccessReviewInterface
 	lastSend                time.Time
-
-	// isLeader indicates whether the controller is running as a leader in a HA setup.
-	// if controller is not a leader, it will not gather any deltas to the backend.
-	isLeader atomic.Bool
-
-	// leaderStatusCh receives leadership status changes from leader election
-	// The controller watches this channel and updates isLeader accordingly
-	leaderStatusCh <-chan bool
 }
 
 type conditionalInformer struct {
@@ -225,10 +215,9 @@ func New(
 	cfg *config.Controller,
 	v version.Interface,
 	agentVersion *config.AgentVersion,
-	healthzProvider *health.HealthzProvider,
+	healthzProvider *HealthzProvider,
 	selfSubjectAccessReview authorizationtypev1.SelfSubjectAccessReviewInterface,
 	castwareNamespace string,
-	leaderStatusCh <-chan bool,
 ) *Controller {
 	healthzProvider.Initializing()
 
@@ -322,7 +311,6 @@ func New(
 		informerFactory:         f,
 		conditionalInformers:    conditionalInformers,
 		selfSubjectAccessReview: selfSubjectAccessReview,
-		leaderStatusCh:          leaderStatusCh,
 	}
 }
 
@@ -333,45 +321,6 @@ func (c *Controller) Run(ctx context.Context) error {
 	defer cancel()
 
 	c.triggerRestart = cancel
-
-	// Start watching for leader status changes if channel is provided
-	// Wait for initial status before proceeding to ensure we know our leadership state
-	if c.leaderStatusCh != nil {
-		// Wait for initial leader status with timeout
-		select {
-		case isLeader, ok := <-c.leaderStatusCh:
-			if !ok {
-				c.log.Warn("leader status channel closed, assuming no leader election is used")
-				c.isLeader.Store(false)
-			} else {
-				c.isLeader.Store(isLeader)
-			}
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(30 * time.Second):
-			c.log.Warn("timeout waiting for initial leader status, assuming not leader")
-			c.isLeader.Store(false)
-		}
-
-		// Continue watching for leadership changes in background
-		go func() {
-			for {
-				select {
-				case isLeader, ok := <-c.leaderStatusCh:
-					if !ok {
-						c.log.Warn("leader status channel closed")
-						return
-					}
-					c.isLeader.Store(isLeader)
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
-	} else {
-		// If no leader election is used, assume we are the leader
-		c.isLeader.Store(true)
-	}
 
 	err := waitInformersSync(ctx, c.log, c.informers)
 	if err != nil {
@@ -412,35 +361,31 @@ func (c *Controller) Run(ctx context.Context) error {
 
 		// Since both initial snapshot collection and event handlers writes to the same delta queue add
 		// some sleep to prevent sending few large deltas on initial agent startup.
-		if c.isLeader.Load() {
-			c.log.Infof("sleeping for %s before starting to gather cluster deltas", c.cfg.InitialSleepDuration)
-		}
+		c.log.Infof("sleeping for %s before starting to send cluster deltas", c.cfg.InitialSleepDuration)
 		time.Sleep(c.cfg.InitialSleepDuration)
 
-		c.healthzProvider.MarkHealthy()
+		c.healthzProvider.Initialized()
 
-		if c.isLeader.Load() {
-			c.log.Infof("sending cluster deltas every %s", c.cfg.Interval)
-		}
+		c.log.Infof("sending cluster deltas every %s", c.cfg.Interval)
 
-		gatherDeltas := func() {
-			// Check if another goroutine is trying to gather deltas.
-			if !c.gatherMu.TryLock() {
-				// If it is, don't try to gather deltas on this turn to avoid a backlog of sends.
+		sendDeltas := func() {
+			// Check if another goroutine is trying to send deltas.
+			if !c.sendMu.TryLock() {
+				// If it is, don't try to send deltas on this turn to avoid a backlog of sends.
 				return
 			}
 			// Since Mutex.TryLock() acquires a lock on success,
 			// release it immediately to allow the new sending goroutine to do its job.
-			defer c.gatherMu.Unlock()
-			c.gather(ctx)
+			defer c.sendMu.Unlock()
+			c.send(ctx)
 		}
 		mempr := memorypressure.MemoryPressure{
 			Ctx:      ctx,
 			Interval: c.cfg.MemoryPressureInterval,
 			Log:      c.log,
 		}
-		go mempr.OnMemoryPressure(gatherDeltas)
-		wait.NonSlidingUntil(gatherDeltas, c.cfg.Interval, ctx.Done())
+		go mempr.OnMemoryPressure(sendDeltas)
+		wait.NonSlidingUntil(sendDeltas, c.cfg.Interval, ctx.Done())
 		return nil
 	})
 
@@ -597,14 +542,7 @@ func (c *Controller) processItem(i interface{}) {
 	c.deltaBatcher.Write(di)
 }
 
-func (c *Controller) gather(ctx context.Context) {
-	// If not leader, we assume that changes are still being saved to deltaBatcher, but  not taking it.
-	// Full snapshot will be sent when the controller becomes a leader
-	if !c.isLeader.Load() {
-		c.log.Info("Not a leader, skipping sending deltas")
-		c.healthzProvider.MarkHealthy()
-		return
-	}
+func (c *Controller) send(ctx context.Context) {
 	c.trackSendMetrics(func() {
 		newBatch := c.deltaBatcher.GetMapAndClear()
 		c.prepareNodesForSend(ctx, newBatch)
@@ -627,7 +565,7 @@ func (c *Controller) gather(ctx context.Context) {
 			// items on the next one.
 			return
 		}
-		c.healthzProvider.MarkHealthy() // data gathered and sent to Cast
+		c.healthzProvider.SnapshotSent()
 		c.deltaCompiler.Clear()
 		c.fullSnapshot = false
 	})
@@ -786,7 +724,6 @@ func (c *Controller) Start(done <-chan struct{}) {
 		go informer.Run(done)
 	}
 }
-
 func extractGroupVersionsFromApiResourceError(log logrus.FieldLogger, err error) map[schema.GroupVersion]bool {
 	cleanedString := strings.Split(err.Error(), "unable to retrieve the complete list of server APIs: ")[1]
 	paths := strings.Split(cleanedString, ",")
