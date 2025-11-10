@@ -187,6 +187,62 @@ func TestQueryCurrentLeaseHolder(t *testing.T) {
 	}
 }
 
+func TestRunLeaderElection_SendsFinalLeadershipStatus(t *testing.T) {
+	t.Run("sends false to channel on context cancellation", func(t *testing.T) {
+		// This test verifies that when leader election exits due to context cancellation,
+		// it sends a final false status to the leadership channel.
+		// Note: With fake clientset, we can't easily test unexpected exits because
+		// RunOrDie won't fail - it will run until context is cancelled.
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		log := logrus.New()
+		log.SetLevel(logrus.DebugLevel)
+
+		cfg := config.LeaderElectionConfig{
+			LockName:  "test-lock",
+			Namespace: "default",
+		}
+
+		clientset := fake.NewSimpleClientset()
+		watchDog := leaderelection.NewLeaderHealthzAdaptor(time.Second)
+		leaderStatusCh := make(chan bool, 10)
+
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			RunLeaderElection(ctx, log, cfg, clientset, watchDog, leaderStatusCh)
+		}()
+
+		// Wait for initial leadership
+		select {
+		case isLeader := <-leaderStatusCh:
+			require.True(t, isLeader, "should become leader")
+		case <-time.After(6 * time.Second):
+			t.Fatal("timeout waiting for leadership")
+		}
+
+		// Cancel context to trigger exit
+		cancel()
+
+		// Should receive final false status
+		select {
+		case isLeader := <-leaderStatusCh:
+			require.False(t, isLeader, "should send false on exit")
+		case <-time.After(5 * time.Second):
+			t.Fatal("timeout waiting for final leadership status")
+		}
+
+		// Wait for goroutine to complete
+		select {
+		case <-done:
+			// Success
+		case <-time.After(3 * time.Second):
+			t.Fatal("timeout waiting for leader election to stop")
+		}
+	})
+}
+
 func TestRunLeaseWatchdog(t *testing.T) {
 	leaseDurationSeconds := lo.ToPtr(int32(leaseDuration.Seconds()) + 1)
 	tests := map[string]struct {

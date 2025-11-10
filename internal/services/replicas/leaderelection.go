@@ -2,6 +2,7 @@ package replicas
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -22,6 +23,7 @@ const (
 )
 
 // RunLeaderElection runs leader election and sends status changes to the provided channel.
+// Returns an error if leader election stops unexpectedly (not due to context cancellation).
 func RunLeaderElection(
 	ctx context.Context,
 	log logrus.FieldLogger,
@@ -29,7 +31,7 @@ func RunLeaderElection(
 	client kubernetes.Interface,
 	watchDog *leaderelection.HealthzAdaptor,
 	leaderStatusCh chan<- bool,
-) {
+) error {
 	replicaIdentity := uuid.New().String()
 	log = log.WithField("own_identity", replicaIdentity)
 	log.Info("starting leader election")
@@ -42,7 +44,7 @@ func RunLeaderElection(
 			log.Info("initial delay completed, proceeding with leader election")
 		case <-ctx.Done():
 			log.Info("leader election stopped during initial delay due to context cancellation")
-			return
+			return nil
 		}
 	}
 
@@ -53,13 +55,22 @@ func RunLeaderElection(
 
 	runLeaderElection(ctx, log, cfg, client, watchDog, leaderStatusCh, replicaIdentity)
 
-	if ctx.Err() != nil {
-		log.Info("leader election stopped due to context cancellation")
-		return
+	// Always send false to leadership channel when exiting
+	// This ensures controller knows we're not leading anymore
+	select {
+	case leaderStatusCh <- false:
+		log.Info("sent final leadership status: false")
+	case <-time.After(2 * time.Second):
+		log.Warn("timeout sending final leadership status")
 	}
 
-	log.Warn("leader election unexpectedly stopped")
+	if ctx.Err() != nil {
+		log.Info("leader election stopped due to context cancellation")
+		return nil
+	}
 
+	log.Error("leader election stopped unexpectedly - this should trigger app shutdown")
+	return fmt.Errorf("leader election stopped unexpectedly")
 }
 
 func calculateInitialDelay() time.Duration {
@@ -78,9 +89,13 @@ func runLeaderElection(
 	leaderStatusCh chan<- bool,
 	replicaIdentity string,
 ) {
+	// Capture panics to ensure proper cleanup and logging
+	// Then re-panic to trigger RunOrDie's error handling and lease release
 	defer func() {
 		if r := recover(); r != nil {
 			log.Errorf("leader election panicked: %v", r)
+			// Re-panic to let RunOrDie handle it and release the lease
+			panic(r)
 		}
 	}()
 
@@ -140,6 +155,9 @@ func runLeaderElection(
 	// - Acquiring leadership when available
 	// - Renewing the lease while leader
 	// - Exits when leadership is lost or context is cancelled
+	// Allow the function to panic or exit if context is cancelled.
+	// This ensures the lease is properly released via ReleaseOnCancel: true
+	// and the app context is cancelled to allow another replica to take over
 	leaderelection.RunOrDie(ctx, leConfig)
 }
 
