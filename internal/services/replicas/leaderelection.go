@@ -51,14 +51,16 @@ func RunLeaderElection(
 	log.Info("initializing leader election attempt")
 
 	// Start watchdog to regularly send leader status updates
-	// Use a separate context so watchdog stops when runLeaderElection exits
+	// Use a separate context so watchdog stops when RunLeaderElection exits
 	watchdogCtx, watchdogCancel := context.WithCancel(ctx)
 	defer watchdogCancel()
 
 	go runLeaseWatchdog(watchdogCtx, log, cfg, client, leaderStatusCh, replicaIdentity)
 
-	// Run leader election (blocking call) and capture any panics
-	panicErr := runLeaderElectionWithRecovery(ctx, log, cfg, client, watchDog, leaderStatusCh, replicaIdentity)
+	err := runLeaderElection(ctx, log, cfg, client, watchDog, leaderStatusCh, replicaIdentity)
+	if err != nil {
+		return err
+	}
 
 	// Always send false to leadership channel when exiting
 	// This ensures controller knows we're not leading anymore
@@ -69,17 +71,14 @@ func RunLeaderElection(
 		log.Warn("timeout sending final leadership status")
 	}
 
-	// If there was a panic, return it as an error
-	if panicErr != nil {
-		return panicErr
-	}
-
+	// If RunOrDie exits for any reason (context cancelled or unexpected),
+	// the pod can no longer participate in leader election and should restart
 	if ctx.Err() != nil {
-		log.Info("leader election stopped due to context cancellation")
-		return nil
+		log.Info("leader election stopped due to context cancellation - app is already shutting down")
+		return nil // Context already cancelled, no need to trigger shutdown again
 	}
 
-	log.Error("leader election stopped unexpectedly - this should trigger app shutdown")
+	log.Error("leader election stopped unexpectedly - triggering app shutdown")
 	return fmt.Errorf("leader election stopped unexpectedly")
 }
 
@@ -90,30 +89,6 @@ func calculateInitialDelay() time.Duration {
 	return minDelay + jitter
 }
 
-// runLeaderElectionWithRecovery wraps runLeaderElection with panic recovery.
-// This is a blocking call that returns when leader election stops (normally or via panic).
-// Returns error if a panic occurred, nil otherwise.
-func runLeaderElectionWithRecovery(
-	ctx context.Context,
-	log logrus.FieldLogger,
-	cfg config.LeaderElectionConfig,
-	client kubernetes.Interface,
-	watchDog *leaderelection.HealthzAdaptor,
-	leaderStatusCh chan<- bool,
-	replicaIdentity string,
-) (panicErr error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Errorf("leader election panicked during execution: %v", r)
-			panicErr = fmt.Errorf("leader election panicked: %v", r)
-		}
-	}()
-
-	// This will panic if RunOrDie panics, which will be caught by the defer above
-	runLeaderElection(ctx, log, cfg, client, watchDog, leaderStatusCh, replicaIdentity)
-	return nil
-}
-
 func runLeaderElection(
 	ctx context.Context,
 	log logrus.FieldLogger,
@@ -122,14 +97,12 @@ func runLeaderElection(
 	watchDog *leaderelection.HealthzAdaptor,
 	leaderStatusCh chan<- bool,
 	replicaIdentity string,
-) {
+) (err error) {
 	// Capture panics to ensure proper cleanup and logging
-	// Then re-panic to trigger RunOrDie's error handling and lease release
 	defer func() {
 		if r := recover(); r != nil {
 			log.Errorf("leader election panicked: %v", r)
-			// Re-panic to let RunOrDie handle it and release the lease
-			panic(r)
+			err = fmt.Errorf("leader election panicked: %v", r)
 		}
 	}()
 
@@ -185,14 +158,9 @@ func runLeaderElection(
 		},
 	}
 
-	// Run leader election. This runs continuously, automatically handling:
-	// - Acquiring leadership when available
-	// - Renewing the lease while leader
-	// - Exits when leadership is lost or context is cancelled
-	// Allow the function to panic or exit if context is cancelled.
-	// This ensures the lease is properly released via ReleaseOnCancel: true
-	// and the app context is cancelled to allow another replica to take over
 	leaderelection.RunOrDie(ctx, leConfig)
+
+	return nil
 }
 
 // queryCurrentLeaseHolder queries the Kubernetes API to check who currently holds the lease.
