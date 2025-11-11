@@ -51,7 +51,11 @@ func RunLeaderElection(
 	log.Info("initializing leader election attempt")
 
 	// Start watchdog to regularly send leader status updates
-	go runLeaseWatchdog(ctx, log, cfg, client, leaderStatusCh, replicaIdentity)
+	// Use a separate context so watchdog stops when runLeaderElection exits
+	watchdogCtx, watchdogCancel := context.WithCancel(ctx)
+	defer watchdogCancel()
+
+	go runLeaseWatchdog(watchdogCtx, log, cfg, client, leaderStatusCh, replicaIdentity)
 
 	runLeaderElection(ctx, log, cfg, client, watchDog, leaderStatusCh, replicaIdentity)
 
