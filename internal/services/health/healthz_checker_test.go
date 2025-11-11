@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 )
@@ -55,11 +56,14 @@ func TestHealthCheckHandler_VariousScenarios(t *testing.T) {
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
+			log := logrus.New()
+			log.SetLevel(logrus.DebugLevel)
+
 			req, err := http.NewRequest(http.MethodGet, "/healthz", nil)
 			require.NoError(t, err)
 
 			rr := httptest.NewRecorder()
-			handler := HealthCheckHandler(tc.checks)
+			handler := HealthCheckHandler(tc.checks, log)
 			handler.ServeHTTP(rr, req)
 
 			require.Equal(t, tc.wantStatus, rr.Code)

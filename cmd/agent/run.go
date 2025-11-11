@@ -38,7 +38,7 @@ import (
 
 const (
 	exitChannelBufferSize = 10
-	leaderHealthzTimeout  = 2 * time.Minute
+	leaderHealthzTimeout  = 30 * time.Second
 	bytesInMiB            = 1024 * 1024
 )
 
@@ -147,22 +147,36 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 
 	ctrlHealthz := health.NewHealthzProvider(cfg, log)
 
-	// if pod is holding invalid leader lease, this health check will ensure to kill it by failing pod health check
-	leaderWatchDog := leaderelection.NewLeaderHealthzAdaptor(leaderHealthzTimeout)
-	checks := map[string]healthz.Checker{
+	// Build base checks that apply to liveness and startup (but not readiness)
+	// These checks ensure the pod itself is functioning and has valid leader lease
+	baseChecks := map[string]healthz.Checker{
 		"ping": healthz.Ping,
 	}
+
+	// If pod is holding invalid leader lease, this health check will ensure to kill it
+	var leaderWatchDog *leaderelection.HealthzAdaptor
 	if cfg.LeaderElection.Enabled {
-		checks["leader"] = leaderWatchDog.Check
+		leaderWatchDog = leaderelection.NewLeaderHealthzAdaptor(leaderHealthzTimeout)
+		baseChecks["leader"] = leaderWatchDog.Check
 	}
-	readinessChecks := lo.Assign(checks, map[string]healthz.Checker{
+
+	// Readiness: Only check if controller is ready (has sent snapshot/deltas)
+	// No need for leader check - readiness just indicates if this replica can serve traffic
+	readinessChecks := map[string]healthz.Checker{
 		"readiness": ctrlHealthz.CheckReadiness,
-	})
-	livenessChecks := lo.Assign(checks, map[string]healthz.Checker{
+	}
+
+	// Liveness: Check ping + leader (if enabled) + controller is alive
+	livenessChecks := lo.Assign(baseChecks, map[string]healthz.Checker{
 		"liveness": ctrlHealthz.CheckLiveness,
 	})
 
-	closeHealthz := runHealthzEndpoints(cfg, log, livenessChecks, readinessChecks, exitCh)
+	// Startup: Check ping + leader (if enabled) + startup timeout from first init
+	startupChecks := lo.Assign(baseChecks, map[string]healthz.Checker{
+		"startup": ctrlHealthz.CheckStartup,
+	})
+
+	closeHealthz := runHealthzEndpoints(cfg, log, livenessChecks, readinessChecks, startupChecks, exitCh)
 	defer closeHealthz()
 
 	closeMetrics := runMetricsEndpoints(cfg, log, exitCh)
@@ -357,6 +371,7 @@ func runHealthzEndpoints(
 	log *logrus.Entry,
 	livenessChecks map[string]healthz.Checker,
 	readinessChecks map[string]healthz.Checker,
+	startupChecks map[string]healthz.Checker,
 	exitCh chan error,
 ) func() {
 	log.Infof("starting healthz server on port: %d", cfg.HealthzPort)
@@ -364,10 +379,13 @@ func runHealthzEndpoints(
 	mux := http.NewServeMux()
 
 	// Handle /healthz (liveness) endpoint
-	mux.HandleFunc("/healthz", health.HealthCheckHandler(livenessChecks))
+	mux.HandleFunc("/healthz", health.HealthCheckHandler(livenessChecks, log))
 
 	// Handle /readyz (readiness) endpoint
-	mux.HandleFunc("/readyz", health.HealthCheckHandler(readinessChecks))
+	mux.HandleFunc("/readyz", health.HealthCheckHandler(readinessChecks, log))
+
+	// Handle /startup endpoint for startup probes
+	mux.HandleFunc("/startup", health.HealthCheckHandler(startupChecks, log))
 
 	addr := portToServerAddr(cfg.HealthzPort)
 	healthzSrv := &http.Server{Addr: addr, Handler: mux}
