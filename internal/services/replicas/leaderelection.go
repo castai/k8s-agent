@@ -2,6 +2,7 @@ package replicas
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -22,6 +23,7 @@ const (
 )
 
 // RunLeaderElection runs leader election and sends status changes to the provided channel.
+// Returns an error if leader election stops unexpectedly (not due to context cancellation).
 func RunLeaderElection(
 	ctx context.Context,
 	log logrus.FieldLogger,
@@ -29,7 +31,7 @@ func RunLeaderElection(
 	client kubernetes.Interface,
 	watchDog *leaderelection.HealthzAdaptor,
 	leaderStatusCh chan<- bool,
-) {
+) error {
 	replicaIdentity := uuid.New().String()
 	log = log.WithField("own_identity", replicaIdentity)
 	log.Info("starting leader election")
@@ -42,24 +44,42 @@ func RunLeaderElection(
 			log.Info("initial delay completed, proceeding with leader election")
 		case <-ctx.Done():
 			log.Info("leader election stopped during initial delay due to context cancellation")
-			return
+			return nil
 		}
 	}
 
 	log.Info("initializing leader election attempt")
 
 	// Start watchdog to regularly send leader status updates
-	go runLeaseWatchdog(ctx, log, cfg, client, leaderStatusCh, replicaIdentity)
+	// Use a separate context so watchdog stops when RunLeaderElection exits
+	watchdogCtx, watchdogCancel := context.WithCancel(ctx)
+	defer watchdogCancel()
 
-	runLeaderElection(ctx, log, cfg, client, watchDog, leaderStatusCh, replicaIdentity)
+	go runLeaseWatchdog(watchdogCtx, log, cfg, client, leaderStatusCh, replicaIdentity)
 
-	if ctx.Err() != nil {
-		log.Info("leader election stopped due to context cancellation")
-		return
+	err := runLeaderElection(ctx, log, cfg, client, watchDog, leaderStatusCh, replicaIdentity)
+	if err != nil {
+		return err
 	}
 
-	log.Warn("leader election unexpectedly stopped")
+	// Always send false to leadership channel when exiting
+	// This ensures controller knows we're not leading anymore
+	select {
+	case leaderStatusCh <- false:
+		log.Info("sent final leadership status: false")
+	case <-time.After(2 * time.Second):
+		log.Warn("timeout sending final leadership status")
+	}
 
+	// If RunOrDie exits for any reason (context cancelled or unexpected),
+	// the pod can no longer participate in leader election and should restart
+	if ctx.Err() != nil {
+		log.Info("leader election stopped due to context cancellation - app is already shutting down")
+		return nil // Context already cancelled, no need to trigger shutdown again
+	}
+
+	log.Error("leader election stopped unexpectedly - triggering app shutdown")
+	return fmt.Errorf("leader election stopped unexpectedly")
 }
 
 func calculateInitialDelay() time.Duration {
@@ -77,10 +97,12 @@ func runLeaderElection(
 	watchDog *leaderelection.HealthzAdaptor,
 	leaderStatusCh chan<- bool,
 	replicaIdentity string,
-) {
+) (err error) {
+	// Capture panics to ensure proper cleanup and logging
 	defer func() {
 		if r := recover(); r != nil {
 			log.Errorf("leader election panicked: %v", r)
+			err = fmt.Errorf("leader election panicked: %v", r)
 		}
 	}()
 
@@ -136,11 +158,9 @@ func runLeaderElection(
 		},
 	}
 
-	// Run leader election. This runs continuously, automatically handling:
-	// - Acquiring leadership when available
-	// - Renewing the lease while leader
-	// - Exits when leadership is lost or context is cancelled
 	leaderelection.RunOrDie(ctx, leConfig)
+
+	return nil
 }
 
 // queryCurrentLeaseHolder queries the Kubernetes API to check who currently holds the lease.

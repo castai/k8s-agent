@@ -272,9 +272,12 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 			}
 		}()
 
-		// Run leader election - it communicates via the channel
+		// Run leader election with main context
+		// If leader election returns an error, we shut down the entire app
 		go func() {
-			replicas.RunLeaderElection(ctx, log, cfg.LeaderElection, clientset, leaderWatchDog, leaderStatusCh)
+			if err := replicas.RunLeaderElection(ctx, log, cfg.LeaderElection, clientset, leaderWatchDog, leaderStatusCh); err != nil {
+				exitCh <- fmt.Errorf("leader election error: %w", err)
+			}
 		}()
 
 		<-ctx.Done()
