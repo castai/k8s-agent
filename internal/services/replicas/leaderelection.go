@@ -57,7 +57,8 @@ func RunLeaderElection(
 
 	go runLeaseWatchdog(watchdogCtx, log, cfg, client, leaderStatusCh, replicaIdentity)
 
-	runLeaderElection(ctx, log, cfg, client, watchDog, leaderStatusCh, replicaIdentity)
+	// Run leader election (blocking call) and capture any panics
+	panicErr := runLeaderElectionWithRecovery(ctx, log, cfg, client, watchDog, leaderStatusCh, replicaIdentity)
 
 	// Always send false to leadership channel when exiting
 	// This ensures controller knows we're not leading anymore
@@ -66,6 +67,11 @@ func RunLeaderElection(
 		log.Info("sent final leadership status: false")
 	case <-time.After(2 * time.Second):
 		log.Warn("timeout sending final leadership status")
+	}
+
+	// If there was a panic, return it as an error
+	if panicErr != nil {
+		return panicErr
 	}
 
 	if ctx.Err() != nil {
@@ -82,6 +88,30 @@ func calculateInitialDelay() time.Duration {
 	maxDelay := 5 * time.Second
 	jitter := time.Duration(rand.Int63n(int64(maxDelay - minDelay)))
 	return minDelay + jitter
+}
+
+// runLeaderElectionWithRecovery wraps runLeaderElection with panic recovery.
+// This is a blocking call that returns when leader election stops (normally or via panic).
+// Returns error if a panic occurred, nil otherwise.
+func runLeaderElectionWithRecovery(
+	ctx context.Context,
+	log logrus.FieldLogger,
+	cfg config.LeaderElectionConfig,
+	client kubernetes.Interface,
+	watchDog *leaderelection.HealthzAdaptor,
+	leaderStatusCh chan<- bool,
+	replicaIdentity string,
+) (panicErr error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Errorf("leader election panicked during execution: %v", r)
+			panicErr = fmt.Errorf("leader election panicked: %v", r)
+		}
+	}()
+
+	// This will panic if RunOrDie panics, which will be caught by the defer above
+	runLeaderElection(ctx, log, cfg, client, watchDog, leaderStatusCh, replicaIdentity)
+	return nil
 }
 
 func runLeaderElection(
