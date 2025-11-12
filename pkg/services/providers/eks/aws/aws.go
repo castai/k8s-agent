@@ -18,8 +18,8 @@ import (
 	"k8s.io/utils/ptr"
 
 	"castai-agent/pkg/castai"
-	"castai-agent/pkg/services/providers/types"
 	"castai-agent/pkg/labels"
+	"castai-agent/pkg/services/providers/types"
 )
 
 type nodeLifecycle string

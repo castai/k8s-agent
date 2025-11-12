@@ -8,9 +8,9 @@ import (
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/kubernetes"
 
-	"castai-agent/pkg/castai"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/monitor"
+	"castai-agent/pkg/castai"
 	castailog "castai-agent/pkg/log"
 )
 

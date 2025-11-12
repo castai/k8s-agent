@@ -18,11 +18,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
-	"castai-agent/pkg/castai"
-	"castai-agent/pkg/services/providers/types"
 	mock_castai "castai-agent/mocks/pkg_/castai"
 	mock_aws "castai-agent/mocks/pkg_/services/providers/eks/aws"
+	"castai-agent/pkg/castai"
 	"castai-agent/pkg/labels"
+	"castai-agent/pkg/services/providers/types"
 )
 
 func TestProvider_RegisterCluster(t *testing.T) {

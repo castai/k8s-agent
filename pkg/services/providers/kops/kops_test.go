@@ -17,15 +17,15 @@ import (
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"castai-agent/pkg/castai"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/discovery"
-	"castai-agent/pkg/services/providers/gke"
-	"castai-agent/pkg/services/providers/types"
 	mock_castai "castai-agent/mocks/pkg_/castai"
 	mock_aws "castai-agent/mocks/pkg_/services/providers/eks/aws"
+	"castai-agent/pkg/castai"
 	"castai-agent/pkg/cloud"
 	"castai-agent/pkg/labels"
+	"castai-agent/pkg/services/providers/gke"
+	"castai-agent/pkg/services/providers/types"
 )
 
 func TestProvider_RegisterCluster(t *testing.T) {

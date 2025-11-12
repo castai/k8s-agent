@@ -8,9 +8,9 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"castai-agent/internal/services/discovery"
+	"castai-agent/pkg/cloud"
 	eks_client "castai-agent/pkg/services/providers/eks/aws"
 	gke_client "castai-agent/pkg/services/providers/gke/client"
-	"castai-agent/pkg/cloud"
 )
 
 type Client interface {

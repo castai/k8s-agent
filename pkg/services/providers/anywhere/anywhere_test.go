@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"castai-agent/pkg/castai"
 	"castai-agent/internal/config"
-	mock_castai "castai-agent/mocks/pkg_/castai"
 	discovery_mock "castai-agent/mocks/internal_/services/discovery"
+	mock_castai "castai-agent/mocks/pkg_/castai"
 	anywhere_client_mock "castai-agent/mocks/pkg_/services/providers/anywhere/client"
+	"castai-agent/pkg/castai"
 )
 
 func Test_RegisterCluster(t *testing.T) {

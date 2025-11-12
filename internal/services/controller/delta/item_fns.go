@@ -7,8 +7,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"castai-agent/pkg/castai"
 	"castai-agent/internal/services/controller/scheme"
+	"castai-agent/pkg/castai"
 )
 
 func ItemCacheKey(i *Item) (string, error) {

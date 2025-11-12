@@ -43,7 +43,6 @@ import (
 	metrics_v1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	"k8s.io/metrics/pkg/client/clientset/versioned"
 
-	"castai-agent/pkg/castai"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller/crd"
 	"castai-agent/internal/services/controller/delta"
@@ -57,9 +56,10 @@ import (
 	"castai-agent/internal/services/health"
 	"castai-agent/internal/services/memorypressure"
 	"castai-agent/internal/services/metrics"
-	"castai-agent/pkg/services/providers/types"
 	"castai-agent/internal/services/version"
+	"castai-agent/pkg/castai"
 	"castai-agent/pkg/labels"
+	"castai-agent/pkg/services/providers/types"
 )
 
 type Controller struct {

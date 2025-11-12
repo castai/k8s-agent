@@ -11,8 +11,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"castai-agent/pkg/castai"
 	"castai-agent/internal/services/controller/delta"
+	"castai-agent/pkg/castai"
 )
 
 func TestItemCacheKey(t *testing.T) {

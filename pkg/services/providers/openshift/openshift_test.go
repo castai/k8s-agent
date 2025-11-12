@@ -13,14 +13,14 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	fakedynamic "k8s.io/client-go/dynamic/fake"
 
-	"castai-agent/pkg/castai"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller/scheme"
 	"castai-agent/internal/services/discovery"
-	"castai-agent/pkg/services/providers/types"
-	mock_castai "castai-agent/mocks/pkg_/castai"
 	mock_discovery "castai-agent/mocks/internal_/services/discovery"
+	mock_castai "castai-agent/mocks/pkg_/castai"
+	"castai-agent/pkg/castai"
 	"castai-agent/pkg/cloud"
+	"castai-agent/pkg/services/providers/types"
 )
 
 func TestProvider_RegisterCluster(t *testing.T) {

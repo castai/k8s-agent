@@ -5,8 +5,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sversion "k8s.io/apimachinery/pkg/util/version"
 
-	"castai-agent/pkg/castai"
 	"castai-agent/internal/services/version"
+	"castai-agent/pkg/castai"
 )
 
 const (

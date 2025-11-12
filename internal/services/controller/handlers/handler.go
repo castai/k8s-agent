@@ -10,11 +10,11 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 
-	"castai-agent/pkg/castai"
 	"castai-agent/internal/services/controller/delta"
 	"castai-agent/internal/services/controller/handlers/filters"
 	"castai-agent/internal/services/controller/handlers/transformers"
 	"castai-agent/internal/services/metrics"
+	"castai-agent/pkg/castai"
 )
 
 type handler struct {

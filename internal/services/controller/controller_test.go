@@ -41,15 +41,15 @@ import (
 	metrics_v1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	metrics_fake "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 
-	"castai-agent/pkg/castai"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller/crd"
 	"castai-agent/internal/services/controller/knowngv"
 	"castai-agent/internal/services/health"
-	mock_castai "castai-agent/mocks/pkg_/castai"
-	mock_types "castai-agent/mocks/pkg_/services/providers/types"
 	mock_version "castai-agent/mocks/internal_/services/version"
 	mock_discovery "castai-agent/mocks/k8s.io/client-go/discovery"
+	mock_castai "castai-agent/mocks/pkg_/castai"
+	mock_types "castai-agent/mocks/pkg_/services/providers/types"
+	"castai-agent/pkg/castai"
 	"castai-agent/pkg/labels"
 )
 

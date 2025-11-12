@@ -9,14 +9,14 @@ import (
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 
-	"castai-agent/pkg/castai"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/discovery"
+	"castai-agent/pkg/castai"
+	"castai-agent/pkg/cloud"
+	"castai-agent/pkg/labels"
 	awsclient "castai-agent/pkg/services/providers/eks/aws"
 	"castai-agent/pkg/services/providers/gke"
 	"castai-agent/pkg/services/providers/types"
-	"castai-agent/pkg/cloud"
-	"castai-agent/pkg/labels"
 )
 
 const Name = "kops"
