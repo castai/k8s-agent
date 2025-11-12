@@ -9,7 +9,7 @@ import (
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 
-	"castai-agent/internal/castai"
+	"castai-agent/pkg/castai"
 )
 
 type Exporter interface {

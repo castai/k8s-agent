@@ -14,7 +14,7 @@ import (
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"castai-agent/internal/castai"
+	"castai-agent/pkg/castai"
 	"castai-agent/internal/services/controller/delta"
 	"castai-agent/internal/services/controller/handlers/transformers"
 	mock_workqueue "castai-agent/mocks/k8s.io/client-go/util/workqueue"

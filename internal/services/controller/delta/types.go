@@ -6,7 +6,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
-	"castai-agent/internal/castai"
+	"castai-agent/pkg/castai"
 )
 
 type Item struct {

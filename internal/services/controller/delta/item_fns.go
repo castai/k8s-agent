@@ -7,7 +7,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"castai-agent/internal/castai"
+	"castai-agent/pkg/castai"
 	"castai-agent/internal/services/controller/scheme"
 )
 

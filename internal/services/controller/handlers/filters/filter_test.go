@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"castai-agent/internal/castai"
+	"castai-agent/pkg/castai"
 )
 
 func TestFilters_Apply(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"castai-agent/internal/castai"
+	"castai-agent/pkg/castai"
 	"castai-agent/internal/services/controller/handlers/transformers"
 )
 

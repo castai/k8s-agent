@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"castai-agent/internal/castai"
-	mock_castai "castai-agent/mocks/internal_/castai"
+	"castai-agent/pkg/castai"
+	mock_castai "castai-agent/mocks/pkg_/castai"
 )
 
 func TestSetupLogExporter(t *testing.T) {

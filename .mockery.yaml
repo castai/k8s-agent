@@ -6,6 +6,16 @@ packages:
       dir: 'mocks/internal_/{{ trimPrefix "internal/" .InterfaceDirRelative }}'
       recursive: true
       all: True
+  castai-agent/pkg/castai:
+    config:
+      dir: 'mocks/pkg_/castai'
+    interfaces:
+      Client:
+  castai-agent/pkg/services/providers:
+    config:
+      dir: 'mocks/pkg_/services/providers/{{ trimPrefix "pkg/services/providers/" .InterfaceDirRelative }}'
+      recursive: true
+      all: True
   k8s.io/client-go/discovery:
     config:
       dir: 'mocks/{{.SrcPackagePath}}'
