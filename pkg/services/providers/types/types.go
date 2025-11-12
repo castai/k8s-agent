@@ -13,6 +13,9 @@ import (
 type Provider interface {
 	// RegisterCluster retrieves cluster registration data needed to correctly identify the cluster.
 	RegisterCluster(ctx context.Context, client castclient.Client) (*ClusterRegistration, error)
+	// RegisterClusterWithInstallMethod retrieves cluster registration data with specified install method.
+	// If installMethod is nil, it will be omitted from the request (backward compatible).
+	RegisterClusterWithInstallMethod(ctx context.Context, client castclient.Client, installMethod *castclient.CastwareInstallMethod) (*ClusterRegistration, error)
 	// Name of the provider.
 	Name() string
 	// FilterSpot checks the provider specific properties and returns only spot/preemtible nodes.

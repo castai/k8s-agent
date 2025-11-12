@@ -37,7 +37,7 @@ const (
 )
 
 type RegisterClusterBuilder interface {
-	BuildRegisterClusterRequest(ctx context.Context) (*castai.RegisterClusterRequest, error)
+	BuildRegisterClusterRequest(ctx context.Context, installMethod *castai.CastwareInstallMethod) (*castai.RegisterClusterRequest, error)
 }
 
 func NewProvider(log logrus.FieldLogger, name string, awsClient Client, apiNodeLifecycleDiscoveryEnabled bool, registerClusterBuilder RegisterClusterBuilder) (types.Provider, error) {
@@ -61,7 +61,11 @@ type Provider struct {
 }
 
 func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*types.ClusterRegistration, error) {
-	req, err := p.registerClusterBuilder.BuildRegisterClusterRequest(ctx)
+	return p.RegisterClusterWithInstallMethod(ctx, client, nil)
+}
+
+func (p *Provider) RegisterClusterWithInstallMethod(ctx context.Context, client castai.Client, installMethod *castai.CastwareInstallMethod) (*types.ClusterRegistration, error) {
+	req, err := p.registerClusterBuilder.BuildRegisterClusterRequest(ctx, installMethod)
 	if err != nil {
 		return nil, fmt.Errorf("building register cluster request: %w", err)
 	}

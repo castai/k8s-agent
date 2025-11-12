@@ -278,6 +278,10 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 }
 
 func (c *client) RegisterCluster(ctx context.Context, req *RegisterClusterRequest) (*RegisterClusterResponse, error) {
+	if err := req.CastwareInstallMethod.validate(); err != nil {
+		return nil, err
+	}
+
 	body := &RegisterClusterResponse{}
 	resp, err := c.rest.R().
 		SetBody(req).

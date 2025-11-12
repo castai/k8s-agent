@@ -20,7 +20,7 @@ func TestSelfHostedEC2RegisterClusterRequestBuilder(t *testing.T) {
 	awsClient.EXPECT().GetAccountID(mock.Anything).Return(lo.ToPtr("account-id"), nil)
 
 	builder := newRegisterClusterBuilder(awsClient)
-	req, err := builder.BuildRegisterClusterRequest(ctx)
+	req, err := builder.BuildRegisterClusterRequest(ctx, nil)
 	r.NoError(err)
 	r.Equal("test-cluster", req.Name)
 	r.Equal("test-cluster", req.SelfHostedWithEC2Nodes.ClusterName)

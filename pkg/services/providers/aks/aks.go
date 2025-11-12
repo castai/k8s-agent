@@ -33,12 +33,17 @@ func New(log logrus.FieldLogger) (types.Provider, error) {
 }
 
 func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*types.ClusterRegistration, error) {
+	return p.RegisterClusterWithInstallMethod(ctx, client, nil)
+}
+
+func (p *Provider) RegisterClusterWithInstallMethod(ctx context.Context, client castai.Client, installMethod *castai.CastwareInstallMethod) (*types.ClusterRegistration, error) {
 	cfg, err := p.clusterAutodiscovery(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	resp, err := client.RegisterCluster(ctx, &castai.RegisterClusterRequest{
+		CastwareInstallMethod: installMethod,
 		AKS: &castai.AKSParams{
 			Region:            cfg.Location,
 			NodeResourceGroup: cfg.NodeResourceGroup,

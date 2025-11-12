@@ -54,6 +54,79 @@ func TestProvider_RegisterCluster(t *testing.T) {
 	})
 }
 
+func TestProvider_RegisterClusterWithInstallMethod(t *testing.T) {
+	t.Run("with operator install method", func(t *testing.T) {
+		castaiclient := mock_castai.NewMockClient(t)
+
+		p := &Provider{log: logrus.New()}
+
+		require.NoError(t, os.Setenv("API_KEY", "abc"))
+		require.NoError(t, os.Setenv("API_URL", "example.com"))
+
+		require.NoError(t, os.Setenv("AKS_SUBSCRIPTION_ID", "test-id"))
+		require.NoError(t, os.Setenv("AKS_LOCATION", "test-location"))
+		require.NoError(t, os.Setenv("AKS_NODE_RESOURCE_GROUP", "test-group"))
+
+		installMethod := castai.CastwareInstallMethodOperator
+		resp := &castai.RegisterClusterResponse{Cluster: castai.Cluster{
+			ID:             uuid.New().String(),
+			OrganizationID: uuid.New().String(),
+		}}
+
+		castaiclient.EXPECT().RegisterCluster(mock.Anything, &castai.RegisterClusterRequest{
+			CastwareInstallMethod: &installMethod,
+			AKS: &castai.AKSParams{
+				Region:            "test-location",
+				SubscriptionID:    "test-id",
+				NodeResourceGroup: "test-group",
+			},
+		}).Return(resp, nil)
+
+		got, err := p.RegisterClusterWithInstallMethod(context.Background(), castaiclient, &installMethod)
+
+		require.NoError(t, err)
+		require.Equal(t, &types.ClusterRegistration{
+			ClusterID:      resp.ID,
+			OrganizationID: resp.OrganizationID,
+		}, got)
+	})
+
+	t.Run("with nil install method (backward compatible)", func(t *testing.T) {
+		castaiclient := mock_castai.NewMockClient(t)
+
+		p := &Provider{log: logrus.New()}
+
+		require.NoError(t, os.Setenv("API_KEY", "abc"))
+		require.NoError(t, os.Setenv("API_URL", "example.com"))
+
+		require.NoError(t, os.Setenv("AKS_SUBSCRIPTION_ID", "test-id"))
+		require.NoError(t, os.Setenv("AKS_LOCATION", "test-location"))
+		require.NoError(t, os.Setenv("AKS_NODE_RESOURCE_GROUP", "test-group"))
+
+		resp := &castai.RegisterClusterResponse{Cluster: castai.Cluster{
+			ID:             uuid.New().String(),
+			OrganizationID: uuid.New().String(),
+		}}
+
+		castaiclient.EXPECT().RegisterCluster(mock.Anything, &castai.RegisterClusterRequest{
+			CastwareInstallMethod: nil,
+			AKS: &castai.AKSParams{
+				Region:            "test-location",
+				SubscriptionID:    "test-id",
+				NodeResourceGroup: "test-group",
+			},
+		}).Return(resp, nil)
+
+		got, err := p.RegisterClusterWithInstallMethod(context.Background(), castaiclient, nil)
+
+		require.NoError(t, err)
+		require.Equal(t, &types.ClusterRegistration{
+			ClusterID:      resp.ID,
+			OrganizationID: resp.OrganizationID,
+		}, got)
+	})
+}
+
 func TestProvider_IsSpot(t *testing.T) {
 	t.Run("spot instance priority label", func(t *testing.T) {
 		p := &Provider{

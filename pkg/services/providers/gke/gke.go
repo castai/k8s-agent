@@ -33,13 +33,18 @@ type Provider struct {
 }
 
 func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*types.ClusterRegistration, error) {
+	return p.RegisterClusterWithInstallMethod(ctx, client, nil)
+}
+
+func (p *Provider) RegisterClusterWithInstallMethod(ctx context.Context, client castai.Client, installMethod *castai.CastwareInstallMethod) (*types.ClusterRegistration, error) {
 	cfg, err := p.clusterAutodiscovery()
 	if err != nil {
 		return nil, err
 	}
 
 	resp, err := client.RegisterCluster(ctx, &castai.RegisterClusterRequest{
-		Name: cfg.ClusterName,
+		Name:                  cfg.ClusterName,
+		CastwareInstallMethod: installMethod,
 		GKE: &castai.GKEParams{
 			Region:      cfg.Region,
 			ProjectID:   cfg.ProjectID,

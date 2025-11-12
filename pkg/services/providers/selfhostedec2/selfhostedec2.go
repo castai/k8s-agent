@@ -24,7 +24,7 @@ func newRegisterClusterBuilder(awsClient aws.Client) *registerClusterBuilder {
 	}
 }
 
-func (b *registerClusterBuilder) BuildRegisterClusterRequest(ctx context.Context) (*castai.RegisterClusterRequest, error) {
+func (b *registerClusterBuilder) BuildRegisterClusterRequest(ctx context.Context, installMethod *castai.CastwareInstallMethod) (*castai.RegisterClusterRequest, error) {
 	cn, err := b.awsClient.GetClusterName(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting cluster name: %w", err)
@@ -39,7 +39,8 @@ func (b *registerClusterBuilder) BuildRegisterClusterRequest(ctx context.Context
 	}
 
 	req := &castai.RegisterClusterRequest{
-		Name: *cn,
+		Name:                  *cn,
+		CastwareInstallMethod: installMethod,
 		SelfHostedWithEC2Nodes: &castai.SelfHostedWithEC2NodesParams{
 			ClusterName: *cn,
 			Region:      *r,

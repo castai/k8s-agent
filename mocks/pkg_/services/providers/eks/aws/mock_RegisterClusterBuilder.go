@@ -39,8 +39,8 @@ func (_m *MockRegisterClusterBuilder) EXPECT() *MockRegisterClusterBuilder_Expec
 }
 
 // BuildRegisterClusterRequest provides a mock function for the type MockRegisterClusterBuilder
-func (_mock *MockRegisterClusterBuilder) BuildRegisterClusterRequest(ctx context.Context) (*castai.RegisterClusterRequest, error) {
-	ret := _mock.Called(ctx)
+func (_mock *MockRegisterClusterBuilder) BuildRegisterClusterRequest(ctx context.Context, installMethod *castai.CastwareInstallMethod) (*castai.RegisterClusterRequest, error) {
+	ret := _mock.Called(ctx, installMethod)
 
 	if len(ret) == 0 {
 		panic("no return value specified for BuildRegisterClusterRequest")
@@ -48,18 +48,18 @@ func (_mock *MockRegisterClusterBuilder) BuildRegisterClusterRequest(ctx context
 
 	var r0 *castai.RegisterClusterRequest
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context) (*castai.RegisterClusterRequest, error)); ok {
-		return returnFunc(ctx)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *castai.CastwareInstallMethod) (*castai.RegisterClusterRequest, error)); ok {
+		return returnFunc(ctx, installMethod)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context) *castai.RegisterClusterRequest); ok {
-		r0 = returnFunc(ctx)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *castai.CastwareInstallMethod) *castai.RegisterClusterRequest); ok {
+		r0 = returnFunc(ctx, installMethod)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*castai.RegisterClusterRequest)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
-		r1 = returnFunc(ctx)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *castai.CastwareInstallMethod) error); ok {
+		r1 = returnFunc(ctx, installMethod)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -73,18 +73,24 @@ type MockRegisterClusterBuilder_BuildRegisterClusterRequest_Call struct {
 
 // BuildRegisterClusterRequest is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockRegisterClusterBuilder_Expecter) BuildRegisterClusterRequest(ctx interface{}) *MockRegisterClusterBuilder_BuildRegisterClusterRequest_Call {
-	return &MockRegisterClusterBuilder_BuildRegisterClusterRequest_Call{Call: _e.mock.On("BuildRegisterClusterRequest", ctx)}
+//   - installMethod *castai.CastwareInstallMethod
+func (_e *MockRegisterClusterBuilder_Expecter) BuildRegisterClusterRequest(ctx interface{}, installMethod interface{}) *MockRegisterClusterBuilder_BuildRegisterClusterRequest_Call {
+	return &MockRegisterClusterBuilder_BuildRegisterClusterRequest_Call{Call: _e.mock.On("BuildRegisterClusterRequest", ctx, installMethod)}
 }
 
-func (_c *MockRegisterClusterBuilder_BuildRegisterClusterRequest_Call) Run(run func(ctx context.Context)) *MockRegisterClusterBuilder_BuildRegisterClusterRequest_Call {
+func (_c *MockRegisterClusterBuilder_BuildRegisterClusterRequest_Call) Run(run func(ctx context.Context, installMethod *castai.CastwareInstallMethod)) *MockRegisterClusterBuilder_BuildRegisterClusterRequest_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
+		var arg1 *castai.CastwareInstallMethod
+		if args[1] != nil {
+			arg1 = args[1].(*castai.CastwareInstallMethod)
+		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -95,7 +101,7 @@ func (_c *MockRegisterClusterBuilder_BuildRegisterClusterRequest_Call) Return(re
 	return _c
 }
 
-func (_c *MockRegisterClusterBuilder_BuildRegisterClusterRequest_Call) RunAndReturn(run func(ctx context.Context) (*castai.RegisterClusterRequest, error)) *MockRegisterClusterBuilder_BuildRegisterClusterRequest_Call {
+func (_c *MockRegisterClusterBuilder_BuildRegisterClusterRequest_Call) RunAndReturn(run func(ctx context.Context, installMethod *castai.CastwareInstallMethod) (*castai.RegisterClusterRequest, error)) *MockRegisterClusterBuilder_BuildRegisterClusterRequest_Call {
 	_c.Call.Return(run)
 	return _c
 }
