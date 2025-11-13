@@ -33,14 +33,19 @@ func New(discoveryService discovery.Service, dyno dynamic.Interface) *Provider {
 }
 
 func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*types.ClusterRegistration, error) {
+	return p.RegisterClusterWithInstallMethod(ctx, client, nil)
+}
+
+func (p *Provider) RegisterClusterWithInstallMethod(ctx context.Context, client castai.Client, installMethod *castai.CastwareInstallMethod) (*types.ClusterRegistration, error) {
 	clusterID, err := p.discoveryService.GetKubeSystemNamespaceID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting cluster id: %w", err)
 	}
 
 	req := &castai.RegisterClusterRequest{
-		ID:        *clusterID,
-		Openshift: &castai.OpenshiftParams{},
+		ID:                    *clusterID,
+		CastwareInstallMethod: installMethod,
+		Openshift:             &castai.OpenshiftParams{},
 	}
 
 	if cfg := config.Get().OpenShift; cfg != nil {

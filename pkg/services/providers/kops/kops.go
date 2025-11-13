@@ -36,14 +36,19 @@ type Provider struct {
 }
 
 func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*types.ClusterRegistration, error) {
+	return p.RegisterClusterWithInstallMethod(ctx, client, nil)
+}
+
+func (p *Provider) RegisterClusterWithInstallMethod(ctx context.Context, client castai.Client, installMethod *castai.CastwareInstallMethod) (*types.ClusterRegistration, error) {
 	clusterID, err := p.discoveryService.GetKubeSystemNamespaceID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting cluster ID: %w", err)
 	}
 
 	req := &castai.RegisterClusterRequest{
-		ID:   *clusterID,
-		KOPS: &castai.KOPSParams{},
+		ID:                    *clusterID,
+		CastwareInstallMethod: installMethod,
+		KOPS:                  &castai.KOPSParams{},
 	}
 
 	if cfg := config.Get().KOPS; cfg != nil {

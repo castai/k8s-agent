@@ -42,6 +42,130 @@ func TestClient_RegisterCluster(t *testing.T) {
 	require.Equal(t, registerClusterResp, got)
 }
 
+func TestCastwareInstallMethod_Validate(t *testing.T) {
+	tests := []struct {
+		name        string
+		method      *CastwareInstallMethod
+		expectError bool
+	}{
+		{
+			name:        "nil method is valid",
+			method:      nil,
+			expectError: false,
+		},
+		{
+			name: "unspecified method is valid",
+			method: func() *CastwareInstallMethod {
+				m := CastwareInstallMethodUnspecified
+				return &m
+			}(),
+			expectError: false,
+		},
+		{
+			name: "operator method is valid",
+			method: func() *CastwareInstallMethod {
+				m := CastwareInstallMethodOperator
+				return &m
+			}(),
+			expectError: false,
+		},
+		{
+			name: "invalid method returns error",
+			method: func() *CastwareInstallMethod {
+				m := CastwareInstallMethod(999)
+				return &m
+			}(),
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.method.validate()
+			if tt.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "unsupported castware_install_method")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestClient_RegisterCluster_WithInstallMethod(t *testing.T) {
+	rest := resty.New()
+	httpmock.ActivateNonDefault(rest.GetClient())
+	defer httpmock.Reset()
+
+	c := NewClient(logrus.New(), rest, nil)
+
+	operatorMethod := CastwareInstallMethodOperator
+	registerClusterReq := &RegisterClusterRequest{
+		Name:                  "test-cluster",
+		CastwareInstallMethod: &operatorMethod,
+	}
+	registerClusterResp := &RegisterClusterResponse{Cluster{ID: uuid.New().String()}}
+
+	httpmock.RegisterResponder(http.MethodPost, "/v1/kubernetes/external-clusters", func(req *http.Request) (*http.Response, error) {
+		actualRequest := &RegisterClusterRequest{}
+		require.NoError(t, json.NewDecoder(req.Body).Decode(actualRequest))
+		require.NotNil(t, actualRequest.CastwareInstallMethod)
+		require.Equal(t, CastwareInstallMethodOperator, *actualRequest.CastwareInstallMethod)
+		return httpmock.NewJsonResponse(http.StatusOK, registerClusterResp)
+	})
+
+	got, err := c.RegisterCluster(context.Background(), registerClusterReq)
+
+	require.NoError(t, err)
+	require.Equal(t, registerClusterResp, got)
+}
+
+func TestClient_RegisterCluster_WithNilInstallMethod(t *testing.T) {
+	rest := resty.New()
+	httpmock.ActivateNonDefault(rest.GetClient())
+	defer httpmock.Reset()
+
+	c := NewClient(logrus.New(), rest, nil)
+
+	registerClusterReq := &RegisterClusterRequest{
+		Name:                  "test-cluster",
+		CastwareInstallMethod: nil,
+	}
+	registerClusterResp := &RegisterClusterResponse{Cluster{ID: uuid.New().String()}}
+
+	httpmock.RegisterResponder(http.MethodPost, "/v1/kubernetes/external-clusters", func(req *http.Request) (*http.Response, error) {
+		actualRequest := &RegisterClusterRequest{}
+		require.NoError(t, json.NewDecoder(req.Body).Decode(actualRequest))
+		require.Nil(t, actualRequest.CastwareInstallMethod)
+		require.Equal(t, "test-cluster", actualRequest.Name)
+		return httpmock.NewJsonResponse(http.StatusOK, registerClusterResp)
+	})
+
+	got, err := c.RegisterCluster(context.Background(), registerClusterReq)
+
+	require.NoError(t, err)
+	require.Equal(t, registerClusterResp, got)
+}
+
+func TestClient_RegisterCluster_WithInvalidInstallMethod(t *testing.T) {
+	rest := resty.New()
+	httpmock.ActivateNonDefault(rest.GetClient())
+	defer httpmock.Reset()
+
+	c := NewClient(logrus.New(), rest, nil)
+
+	invalidMethod := CastwareInstallMethod(999)
+	registerClusterReq := &RegisterClusterRequest{
+		Name:                  "test-cluster",
+		CastwareInstallMethod: &invalidMethod,
+	}
+
+	_, err := c.RegisterCluster(context.Background(), registerClusterReq)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unsupported castware_install_method value: 999")
+}
+
 func TestClient_SendDelta(t *testing.T) {
 	t.Cleanup(config.Reset)
 	t.Cleanup(os.Clearenv)

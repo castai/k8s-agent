@@ -20,7 +20,7 @@ func TestEKSRegisterClusterRequestBuilder(t *testing.T) {
 	awsClient.EXPECT().GetAccountID(ctx).Return(lo.ToPtr("account-id"), nil)
 
 	builder := newRegisterClusterBuilder(awsClient)
-	req, err := builder.BuildRegisterClusterRequest(ctx)
+	req, err := builder.BuildRegisterClusterRequest(ctx, nil)
 	r.NoError(err)
 	r.Equal("test-cluster", req.Name)
 	r.Equal("test-cluster", req.EKS.ClusterName)

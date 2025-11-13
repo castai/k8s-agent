@@ -219,3 +219,77 @@ func (_c *MockProvider_RegisterCluster_Call) RunAndReturn(run func(ctx context.C
 	_c.Call.Return(run)
 	return _c
 }
+
+// RegisterClusterWithInstallMethod provides a mock function for the type MockProvider
+func (_mock *MockProvider) RegisterClusterWithInstallMethod(ctx context.Context, client castai.Client, installMethod *castai.CastwareInstallMethod) (*types.ClusterRegistration, error) {
+	ret := _mock.Called(ctx, client, installMethod)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RegisterClusterWithInstallMethod")
+	}
+
+	var r0 *types.ClusterRegistration
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, castai.Client, *castai.CastwareInstallMethod) (*types.ClusterRegistration, error)); ok {
+		return returnFunc(ctx, client, installMethod)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, castai.Client, *castai.CastwareInstallMethod) *types.ClusterRegistration); ok {
+		r0 = returnFunc(ctx, client, installMethod)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.ClusterRegistration)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, castai.Client, *castai.CastwareInstallMethod) error); ok {
+		r1 = returnFunc(ctx, client, installMethod)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockProvider_RegisterClusterWithInstallMethod_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RegisterClusterWithInstallMethod'
+type MockProvider_RegisterClusterWithInstallMethod_Call struct {
+	*mock.Call
+}
+
+// RegisterClusterWithInstallMethod is a helper method to define mock.On call
+//   - ctx context.Context
+//   - client castai.Client
+//   - installMethod *castai.CastwareInstallMethod
+func (_e *MockProvider_Expecter) RegisterClusterWithInstallMethod(ctx interface{}, client interface{}, installMethod interface{}) *MockProvider_RegisterClusterWithInstallMethod_Call {
+	return &MockProvider_RegisterClusterWithInstallMethod_Call{Call: _e.mock.On("RegisterClusterWithInstallMethod", ctx, client, installMethod)}
+}
+
+func (_c *MockProvider_RegisterClusterWithInstallMethod_Call) Run(run func(ctx context.Context, client castai.Client, installMethod *castai.CastwareInstallMethod)) *MockProvider_RegisterClusterWithInstallMethod_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 castai.Client
+		if args[1] != nil {
+			arg1 = args[1].(castai.Client)
+		}
+		var arg2 *castai.CastwareInstallMethod
+		if args[2] != nil {
+			arg2 = args[2].(*castai.CastwareInstallMethod)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockProvider_RegisterClusterWithInstallMethod_Call) Return(clusterRegistration *types.ClusterRegistration, err error) *MockProvider_RegisterClusterWithInstallMethod_Call {
+	_c.Call.Return(clusterRegistration, err)
+	return _c
+}
+
+func (_c *MockProvider_RegisterClusterWithInstallMethod_Call) RunAndReturn(run func(ctx context.Context, client castai.Client, installMethod *castai.CastwareInstallMethod) (*types.ClusterRegistration, error)) *MockProvider_RegisterClusterWithInstallMethod_Call {
+	_c.Call.Return(run)
+	return _c
+}

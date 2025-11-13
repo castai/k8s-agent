@@ -33,6 +33,10 @@ func New(discoveryService discovery.Service, client client.Client, log logrus.Fi
 }
 
 func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*types.ClusterRegistration, error) {
+	return p.RegisterClusterWithInstallMethod(ctx, client, nil)
+}
+
+func (p *Provider) RegisterClusterWithInstallMethod(ctx context.Context, client castai.Client, installMethod *castai.CastwareInstallMethod) (*types.ClusterRegistration, error) {
 	kubeSystemNamespaceId, err := p.discoveryService.GetKubeSystemNamespaceID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting kube-system namespace id: %w", err)
@@ -53,7 +57,8 @@ func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*
 	}
 
 	req := &castai.RegisterClusterRequest{
-		Name: clusterName,
+		Name:                  clusterName,
+		CastwareInstallMethod: installMethod,
 		Anywhere: &castai.AnywhereParams{
 			ClusterName:           clusterName,
 			KubeSystemNamespaceID: *kubeSystemNamespaceId,

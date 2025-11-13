@@ -36,7 +36,7 @@ func TestProvider_RegisterCluster(t *testing.T) {
 		registerClusterBuilder: reqBuilder,
 	}
 
-	reqBuilder.EXPECT().BuildRegisterClusterRequest(ctx).Return(&castai.RegisterClusterRequest{
+	reqBuilder.EXPECT().BuildRegisterClusterRequest(ctx, (*castai.CastwareInstallMethod)(nil)).Return(&castai.RegisterClusterRequest{
 		Name: "test",
 		EKS: &castai.EKSParams{
 			ClusterName: "test",

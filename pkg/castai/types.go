@@ -2,6 +2,7 @@ package castai
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -62,6 +63,7 @@ type RegisterClusterRequest struct {
 	Openshift              *OpenshiftParams              `json:"openshift"`
 	Anywhere               *AnywhereParams               `json:"anywhere"`
 	SelfHostedWithEC2Nodes *SelfHostedWithEC2NodesParams `json:"self_hosted_with_ec2_nodes"`
+	CastwareInstallMethod  *CastwareInstallMethod        `json:"castware_install_method,omitempty"`
 }
 
 type Cluster struct {
@@ -119,3 +121,25 @@ const (
 	EventUpdate EventType = "update"
 	EventDelete EventType = "delete"
 )
+
+// CastwareInstallMethod represents the method used to install CASTware components.
+type CastwareInstallMethod int32
+
+const (
+	// CastwareInstallMethodUnspecified is the default value when install method is not specified.
+	CastwareInstallMethodUnspecified CastwareInstallMethod = 0
+	// CastwareInstallMethodOperator indicates CASTware was installed via the operator.
+	CastwareInstallMethodOperator CastwareInstallMethod = 1
+)
+
+func (method *CastwareInstallMethod) validate() error {
+	if method == nil {
+		return nil
+	}
+	switch *method {
+	case CastwareInstallMethodUnspecified, CastwareInstallMethodOperator:
+		return nil
+	default:
+		return fmt.Errorf("unsupported castware_install_method value: %d", *method)
+	}
+}

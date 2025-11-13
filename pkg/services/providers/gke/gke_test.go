@@ -74,6 +74,117 @@ func TestProvider_RegisterCluster(t *testing.T) {
 	})
 }
 
+func TestProvider_RegisterClusterWithInstallMethod(t *testing.T) {
+	t.Run("with operator install method", func(t *testing.T) {
+		castaiclient := mock_castai.NewMockClient(t)
+		metaclient := mock_client.NewMockMetadata(t)
+
+		p := &Provider{log: logrus.New(), metadata: metaclient}
+
+		require.NoError(t, os.Setenv("API_KEY", "abc"))
+		require.NoError(t, os.Setenv("API_URL", "example.com"))
+
+		metaclient.EXPECT().GetClusterName().Return("test-cluster", nil)
+		metaclient.EXPECT().GetRegion().Return("us-east4", nil)
+		metaclient.EXPECT().GetProjectID().Return("test-project", nil)
+		metaclient.EXPECT().GetLocation().Return("us-east4-a", nil)
+
+		installMethod := castai.CastwareInstallMethodOperator
+		resp := &castai.RegisterClusterResponse{Cluster: castai.Cluster{
+			ID:             uuid.New().String(),
+			OrganizationID: uuid.New().String(),
+		}}
+		castaiclient.EXPECT().RegisterCluster(mock.Anything, &castai.RegisterClusterRequest{
+			Name:                  "test-cluster",
+			CastwareInstallMethod: &installMethod,
+			GKE: &castai.GKEParams{
+				Region:      "us-east4",
+				ProjectID:   "test-project",
+				ClusterName: "test-cluster",
+				Location:    "us-east4-a",
+			},
+		}).Return(resp, nil)
+
+		got, err := p.RegisterClusterWithInstallMethod(context.Background(), castaiclient, &installMethod)
+
+		require.NoError(t, err)
+		require.Equal(t, &types.ClusterRegistration{
+			ClusterID:      resp.ID,
+			OrganizationID: resp.OrganizationID,
+		}, got)
+	})
+
+	t.Run("with nil install method (backward compatible)", func(t *testing.T) {
+		castaiclient := mock_castai.NewMockClient(t)
+		metaclient := mock_client.NewMockMetadata(t)
+
+		p := &Provider{log: logrus.New(), metadata: metaclient}
+
+		require.NoError(t, os.Setenv("API_KEY", "abc"))
+		require.NoError(t, os.Setenv("API_URL", "example.com"))
+
+		metaclient.EXPECT().GetClusterName().Return("test-cluster", nil)
+		metaclient.EXPECT().GetRegion().Return("us-east4", nil)
+		metaclient.EXPECT().GetProjectID().Return("test-project", nil)
+		metaclient.EXPECT().GetLocation().Return("us-east4-a", nil)
+
+		resp := &castai.RegisterClusterResponse{Cluster: castai.Cluster{
+			ID:             uuid.New().String(),
+			OrganizationID: uuid.New().String(),
+		}}
+		castaiclient.EXPECT().RegisterCluster(mock.Anything, &castai.RegisterClusterRequest{
+			Name:                  "test-cluster",
+			CastwareInstallMethod: nil,
+			GKE: &castai.GKEParams{
+				Region:      "us-east4",
+				ProjectID:   "test-project",
+				ClusterName: "test-cluster",
+				Location:    "us-east4-a",
+			},
+		}).Return(resp, nil)
+
+		got, err := p.RegisterClusterWithInstallMethod(context.Background(), castaiclient, nil)
+
+		require.NoError(t, err)
+		require.Equal(t, &types.ClusterRegistration{
+			ClusterID:      resp.ID,
+			OrganizationID: resp.OrganizationID,
+		}, got)
+	})
+
+	t.Run("RegisterCluster calls RegisterClusterWithInstallMethod with nil", func(t *testing.T) {
+		castaiclient := mock_castai.NewMockClient(t)
+		metaclient := mock_client.NewMockMetadata(t)
+
+		p := &Provider{log: logrus.New(), metadata: metaclient}
+
+		require.NoError(t, os.Setenv("API_KEY", "abc"))
+		require.NoError(t, os.Setenv("API_URL", "example.com"))
+
+		metaclient.EXPECT().GetClusterName().Return("test-cluster", nil)
+		metaclient.EXPECT().GetRegion().Return("us-east4", nil)
+		metaclient.EXPECT().GetProjectID().Return("test-project", nil)
+		metaclient.EXPECT().GetLocation().Return("us-east4-a", nil)
+
+		resp := &castai.RegisterClusterResponse{Cluster: castai.Cluster{
+			ID:             uuid.New().String(),
+			OrganizationID: uuid.New().String(),
+		}}
+		// Verify that nil is passed when calling old RegisterCluster method
+		castaiclient.EXPECT().RegisterCluster(mock.Anything, mock.MatchedBy(func(req *castai.RegisterClusterRequest) bool {
+			return req.CastwareInstallMethod == nil
+		})).Return(resp, nil)
+
+		got, err := p.RegisterCluster(context.Background(), castaiclient)
+
+		require.NoError(t, err)
+		require.Equal(t, &types.ClusterRegistration{
+			ClusterID:      resp.ID,
+			OrganizationID: resp.OrganizationID,
+		}, got)
+	})
+}
+
 func TestProvider_IsSpot(t *testing.T) {
 	p := &Provider{log: logrus.New()}
 
