@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 
-	"castai-agent/internal/castai"
+	"castai-agent/pkg/castai"
 )
 
 func Test_Transformer(t *testing.T) {

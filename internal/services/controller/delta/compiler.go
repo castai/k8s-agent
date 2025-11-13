@@ -6,7 +6,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"castai-agent/internal/castai"
+	"castai-agent/pkg/castai"
 )
 
 func DefaultCompiler(log logrus.FieldLogger, clusterID, clusterVersion, agentVersion string) *Compiler[*Item] {

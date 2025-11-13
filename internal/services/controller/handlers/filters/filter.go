@@ -1,7 +1,7 @@
 package filters
 
 import (
-	"castai-agent/internal/castai"
+	"castai-agent/pkg/castai"
 )
 
 type Filter func(e castai.EventType, obj interface{}) bool
