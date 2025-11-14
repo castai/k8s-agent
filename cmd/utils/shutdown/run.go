@@ -2,7 +2,7 @@ package shutdown
 
 import "errors"
 
-func RunThenTrigger(trigger Trigger, triggerOnSuccess bool, fn func() error) {
+func RunThenTrigger(trigger Trigger, skipOnSuccess bool, fn func() error) {
 	var (
 		err      error
 		finished bool
@@ -13,7 +13,7 @@ func RunThenTrigger(trigger Trigger, triggerOnSuccess bool, fn func() error) {
 			// should get logged upstream anyway.
 			err = errors.New("panic")
 		}
-		if err != nil || triggerOnSuccess {
+		if err != nil || !skipOnSuccess {
 			trigger(err)
 		}
 	}()

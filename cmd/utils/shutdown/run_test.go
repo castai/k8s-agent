@@ -12,20 +12,27 @@ import (
 
 func TestRunThenTrigger(t *testing.T) {
 	testCases := map[string]struct {
-		workloadPanic      error
-		workloadError      error
-		expectCallerPanic  bool
-		expectTriggerError error
+		ParamSkipOnSuccess  bool
+		WorkloadPanic       error
+		WorkloadError       error
+		ExpectCallerPanic   bool
+		ExpectTriggerErrors []error
 	}{
-		"nil error": {},
+		"nil error": {
+			ExpectTriggerErrors: []error{nil},
+		},
+		"nil error (skipOnSuccess)": {
+			ParamSkipOnSuccess:  true,
+			ExpectTriggerErrors: nil, // No calls.
+		},
 		"workload error": {
-			workloadError:      errors.New("workload error"),
-			expectTriggerError: errors.New("workload error"),
+			WorkloadError:       errors.New("workload error"),
+			ExpectTriggerErrors: []error{errors.New("workload error")},
 		},
 		"workload panic": {
-			workloadPanic:      errors.New("workload panic"),
-			expectCallerPanic:  true,
-			expectTriggerError: errors.New("panic"),
+			WorkloadPanic:       errors.New("workload panic"),
+			ExpectCallerPanic:   true,
+			ExpectTriggerErrors: []error{errors.New("panic")},
 		},
 	}
 
@@ -44,18 +51,20 @@ func TestRunThenTrigger(t *testing.T) {
 					perr := recover()
 					callerPaniced = perr != nil
 				}()
-				shutdown.RunThenTrigger(trigger, true, func() error {
-					if tt.workloadPanic != nil {
-						panic(tt.workloadPanic)
+				shutdown.RunThenTrigger(trigger, tt.ParamSkipOnSuccess, func() error {
+					if tt.WorkloadPanic != nil {
+						panic(tt.WorkloadPanic)
 					}
-					return tt.workloadError
+					return tt.WorkloadError
 				})
 			})
 			wg.Wait()
 
-			require.Equal(t, tt.expectCallerPanic, callerPaniced)
-			require.Len(t, triggerGot, 1)
-			require.Equal(t, tt.expectTriggerError, triggerGot[0])
+			require.Equal(t, tt.ExpectCallerPanic, callerPaniced)
+			require.Equal(t, len(tt.ExpectTriggerErrors), len(triggerGot))
+			for _, err := range tt.ExpectTriggerErrors {
+				require.Contains(t, triggerGot, err)
+			}
 		})
 	}
 }

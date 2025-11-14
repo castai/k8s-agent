@@ -261,13 +261,13 @@ func runAgentMode(parentCtx context.Context, castaiclient castai.Client, log *lo
 			LeaderStatusCh:  leaderStatusCh,
 		}
 
-		go shutdown.RunThenTrigger(shutdownController.For("controller"), true, func() error {
+		go shutdown.RunThenTrigger(shutdownController.For("controller"), false, func() error {
 			return controller.RunControllerWithRestart(ctx, params)
 		})
 
 		// Run leader election with main context
 		// If leader election returns an error, we shut down the entire app
-		go shutdown.RunThenTrigger(shutdownController.For("leader election"), true, func() error {
+		go shutdown.RunThenTrigger(shutdownController.For("leader election"), false, func() error {
 			return replicas.RunLeaderElection(ctx, log, cfg.LeaderElection, clientset, leaderWatchDog, leaderStatusCh)
 		})
 
@@ -288,7 +288,7 @@ func runAgentMode(parentCtx context.Context, castaiclient castai.Client, log *lo
 			LeaderStatusCh:  nil,
 		}
 
-		go shutdown.RunThenTrigger(shutdownController.For("controller"), true, func() error {
+		go shutdown.RunThenTrigger(shutdownController.For("controller"), false, func() error {
 			return controller.RunControllerWithRestart(ctx, params)
 		})
 
@@ -310,7 +310,7 @@ func runPProf(cfg config.Config, log *logrus.Entry, startShutdown func(error)) (
 		}
 	}
 
-	go shutdown.RunThenTrigger(startShutdown, false, func() error {
+	go shutdown.RunThenTrigger(startShutdown, true, func() error {
 		log.Info("pprof server ready")
 		err := pprofSrv.ListenAndServe()
 		if errors.Is(err, http.ErrServerClosed) {
@@ -348,7 +348,7 @@ func runHealthzEndpoints(
 		}
 	}
 
-	go shutdown.RunThenTrigger(startShutdown, false, func() error {
+	go shutdown.RunThenTrigger(startShutdown, true, func() error {
 		log.Info("healthz server ready")
 		err := healthzSrv.ListenAndServe()
 		if errors.Is(err, http.ErrServerClosed) {
@@ -385,7 +385,7 @@ func runMetricsEndpoints(cfg config.Config, log *logrus.Entry, startShutdown fun
 		}
 	}
 
-	go shutdown.RunThenTrigger(startShutdown, false, func() error {
+	go shutdown.RunThenTrigger(startShutdown, true, func() error {
 		log.Info("metrics server ready")
 		err := metricsSrv.ListenAndServe()
 		if errors.Is(err, http.ErrServerClosed) {
@@ -394,9 +394,6 @@ func runMetricsEndpoints(cfg config.Config, log *logrus.Entry, startShutdown fun
 		log.Warn("metrics server closed")
 		return err
 	})
-	go func() {
-
-	}()
 	return closeFunc
 }
 
