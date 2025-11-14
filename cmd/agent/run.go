@@ -22,6 +22,7 @@ import (
 	"k8s.io/metrics/pkg/client/clientset/versioned"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
+	"castai-agent/cmd/utils/shutdown"
 	"castai-agent/internal/config"
 	"castai-agent/internal/services/controller"
 	"castai-agent/internal/services/controller/scheme"
@@ -37,9 +38,8 @@ import (
 )
 
 const (
-	exitChannelBufferSize = 10
-	leaderHealthzTimeout  = 2 * time.Minute
-	bytesInMiB            = 1024 * 1024
+	leaderHealthzTimeout = 2 * time.Minute
+	bytesInMiB           = 1024 * 1024
 )
 
 func run(ctx context.Context) error {
@@ -127,21 +127,16 @@ func run(ctx context.Context) error {
 	return err
 }
 
-func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg config.Config, clusterIDChanged func(clusterID string)) error {
-	ctx, ctxCancel := context.WithCancel(ctx)
-	defer ctxCancel()
-
-	// buffer will allow for all senders to push, even though we will only read first error and cancel context after it;
-	// all errors from exitCh are logged
-	exitCh := make(chan error, exitChannelBufferSize)
-	go watchExitErrors(ctx, log, exitCh, ctxCancel)
+func runAgentMode(parentCtx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg config.Config, clusterIDChanged func(clusterID string)) error {
+	ctx, shutdownController := shutdown.Context(parentCtx, log)
+	defer shutdownController.For("runAgentMode")(nil)
 
 	agentVersion := config.VersionInfo
 	log.Infof("running agent version: %v", agentVersion)
 	log.Infof("platform URL: %s", cfg.API.URL)
 
 	if cfg.PprofPort != 0 {
-		closePprof := runPProf(cfg, log, exitCh)
+		closePprof := runPProf(cfg, log, shutdownController.For("pprof server"))
 		defer closePprof()
 	}
 
@@ -162,10 +157,10 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 		"liveness": ctrlHealthz.CheckLiveness,
 	})
 
-	closeHealthz := runHealthzEndpoints(cfg, log, livenessChecks, readinessChecks, exitCh)
+	closeHealthz := runHealthzEndpoints(cfg, log, livenessChecks, readinessChecks, shutdownController.For("healthz server"))
 	defer closeHealthz()
 
-	closeMetrics := runMetricsEndpoints(cfg, log, exitCh)
+	closeMetrics := runMetricsEndpoints(cfg, log, shutdownController.For("metrics server"))
 	defer closeMetrics()
 
 	restconfig, err := cfg.RetrieveKubeConfig(log)
@@ -266,19 +261,15 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 			LeaderStatusCh:  leaderStatusCh,
 		}
 
-		go func() {
-			if err := controller.RunControllerWithRestart(ctx, params); err != nil {
-				exitCh <- fmt.Errorf("controller with restart error: %w", err)
-			}
-		}()
+		go shutdown.RunThenTrigger(shutdownController.For("controller"), false, func() error {
+			return controller.RunControllerWithRestart(ctx, params)
+		})
 
 		// Run leader election with main context
 		// If leader election returns an error, we shut down the entire app
-		go func() {
-			if err := replicas.RunLeaderElection(ctx, log, cfg.LeaderElection, clientset, leaderWatchDog, leaderStatusCh); err != nil {
-				exitCh <- fmt.Errorf("leader election error: %w", err)
-			}
-		}()
+		go shutdown.RunThenTrigger(shutdownController.For("leader election"), false, func() error {
+			return replicas.RunLeaderElection(ctx, log, cfg.LeaderElection, clientset, leaderWatchDog, leaderStatusCh)
+		})
 
 		<-ctx.Done()
 		log.Info("shutdown signal received, initiating graceful shutdown")
@@ -297,11 +288,9 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 			LeaderStatusCh:  nil,
 		}
 
-		go func() {
-			if err := controller.RunControllerWithRestart(ctx, params); err != nil {
-				exitCh <- fmt.Errorf("controller with restart error: %w", err)
-			}
-		}()
+		go shutdown.RunThenTrigger(shutdownController.For("controller"), false, func() error {
+			return controller.RunControllerWithRestart(ctx, params)
+		})
 
 		<-ctx.Done()
 		log.Info("shutdown signal received, initiating graceful shutdown")
@@ -310,27 +299,7 @@ func runAgentMode(ctx context.Context, castaiclient castai.Client, log *logrus.E
 	return nil
 }
 
-// if any errors are observed on exitCh, context cancel is called, and all errors in the channel are logged
-func watchExitErrors(ctx context.Context, log *logrus.Entry, exitCh chan error, ctxCancel func()) {
-	for {
-		select {
-		case err := <-exitCh:
-			if err != nil && !errors.Is(err, context.Canceled) {
-				log.Errorf("agent stopped with an error: %v", err)
-			}
-			ctxCancel()
-		case <-ctx.Done():
-			if errors.Is(ctx.Err(), context.Canceled) {
-				log.Info("shutdown initiated: received termination signal")
-			} else {
-				log.Infof("context done: %v", ctx.Err())
-			}
-			return
-		}
-	}
-}
-
-func runPProf(cfg config.Config, log *logrus.Entry, exitCh chan error) (closeFunc func()) {
+func runPProf(cfg config.Config, log *logrus.Entry, startShutdown func(error)) (closeFunc func()) {
 	log.Infof("starting pprof server on port: %d", cfg.PprofPort)
 	addr := portToServerAddr(cfg.PprofPort)
 	pprofSrv := &http.Server{Addr: addr, Handler: http.DefaultServeMux}
@@ -341,17 +310,15 @@ func runPProf(cfg config.Config, log *logrus.Entry, exitCh chan error) (closeFun
 		}
 	}
 
-	go func() {
-		log.Infof("pprof server ready")
+	go shutdown.RunThenTrigger(startShutdown, true, func() error {
+		log.Info("pprof server ready")
 		err := pprofSrv.ListenAndServe()
-		if err != nil {
-			if !errors.Is(err, http.ErrServerClosed) {
-				exitCh <- fmt.Errorf("pprof server: %w", err)
-			} else {
-				log.Warnf("pprof server closed")
-			}
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
 		}
-	}()
+		log.Warn("pprof server closed")
+		return err
+	})
 	return closeFn
 }
 
@@ -360,7 +327,7 @@ func runHealthzEndpoints(
 	log *logrus.Entry,
 	livenessChecks map[string]healthz.Checker,
 	readinessChecks map[string]healthz.Checker,
-	exitCh chan error,
+	startShutdown func(error),
 ) func() {
 	log.Infof("starting healthz server on port: %d", cfg.HealthzPort)
 
@@ -381,19 +348,19 @@ func runHealthzEndpoints(
 		}
 	}
 
-	go func() {
-		log.Infof("healthz server ready")
+	go shutdown.RunThenTrigger(startShutdown, true, func() error {
+		log.Info("healthz server ready")
 		err := healthzSrv.ListenAndServe()
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			exitCh <- fmt.Errorf("healthz server: %w", err)
-		} else {
-			log.Warnf("healthz server closed")
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
 		}
-	}()
+		log.Warn("healthz server closed")
+		return err
+	})
 	return closeFunc
 }
 
-func runMetricsEndpoints(cfg config.Config, log *logrus.Entry, exitCh chan error) func() {
+func runMetricsEndpoints(cfg config.Config, log *logrus.Entry, startShutdown func(error)) func() {
 	log.Infof("starting metrics server on port: %d", cfg.MetricsPort)
 	addr := portToServerAddr(cfg.MetricsPort)
 
@@ -418,18 +385,15 @@ func runMetricsEndpoints(cfg config.Config, log *logrus.Entry, exitCh chan error
 		}
 	}
 
-	go func() {
-		log.Infof("metrics server ready")
+	go shutdown.RunThenTrigger(startShutdown, true, func() error {
+		log.Info("metrics server ready")
 		err := metricsSrv.ListenAndServe()
-
-		if err != nil {
-			if !errors.Is(err, http.ErrServerClosed) {
-				exitCh <- fmt.Errorf("metrics server: %w", err)
-			} else {
-				log.Warnf("metrics server closed")
-			}
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
 		}
-	}()
+		log.Warn("metrics server closed")
+		return err
+	})
 	return closeFunc
 }
 
