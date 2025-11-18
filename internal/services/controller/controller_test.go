@@ -84,10 +84,10 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
-			expectedReceivedObjectsCount: 37,
+			expectedReceivedObjectsCount: 39,
 		},
 		"All supported objects are found and received in delta with pagination": {
-			expectedReceivedObjectsCount: 37,
+			expectedReceivedObjectsCount: 39,
 			paginationEnabled:            true,
 			pageSize:                     5,
 		},
@@ -95,12 +95,12 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 35,
+			expectedReceivedObjectsCount: 37,
 		},
 		"when fetching api resources produces single error should exclude that resource": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 36,
+			expectedReceivedObjectsCount: 38,
 		},
 	}
 
@@ -760,6 +760,8 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	nodeOverlaysDataV1Alpha1 := emptyObjectData("karpenter.sh", "v1alpha1", "NodeOverlay", "fake-nodeoverlay-v1alpha1")
 	recommendationSyncV1Alpha1 := emptyObjectData("runbooks.cast.ai", "v1alpha1", "RecommendationSync", "fake-recommendationsync")
 	migrationsDataV1 := emptyObjectData("live.cast.ai", "v1", "Migration", "fake-migration-v1")
+	scaledObjectDataV1Alpha1 := emptyObjectData("keda.sh", "v1alpha1", "ScaledObject", "fake-scaledobject-v1alpha1")
+	scaledJobDataV1Alpha1 := emptyObjectData("keda.sh", "v1alpha1", "ScaledJob", "fake-scaledjob-v1alpha1")
 
 	datadogExtendedDSReplicaSet := &datadoghqv1alpha1.ExtendedDaemonSetReplicaSet{
 		TypeMeta: metav1.TypeMeta{
@@ -1016,6 +1018,8 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		{Obj: podMutation},
 		{Obj: unstructuredFromJson(t, recommendationSyncV1Alpha1)},
 		{Obj: hpaV2},
+		{Obj: unstructuredFromJson(t, scaledObjectDataV1Alpha1)},
+		{Obj: unstructuredFromJson(t, scaledJobDataV1Alpha1)},
 	}
 
 	// Create a dynamic client but skip analyzing some GVRs to avoid issues with plural forms. This is mostly needed for List kinds.
@@ -1338,6 +1342,25 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			},
 		},
 		{
+			GroupVersion: knowngv.KEDAV1Alpha1.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group:   knowngv.KEDAV1Alpha1.Group,
+					Name:    "scaledobjects",
+					Version: knowngv.KEDAV1Alpha1.Version,
+					Kind:    "ScaledObject",
+					Verbs:   []string{"get", "list", "watch"},
+				},
+				{
+					Group:   knowngv.KEDAV1Alpha1.Group,
+					Name:    "scaledjobs",
+					Version: knowngv.KEDAV1Alpha1.Version,
+					Kind:    "ScaledJob",
+					Verbs:   []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
 			GroupVersion: resourcev1beta2.SchemeGroupVersion.String(),
 			APIResources: []metav1.APIResource{
 				{
@@ -1572,6 +1595,18 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Kind:     "Migration",
 			Resource: "migrations",
 			Data:     migrationsDataV1,
+		},
+		{
+			GV:       knowngv.KEDAV1Alpha1,
+			Kind:     "ScaledObject",
+			Resource: "scaledobjects",
+			Data:     scaledObjectDataV1Alpha1,
+		},
+		{
+			GV:       knowngv.KEDAV1Alpha1,
+			Kind:     "ScaledJob",
+			Resource: "scaledjobs",
+			Data:     scaledJobDataV1Alpha1,
 		},
 	}
 

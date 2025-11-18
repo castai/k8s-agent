@@ -1147,6 +1147,26 @@ func getConditionalInformers(
 				return df.ForResource(knowngv.LiveV1.WithResource("migrations")).Informer()
 			},
 		},
+		{
+			groupVersion:    knowngv.KEDAV1Alpha1,
+			resource:        "scaledobjects",
+			kind:            "ScaledObject",
+			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(knowngv.KEDAV1Alpha1.WithResource("scaledobjects")).Informer()
+			},
+		},
+		{
+			groupVersion:    knowngv.KEDAV1Alpha1,
+			resource:        "scaledjobs",
+			kind:            "ScaledJob",
+			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(knowngv.KEDAV1Alpha1.WithResource("scaledjobs")).Informer()
+			},
+		},
 	}
 
 	for _, cmNamespace := range cfg.ConfigMapNamespaces {
