@@ -16,4 +16,7 @@ var (
 
 	// LiveV1 is a GroupVersion for Cast AI Container Live Migration resources.
 	LiveV1 = schema.GroupVersion{Group: "live.cast.ai", Version: "v1"}
+
+	// KEDAV1Alpha1 is a GroupVersion for KEDA ScaledObject resources.
+	KEDAV1Alpha1 = schema.GroupVersion{Group: "keda.sh", Version: "v1alpha1"}
 )
