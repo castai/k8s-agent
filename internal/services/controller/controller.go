@@ -998,6 +998,16 @@ func getConditionalInformers(
 			},
 		},
 		{
+			groupVersion:    crd.CustomMetricsExporterConfigGVR.GroupVersion(),
+			resource:        crd.CustomMetricsExporterConfigGVR.Resource,
+			kind:            "CustomMetricsExporterConfig",
+			apiType:         reflect.TypeOf(&crd.CustomMetricsExporterConfig{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(crd.CustomMetricsExporterConfigGVR).Informer()
+			},
+		},
+		{
 			groupVersion:    crd.PodMutationGVR.GroupVersion(),
 			resource:        crd.PodMutationGVR.Resource,
 			kind:            "PodMutation",

@@ -12,6 +12,9 @@ var AutoscalingSchemaGroupVersion = schema.GroupVersion{Group: "autoscaling.cast
 // RecommendationGVR is group version resource for recommendation objects
 var RecommendationGVR = AutoscalingSchemaGroupVersion.WithResource("recommendations")
 
+// CustomMetricsExporterConfigGVR is group version resource for custom metrics objects
+var CustomMetricsExporterConfigGVR = AutoscalingSchemaGroupVersion.WithResource("custommetricsexporterconfigs")
+
 var PodMutationsSchemaGroupVersion = schema.GroupVersion{Group: "pod-mutations.cast.ai", Version: "v1"}
 
 var PodMutationGVR = PodMutationsSchemaGroupVersion.WithResource("podmutations")
@@ -27,6 +30,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(AutoscalingSchemaGroupVersion,
 		&Recommendation{},
 		&RecommendationList{},
+		&CustomMetricsExporterConfig{},
+		&CustomMetricsExporterConfigList{},
 	)
 	metav1.AddToGroupVersion(scheme, AutoscalingSchemaGroupVersion)
 
