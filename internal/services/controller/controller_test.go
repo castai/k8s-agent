@@ -84,10 +84,10 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
-			expectedReceivedObjectsCount: 39,
+			expectedReceivedObjectsCount: 40,
 		},
 		"All supported objects are found and received in delta with pagination": {
-			expectedReceivedObjectsCount: 39,
+			expectedReceivedObjectsCount: 40,
 			paginationEnabled:            true,
 			pageSize:                     5,
 		},
@@ -95,12 +95,12 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 37,
+			expectedReceivedObjectsCount: 38,
 		},
 		"when fetching api resources produces single error should exclude that resource": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 38,
+			expectedReceivedObjectsCount: 39,
 		},
 	}
 
@@ -811,6 +811,27 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	}
 	recommendationData := asJson(t, recommendation)
 
+	customMetrics := &crd.CustomMetricsExporterConfig{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "CustomMetricsExporterConfig",
+			APIVersion: crd.AutoscalingSchemaGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: crd.CustomMetricsExporterConfigGVR.Resource,
+		},
+		Status: crd.CustomMetricsExporterConfigStatus{
+			Conditions: []metav1.Condition{
+				{
+					Type:               "Healthy",
+					Status:             "True",
+					ObservedGeneration: 1,
+					Reason:             "",
+				},
+			},
+		},
+	}
+	customMetricsData := asJson(t, customMetrics)
+
 	podMutation := &crd.PodMutation{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PodMutation",
@@ -1015,6 +1036,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		{Obj: datadogExtendedDSReplicaSet},
 		{Obj: rollout},
 		{Obj: recommendation},
+		{Obj: customMetrics},
 		{Obj: podMutation},
 		{Obj: unstructuredFromJson(t, recommendationSyncV1Alpha1)},
 		{Obj: hpaV2},
@@ -1255,6 +1277,13 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 					Name:    crd.RecommendationGVR.Resource,
 					Version: crd.RecommendationGVR.Version,
 					Kind:    "Recommendation",
+					Verbs:   []string{"get", "list", "watch"},
+				},
+				{
+					Group:   crd.CustomMetricsExporterConfigGVR.Group,
+					Name:    crd.CustomMetricsExporterConfigGVR.Resource,
+					Version: crd.CustomMetricsExporterConfigGVR.Version,
+					Kind:    "CustomMetricsExporterConfig",
 					Verbs:   []string{"get", "list", "watch"},
 				},
 			},
@@ -1505,6 +1534,12 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Kind:     "Recommendation",
 			Resource: crd.RecommendationGVR.Resource,
 			Data:     recommendationData,
+		},
+		{
+			GV:       crd.CustomMetricsExporterConfigGVR.GroupVersion(),
+			Kind:     "CustomMetricsExporterConfig",
+			Resource: crd.CustomMetricsExporterConfigGVR.Resource,
+			Data:     customMetricsData,
 		},
 		{
 			GV:       crd.PodMutationGVR.GroupVersion(),
