@@ -225,7 +225,7 @@ func TestItemCacheCompile(t *testing.T) {
 			Item: delta.NewItem(castai.EventAdd, pod1),
 			Expected: &castai.DeltaItem{
 				Event: castai.EventAdd,
-				Data:  lo.ToPtr(json.RawMessage(`{"kind":"CustomType","apiVersion":"v1","metadata":{"name":"a","namespace":"default","creationTimestamp":null},"spec":{"containers":null},"status":{}}`)),
+				Data:  lo.ToPtr(json.RawMessage(`{"kind":"CustomType","apiVersion":"v1","metadata":{"name":"a","namespace":"default"},"spec":{"containers":null},"status":{}}`)),
 				Kind:  "CustomType",
 			},
 		},
