@@ -26,7 +26,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	resourcev1beta2 "k8s.io/api/resource/v1beta2"
+	resourcev1 "k8s.io/api/resource/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -180,6 +180,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 								item.Kind == expected.Kind &&
 								item.Data != nil &&
 								strings.Contains(string(*item.Data), expectedGVString) // Hacky but OK given this is for testing purposes.
+
 						})
 						require.Truef(t, found, "missing object for %q %q", expectedGVString, expected.Kind)
 						require.NotNil(t, actual.Data)
@@ -949,10 +950,10 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	}
 	limitRangeData := asJson(t, limitRange)
 
-	deviceClass := &resourcev1beta2.DeviceClass{
+	deviceClass := &resourcev1.DeviceClass{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "DeviceClass",
-			APIVersion: resourcev1beta2.SchemeGroupVersion.String(),
+			APIVersion: resourcev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: v1.NamespaceDefault,
@@ -961,10 +962,10 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	}
 	deviceClassData := asJson(t, deviceClass)
 
-	resourceClaim := &resourcev1beta2.ResourceClaim{
+	resourceClaim := &resourcev1.ResourceClaim{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ResourceClaim",
-			APIVersion: resourcev1beta2.SchemeGroupVersion.String(),
+			APIVersion: resourcev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: v1.NamespaceDefault,
@@ -973,10 +974,10 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	}
 	resourceClaimData := asJson(t, resourceClaim)
 
-	resourceClaimTemplate := &resourcev1beta2.ResourceClaimTemplate{
+	resourceClaimTemplate := &resourcev1.ResourceClaimTemplate{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ResourceClaimTemplate",
-			APIVersion: resourcev1beta2.SchemeGroupVersion.String(),
+			APIVersion: resourcev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: v1.NamespaceDefault,
@@ -985,10 +986,10 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	}
 	resourceClaimTemplateData := asJson(t, resourceClaimTemplate)
 
-	resourceSlice := &resourcev1beta2.ResourceSlice{
+	resourceSlice := &resourcev1.ResourceSlice{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ResourceSlice",
-			APIVersion: resourcev1beta2.SchemeGroupVersion.String(),
+			APIVersion: resourcev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: v1.NamespaceDefault,
@@ -1390,28 +1391,28 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			},
 		},
 		{
-			GroupVersion: resourcev1beta2.SchemeGroupVersion.String(),
+			GroupVersion: resourcev1.SchemeGroupVersion.String(),
 			APIResources: []metav1.APIResource{
 				{
-					Group: resourcev1beta2.GroupName,
-					Name:  "deviceClasses",
+					Group: resourcev1.GroupName,
+					Name:  "deviceclasses",
 					Kind:  "DeviceClass",
 					Verbs: []string{"get", "list", "watch"},
 				},
 				{
-					Group: resourcev1beta2.GroupName,
+					Group: resourcev1.GroupName,
 					Name:  "resourceclaims",
 					Kind:  "ResourceClaim",
 					Verbs: []string{"get", "list", "watch"},
 				},
 				{
-					Group: resourcev1beta2.GroupName,
+					Group: resourcev1.GroupName,
 					Name:  "resourceclaimtemplates",
 					Kind:  "ResourceClaimTemplate",
 					Verbs: []string{"get", "list", "watch"},
 				},
 				{
-					Group: resourcev1beta2.GroupName,
+					Group: resourcev1.GroupName,
 					Name:  "resourceslices",
 					Kind:  "ResourceSlice",
 					Verbs: []string{"get", "list", "watch"},
@@ -1602,25 +1603,25 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Data:     recommendationSyncV1Alpha1,
 		},
 		{
-			GV:       resourcev1beta2.SchemeGroupVersion,
+			GV:       resourcev1.SchemeGroupVersion,
 			Kind:     "DeviceClass",
 			Resource: "deviceclasses",
 			Data:     deviceClassData,
 		},
 		{
-			GV:       resourcev1beta2.SchemeGroupVersion,
+			GV:       resourcev1.SchemeGroupVersion,
 			Kind:     "ResourceClaim",
 			Resource: "resourceclaims",
 			Data:     resourceClaimData,
 		},
 		{
-			GV:       resourcev1beta2.SchemeGroupVersion,
+			GV:       resourcev1.SchemeGroupVersion,
 			Kind:     "ResourceClaimTemplate",
 			Resource: "resourceclaimtemplates",
 			Data:     resourceClaimTemplateData,
 		},
 		{
-			GV:       resourcev1beta2.SchemeGroupVersion,
+			GV:       resourcev1.SchemeGroupVersion,
 			Kind:     "ResourceSlice",
 			Resource: "resourceslices",
 			Data:     resourceSliceData,
