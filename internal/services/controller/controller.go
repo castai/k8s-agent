@@ -1008,6 +1008,16 @@ func getConditionalInformers(
 			},
 		},
 		{
+			groupVersion:    crd.NodeDiskRecommendationGVR.GroupVersion(),
+			resource:        crd.NodeDiskRecommendationGVR.Resource,
+			kind:            "NodeDiskRecommendation",
+			apiType:         reflect.TypeOf(&crd.NodeDiskRecommendation{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(crd.NodeDiskRecommendationGVR).Informer()
+			},
+		},
+		{
 			groupVersion:    crd.PodMutationGVR.GroupVersion(),
 			resource:        crd.PodMutationGVR.Resource,
 			kind:            "PodMutation",
