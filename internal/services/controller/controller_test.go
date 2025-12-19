@@ -856,6 +856,33 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	}
 	customMetricsData := asJson(t, customMetrics)
 
+	nodeDiskRecommendation := &crd.NodeDiskRecommendation{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "NodeDiskRecommendation",
+			APIVersion: crd.StorageOptimizationGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ndr-default-by-castai",
+			Namespace: v1.NamespaceDefault,
+		},
+		Spec: crd.NodeDiskRecommendationSpec{
+			NodeTemplate: "ndr-default-by-castai",
+			Recommendations: []crd.DiskRecommendation{
+				{
+					DiskType:        crd.DiskTypeRoot,
+					SizeBytes:       107374182400, // 100 GiB
+					VolumeType:      "gp3",
+					IOPS:            3000,
+					ThroughputMiBps: 125,
+				},
+			},
+		},
+		Status: crd.NodeDiskRecommendationStatus{
+			LastUpdateTime: &metav1.Time{Time: time.Now()},
+		},
+	}
+	nodeDiskRecommendationData := asJson(t, nodeDiskRecommendation)
+
 	podMutation := &crd.PodMutation{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PodMutation",
@@ -1061,6 +1088,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		{Obj: rollout},
 		{Obj: recommendation},
 		{Obj: customMetrics},
+		{Obj: nodeDiskRecommendation},
 		{Obj: podMutation},
 		{Obj: unstructuredFromJson(t, recommendationSyncV1Alpha1)},
 		{Obj: hpaV2},
@@ -1325,6 +1353,19 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			},
 		},
 		{
+			GroupVersion: crd.NodeDiskRecommendationGVR.GroupVersion().String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group:      crd.NodeDiskRecommendationGVR.Group,
+					Name:       crd.NodeDiskRecommendationGVR.Resource,
+					Version:    crd.NodeDiskRecommendationGVR.Version,
+					Kind:       "NodeDiskRecommendation",
+					Namespaced: true,
+					Verbs:      []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
 			GroupVersion: crd.PodMutationGVR.GroupVersion().String(),
 			APIResources: []metav1.APIResource{
 				{
@@ -1582,6 +1623,12 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Kind:     "CustomMetricsExporterConfig",
 			Resource: crd.CustomMetricsExporterConfigGVR.Resource,
 			Data:     customMetricsData,
+		},
+		{
+			GV:       crd.NodeDiskRecommendationGVR.GroupVersion(),
+			Kind:     "NodeDiskRecommendation",
+			Resource: crd.NodeDiskRecommendationGVR.Resource,
+			Data:     nodeDiskRecommendationData,
 		},
 		{
 			GV:       crd.PodMutationGVR.GroupVersion(),
