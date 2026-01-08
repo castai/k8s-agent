@@ -84,10 +84,10 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
-			expectedReceivedObjectsCount: 40,
+			expectedReceivedObjectsCount: 41,
 		},
 		"All supported objects are found and received in delta with pagination": {
-			expectedReceivedObjectsCount: 40,
+			expectedReceivedObjectsCount: 41,
 			paginationEnabled:            true,
 			pageSize:                     5,
 		},
@@ -95,12 +95,12 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 38,
+			expectedReceivedObjectsCount: 39,
 		},
 		"when fetching api resources produces single error should exclude that resource": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 39,
+			expectedReceivedObjectsCount: 40,
 		},
 	}
 
@@ -833,6 +833,33 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	}
 	customMetricsData := asJson(t, customMetrics)
 
+	nodeDiskRecommendation := &crd.NodeDiskRecommendation{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "NodeDiskRecommendation",
+			APIVersion: crd.StorageOptimizationGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ndr-default-by-castai",
+			Namespace: v1.NamespaceDefault,
+		},
+		Spec: crd.NodeDiskRecommendationSpec{
+			NodeTemplate: "ndr-default-by-castai",
+			Recommendations: []crd.DiskRecommendation{
+				{
+					DiskType:        crd.DiskTypeRoot,
+					SizeBytes:       107374182400, // 100 GiB
+					VolumeType:      "gp3",
+					IOPS:            3000,
+					ThroughputMiBps: 125,
+				},
+			},
+		},
+		Status: crd.NodeDiskRecommendationStatus{
+			LastUpdateTime: &metav1.Time{Time: time.Now()},
+		},
+	}
+	nodeDiskRecommendationData := asJson(t, nodeDiskRecommendation)
+
 	podMutation := &crd.PodMutation{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PodMutation",
@@ -1038,6 +1065,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		{Obj: rollout},
 		{Obj: recommendation},
 		{Obj: customMetrics},
+		{Obj: nodeDiskRecommendation},
 		{Obj: podMutation},
 		{Obj: unstructuredFromJson(t, recommendationSyncV1Alpha1)},
 		{Obj: hpaV2},
@@ -1286,6 +1314,19 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 					Version: crd.CustomMetricsExporterConfigGVR.Version,
 					Kind:    "CustomMetricsExporterConfig",
 					Verbs:   []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
+			GroupVersion: crd.NodeDiskRecommendationGVR.GroupVersion().String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group:      crd.NodeDiskRecommendationGVR.Group,
+					Name:       crd.NodeDiskRecommendationGVR.Resource,
+					Version:    crd.NodeDiskRecommendationGVR.Version,
+					Kind:       "NodeDiskRecommendation",
+					Namespaced: true,
+					Verbs:      []string{"get", "list", "watch"},
 				},
 			},
 		},
@@ -1541,6 +1582,12 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Kind:     "CustomMetricsExporterConfig",
 			Resource: crd.CustomMetricsExporterConfigGVR.Resource,
 			Data:     customMetricsData,
+		},
+		{
+			GV:       crd.NodeDiskRecommendationGVR.GroupVersion(),
+			Kind:     "NodeDiskRecommendation",
+			Resource: crd.NodeDiskRecommendationGVR.Resource,
+			Data:     nodeDiskRecommendationData,
 		},
 		{
 			GV:       crd.PodMutationGVR.GroupVersion(),
