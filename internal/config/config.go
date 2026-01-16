@@ -247,6 +247,13 @@ func Get() Config {
 	if cfg.EKS != nil {
 		if cfg.EKS.AccountID == "" {
 			requiredWhenDiscoveryDisabled("EKS_ACCOUNT_ID")
+		} else {
+			// Normalize cloud provider ID (handle scientific notation from unquoted YAML values)
+			normalized, err := normalizeCloudProviderID(cfg.EKS.AccountID, "EKS_ACCOUNT_ID")
+			if err != nil {
+				panic(err)
+			}
+			cfg.EKS.AccountID = normalized
 		}
 		if cfg.EKS.Region == "" {
 			requiredWhenDiscoveryDisabled("EKS_REGION")
@@ -259,6 +266,42 @@ func Get() Config {
 		}
 		if cfg.EKS.APINodeLifecycleDiscoveryEnabled == nil {
 			cfg.EKS.APINodeLifecycleDiscoveryEnabled = lo.ToPtr(DefaultAPINodeLifecycleDiscoveryEnabled)
+		}
+	}
+
+	if cfg.SelfHostedEC2 != nil {
+		if cfg.SelfHostedEC2.AccountID == "" {
+			requiredWhenDiscoveryDisabled("SELFHOSTEDEC2_ACCOUNT_ID")
+		} else {
+			// Normalize cloud provider ID (handle scientific notation from unquoted YAML values)
+			normalized, err := normalizeCloudProviderID(cfg.SelfHostedEC2.AccountID, "SELFHOSTEDEC2_ACCOUNT_ID")
+			if err != nil {
+				panic(err)
+			}
+			cfg.SelfHostedEC2.AccountID = normalized
+		}
+		if cfg.SelfHostedEC2.Region == "" {
+			requiredWhenDiscoveryDisabled("SELFHOSTEDEC2_REGION")
+		}
+		if cfg.SelfHostedEC2.ClusterName == "" {
+			requiredWhenDiscoveryDisabled("SELFHOSTEDEC2_CLUSTER_NAME")
+		}
+		if cfg.SelfHostedEC2.APITimeout <= 0 {
+			cfg.SelfHostedEC2.APITimeout = 120 * time.Second
+		}
+		if cfg.SelfHostedEC2.APINodeLifecycleDiscoveryEnabled == nil {
+			cfg.SelfHostedEC2.APINodeLifecycleDiscoveryEnabled = lo.ToPtr(DefaultAPINodeLifecycleDiscoveryEnabled)
+		}
+	}
+
+	if cfg.GKE != nil {
+		if cfg.GKE.ProjectID != "" {
+			// Normalize cloud provider ID (handle scientific notation from unquoted YAML values)
+			normalized, err := normalizeCloudProviderID(cfg.GKE.ProjectID, "GKE_PROJECT_ID")
+			if err != nil {
+				panic(err)
+			}
+			cfg.GKE.ProjectID = normalized
 		}
 	}
 
