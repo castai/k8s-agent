@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -33,10 +34,11 @@ func normalizeNumericID(value string) (string, bool) {
 	return normalized, true
 }
 
-// normalizeCloudProviderID normalizes cloud provider IDs that may be in scientific notation.
-// This handles IDs from any cloud provider (AWS account IDs, GCP project IDs, Azure subscription IDs, etc.)
-// Does not enforce strict format validation since cloud provider formats can change.
-func normalizeCloudProviderID(id string, fieldName string) (string, error) {
+// normalizeAWSAccountID normalizes AWS account IDs that may be in scientific notation.
+// AWS account IDs are always 12 digits, making them susceptible to YAML's automatic
+// conversion of large numbers to scientific notation when unquoted.
+// Does not enforce strict format validation since AWS could change the format in the future.
+func normalizeAWSAccountID(id string, fieldName string) (string, error) {
 	if id == "" {
 		return "", nil // Empty validation handled elsewhere
 	}
@@ -45,8 +47,8 @@ func normalizeCloudProviderID(id string, fieldName string) (string, error) {
 	normalized, wasNormalized := normalizeNumericID(id)
 
 	if wasNormalized {
-		// Log warning about normalization for transparency
-		fmt.Printf("WARNING: %s was provided in scientific notation (%q) and has been normalized to %q. "+
+		// Write warning to stderr for visibility during config initialization
+		fmt.Fprintf(os.Stderr, "WARNING: %s was provided in scientific notation (%q) and has been normalized to %q. "+
 			"To avoid this in the future, quote numeric values in YAML/Helm: --set additionalEnv.%s=\"%s\"\n",
 			fieldName, id, normalized, fieldName, normalized)
 	}

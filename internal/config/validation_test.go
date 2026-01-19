@@ -79,105 +79,72 @@ func TestNormalizeNumericID(t *testing.T) {
 	}
 }
 
-func TestNormalizeCloudProviderID(t *testing.T) {
+func TestNormalizeAWSAccountID(t *testing.T) {
 	tests := []struct {
 		name      string
-		id        string
+		accountID string
 		fieldName string
 		expected  string
 	}{
-		// AWS account ID cases
 		{
-			name:      "AWS: valid 12 digit account ID",
-			id:        "123456789012",
+			name:      "valid 12 digit account ID",
+			accountID: "123456789012",
 			fieldName: "EKS_ACCOUNT_ID",
 			expected:  "123456789012",
 		},
 		{
-			name:      "AWS: valid account ID with leading zeros",
-			id:        "000123456789",
+			name:      "valid account ID with leading zeros",
+			accountID: "000123456789",
 			fieldName: "EKS_ACCOUNT_ID",
 			expected:  "000123456789",
 		},
 		{
-			name:      "AWS: scientific notation - normalized successfully",
-			id:        "5.892517896e+11",
+			name:      "scientific notation - normalized successfully",
+			accountID: "5.892517896e+11",
 			fieldName: "EKS_ACCOUNT_ID",
 			expected:  "589251789600",
 		},
 		{
-			name:      "AWS: scientific notation uppercase E",
-			id:        "1.23456789012E+11",
+			name:      "scientific notation uppercase E",
+			accountID: "1.23456789012E+11",
 			fieldName: "EKS_ACCOUNT_ID",
 			expected:  "123456789012",
 		},
-		// GCP project ID cases
 		{
-			name:      "GCP: valid alphanumeric project ID",
-			id:        "my-project-123",
-			fieldName: "GKE_PROJECT_ID",
-			expected:  "my-project-123",
-		},
-		{
-			name:      "GCP: valid project ID lowercase",
-			id:        "myproject",
-			fieldName: "GKE_PROJECT_ID",
-			expected:  "myproject",
-		},
-		{
-			name:      "GCP: valid project ID with hyphens",
-			id:        "my-gcp-project-2024",
-			fieldName: "GKE_PROJECT_ID",
-			expected:  "my-gcp-project-2024",
-		},
-		{
-			name:      "GCP: valid numeric project ID (legacy)",
-			id:        "123456789012",
-			fieldName: "GKE_PROJECT_ID",
+			name:      "SelfHostedEC2 account ID with scientific notation",
+			accountID: "1.23456789012e+11",
+			fieldName: "SELFHOSTEDEC2_ACCOUNT_ID",
 			expected:  "123456789012",
 		},
-		{
-			name:      "GCP: scientific notation numeric project ID",
-			id:        "1.23456789012e+11",
-			fieldName: "GKE_PROJECT_ID",
-			expected:  "123456789012",
-		},
-		// Generic cases
 		{
 			name:      "empty string",
-			id:        "",
-			fieldName: "SOME_FIELD",
+			accountID: "",
+			fieldName: "EKS_ACCOUNT_ID",
 			expected:  "",
 		},
 		{
 			name:      "alphanumeric - passes through unchanged",
-			id:        "my-account-123",
-			fieldName: "SOME_FIELD",
+			accountID: "my-account-123",
+			fieldName: "EKS_ACCOUNT_ID",
 			expected:  "my-account-123",
 		},
 		{
 			name:      "short number - passes through unchanged",
-			id:        "12345",
-			fieldName: "SOME_FIELD",
+			accountID: "12345",
+			fieldName: "EKS_ACCOUNT_ID",
 			expected:  "12345",
 		},
 		{
 			name:      "scientific notation small number",
-			id:        "1.23e+5",
-			fieldName: "SOME_FIELD",
+			accountID: "1.23e+5",
+			fieldName: "EKS_ACCOUNT_ID",
 			expected:  "123000",
-		},
-		{
-			name:      "uppercase - passes through",
-			id:        "My-Project",
-			fieldName: "SOME_FIELD",
-			expected:  "My-Project",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := normalizeCloudProviderID(tt.id, tt.fieldName)
+			result, err := normalizeAWSAccountID(tt.accountID, tt.fieldName)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})

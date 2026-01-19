@@ -248,8 +248,8 @@ func Get() Config {
 		if cfg.EKS.AccountID == "" {
 			requiredWhenDiscoveryDisabled("EKS_ACCOUNT_ID")
 		} else {
-			// Normalize cloud provider ID (handle scientific notation from unquoted YAML values)
-			normalized, err := normalizeCloudProviderID(cfg.EKS.AccountID, "EKS_ACCOUNT_ID")
+			// Normalize AWS account ID (handle scientific notation from unquoted YAML values)
+			normalized, err := normalizeAWSAccountID(cfg.EKS.AccountID, "EKS_ACCOUNT_ID")
 			if err != nil {
 				panic(err)
 			}
@@ -273,8 +273,8 @@ func Get() Config {
 		if cfg.SelfHostedEC2.AccountID == "" {
 			requiredWhenDiscoveryDisabled("SELFHOSTEDEC2_ACCOUNT_ID")
 		} else {
-			// Normalize cloud provider ID (handle scientific notation from unquoted YAML values)
-			normalized, err := normalizeCloudProviderID(cfg.SelfHostedEC2.AccountID, "SELFHOSTEDEC2_ACCOUNT_ID")
+			// Normalize AWS account ID (handle scientific notation from unquoted YAML values)
+			normalized, err := normalizeAWSAccountID(cfg.SelfHostedEC2.AccountID, "SELFHOSTEDEC2_ACCOUNT_ID")
 			if err != nil {
 				panic(err)
 			}
@@ -291,17 +291,6 @@ func Get() Config {
 		}
 		if cfg.SelfHostedEC2.APINodeLifecycleDiscoveryEnabled == nil {
 			cfg.SelfHostedEC2.APINodeLifecycleDiscoveryEnabled = lo.ToPtr(DefaultAPINodeLifecycleDiscoveryEnabled)
-		}
-	}
-
-	if cfg.GKE != nil {
-		if cfg.GKE.ProjectID != "" {
-			// Normalize cloud provider ID (handle scientific notation from unquoted YAML values)
-			normalized, err := normalizeCloudProviderID(cfg.GKE.ProjectID, "GKE_PROJECT_ID")
-			if err != nil {
-				panic(err)
-			}
-			cfg.GKE.ProjectID = normalized
 		}
 	}
 
