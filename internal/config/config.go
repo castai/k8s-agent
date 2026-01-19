@@ -269,31 +269,6 @@ func Get() Config {
 		}
 	}
 
-	if cfg.SelfHostedEC2 != nil {
-		if cfg.SelfHostedEC2.AccountID == "" {
-			requiredWhenDiscoveryDisabled("SELFHOSTEDEC2_ACCOUNT_ID")
-		} else {
-			// Normalize AWS account ID (handle scientific notation from unquoted YAML values)
-			normalized, err := normalizeAWSAccountID(cfg.SelfHostedEC2.AccountID, "SELFHOSTEDEC2_ACCOUNT_ID")
-			if err != nil {
-				panic(err)
-			}
-			cfg.SelfHostedEC2.AccountID = normalized
-		}
-		if cfg.SelfHostedEC2.Region == "" {
-			requiredWhenDiscoveryDisabled("SELFHOSTEDEC2_REGION")
-		}
-		if cfg.SelfHostedEC2.ClusterName == "" {
-			requiredWhenDiscoveryDisabled("SELFHOSTEDEC2_CLUSTER_NAME")
-		}
-		if cfg.SelfHostedEC2.APITimeout <= 0 {
-			cfg.SelfHostedEC2.APITimeout = 120 * time.Second
-		}
-		if cfg.SelfHostedEC2.APINodeLifecycleDiscoveryEnabled == nil {
-			cfg.SelfHostedEC2.APINodeLifecycleDiscoveryEnabled = lo.ToPtr(DefaultAPINodeLifecycleDiscoveryEnabled)
-		}
-	}
-
 	if cfg.KOPS != nil {
 		if cfg.KOPS.CSP == "" {
 			requiredWhenDiscoveryDisabled("KOPS_CSP")
