@@ -15,6 +15,12 @@ var RecommendationGVR = AutoscalingSchemaGroupVersion.WithResource("recommendati
 // CustomMetricsExporterConfigGVR is group version resource for custom metrics objects
 var CustomMetricsExporterConfigGVR = AutoscalingSchemaGroupVersion.WithResource("custommetricsexporterconfigs")
 
+// StorageOptimizationGroupVersion is the group version resource for the storage optimization objects
+var StorageOptimizationGroupVersion = schema.GroupVersion{Group: "storageoptimization.cast.ai", Version: "v1alpha1"}
+
+// NodeDiskRecommendationGVR is group version resource for node disk recommendation objects
+var NodeDiskRecommendationGVR = StorageOptimizationGroupVersion.WithResource("nodediskrecommendations")
+
 var PodMutationsSchemaGroupVersion = schema.GroupVersion{Group: "pod-mutations.cast.ai", Version: "v1"}
 
 var PodMutationGVR = PodMutationsSchemaGroupVersion.WithResource("podmutations")
@@ -34,6 +40,12 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&CustomMetricsExporterConfigList{},
 	)
 	metav1.AddToGroupVersion(scheme, AutoscalingSchemaGroupVersion)
+
+	scheme.AddKnownTypes(StorageOptimizationGroupVersion,
+		&NodeDiskRecommendation{},
+		&NodeDiskRecommendationList{},
+	)
+	metav1.AddToGroupVersion(scheme, StorageOptimizationGroupVersion)
 
 	scheme.AddKnownTypes(PodMutationsSchemaGroupVersion,
 		&PodMutation{},
