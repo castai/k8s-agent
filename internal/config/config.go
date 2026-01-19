@@ -247,6 +247,13 @@ func Get() Config {
 	if cfg.EKS != nil {
 		if cfg.EKS.AccountID == "" {
 			requiredWhenDiscoveryDisabled("EKS_ACCOUNT_ID")
+		} else {
+			// Normalize AWS account ID (handle scientific notation from unquoted YAML values)
+			normalized, err := normalizeAWSAccountID(cfg.EKS.AccountID, "EKS_ACCOUNT_ID")
+			if err != nil {
+				panic(err)
+			}
+			cfg.EKS.AccountID = normalized
 		}
 		if cfg.EKS.Region == "" {
 			requiredWhenDiscoveryDisabled("EKS_REGION")
