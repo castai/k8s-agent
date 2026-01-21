@@ -19,4 +19,7 @@ var (
 
 	// KEDAV1Alpha1 is a GroupVersion for KEDA ScaledObject resources.
 	KEDAV1Alpha1 = schema.GroupVersion{Group: "keda.sh", Version: "v1alpha1"}
+
+	// VPAAutoscalingV1 is a GroupVersion for VerticalPodAutoscaler v1 resources.
+	VPAAutoscalingV1 = schema.GroupVersion{Group: "autoscaling.k8s.io", Version: "v1"}
 )

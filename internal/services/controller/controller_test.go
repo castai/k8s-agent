@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	vpav1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	dynamic_fake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
 	authfakev1 "k8s.io/client-go/kubernetes/typed/authorization/v1/fake"
@@ -84,10 +85,10 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
-			expectedReceivedObjectsCount: 40,
+			expectedReceivedObjectsCount: 41,
 		},
 		"All supported objects are found and received in delta with pagination": {
-			expectedReceivedObjectsCount: 40,
+			expectedReceivedObjectsCount: 41,
 			paginationEnabled:            true,
 			pageSize:                     5,
 		},
@@ -95,12 +96,12 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 38,
+			expectedReceivedObjectsCount: 39,
 		},
 		"when fetching api resources produces single error should exclude that resource": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 39,
+			expectedReceivedObjectsCount: 40,
 		},
 	}
 
@@ -112,6 +113,7 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			utilruntime.Must(crd.SchemeBuilder.AddToScheme(scheme))
 			utilruntime.Must(metrics_v1beta1.SchemeBuilder.AddToScheme(scheme))
 			utilruntime.Must(autoscalingv2.SchemeBuilder.AddToScheme(scheme))
+			utilruntime.Must(vpav1.SchemeBuilder.AddToScheme(scheme))
 
 			castaiclient := mock_castai.NewMockClient(t)
 			version := mock_version.NewMockInterface(t)
@@ -724,6 +726,18 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	}
 	hpaV2Data := asJson(t, hpaV2)
 
+	vpaV1 := &vpav1.VerticalPodAutoscaler{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "VerticalPodAutoscaler",
+			APIVersion: "autoscaling.k8s.io/v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "verticalpodautoscalers-v1",
+			Namespace: v1.NamespaceDefault,
+		},
+	}
+	vpaV1Data := asJson(t, vpaV1)
+
 	csi := &storagev1.CSINode{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "CSINode",
@@ -1041,6 +1055,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		{Obj: podMutation},
 		{Obj: unstructuredFromJson(t, recommendationSyncV1Alpha1)},
 		{Obj: hpaV2},
+		{Obj: vpaV1},
 		{Obj: unstructuredFromJson(t, scaledObjectDataV1Alpha1)},
 		{Obj: unstructuredFromJson(t, scaledJobDataV1Alpha1)},
 	}
@@ -1081,6 +1096,17 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 					Group: "autoscaling",
 					Name:  "horizontalpodautoscalers",
 					Kind:  "HorizontalPodAutoscaler",
+					Verbs: []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
+			GroupVersion: "autoscaling.k8s.io/v1",
+			APIResources: []metav1.APIResource{
+				{
+					Group: "autoscaling.k8s.io",
+					Name:  "verticalpodautoscalers",
+					Kind:  "VerticalPodAutoscaler",
 					Verbs: []string{"get", "list", "watch"},
 				},
 			},
@@ -1469,6 +1495,12 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Kind:     "HorizontalPodAutoscaler",
 			Resource: "horizontalpodautoscalers",
 			Data:     hpaV2Data,
+		},
+		{
+			GV:       schema.GroupVersion{Group: "autoscaling.k8s.io", Version: "v1"},
+			Kind:     "VerticalPodAutoscaler",
+			Resource: "verticalpodautoscalers",
+			Data:     vpaV1Data,
 		},
 		{
 			GV:       storagev1.SchemeGroupVersion,
