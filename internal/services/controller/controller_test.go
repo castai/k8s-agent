@@ -34,7 +34,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	vpav1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	dynamic_fake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
 	authfakev1 "k8s.io/client-go/kubernetes/typed/authorization/v1/fake"
@@ -113,7 +112,6 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			utilruntime.Must(crd.SchemeBuilder.AddToScheme(scheme))
 			utilruntime.Must(metrics_v1beta1.SchemeBuilder.AddToScheme(scheme))
 			utilruntime.Must(autoscalingv2.SchemeBuilder.AddToScheme(scheme))
-			utilruntime.Must(vpav1.SchemeBuilder.AddToScheme(scheme))
 
 			castaiclient := mock_castai.NewMockClient(t)
 			version := mock_version.NewMockInterface(t)
@@ -726,18 +724,6 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	}
 	hpaV2Data := asJson(t, hpaV2)
 
-	vpaV1 := &vpav1.VerticalPodAutoscaler{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "VerticalPodAutoscaler",
-			APIVersion: "autoscaling.k8s.io/v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "verticalpodautoscalers-v1",
-			Namespace: v1.NamespaceDefault,
-		},
-	}
-	vpaV1Data := asJson(t, vpaV1)
-
 	csi := &storagev1.CSINode{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "CSINode",
@@ -777,6 +763,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	migrationsDataV1 := emptyObjectData("live.cast.ai", "v1", "Migration", "fake-migration-v1")
 	scaledObjectDataV1Alpha1 := emptyObjectData("keda.sh", "v1alpha1", "ScaledObject", "fake-scaledobject-v1alpha1")
 	scaledJobDataV1Alpha1 := emptyObjectData("keda.sh", "v1alpha1", "ScaledJob", "fake-scaledjob-v1alpha1")
+	vpaV1Data := emptyObjectData("autoscaling.k8s.io", "v1", "VerticalPodAutoscaler", "verticalpodautoscalers-v1")
 
 	datadogExtendedDSReplicaSet := &datadoghqv1alpha1.ExtendedDaemonSetReplicaSet{
 		TypeMeta: metav1.TypeMeta{
@@ -1055,7 +1042,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		{Obj: podMutation},
 		{Obj: unstructuredFromJson(t, recommendationSyncV1Alpha1)},
 		{Obj: hpaV2},
-		{Obj: vpaV1},
+		{Obj: unstructuredFromJson(t, vpaV1Data)},
 		{Obj: unstructuredFromJson(t, scaledObjectDataV1Alpha1)},
 		{Obj: unstructuredFromJson(t, scaledJobDataV1Alpha1)},
 	}
@@ -1497,7 +1484,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Data:     hpaV2Data,
 		},
 		{
-			GV:       schema.GroupVersion{Group: "autoscaling.k8s.io", Version: "v1"},
+			GV:       knowngv.VPAAutoscalingV1,
 			Kind:     "VerticalPodAutoscaler",
 			Resource: "verticalpodautoscalers",
 			Data:     vpaV1Data,

@@ -15,7 +15,6 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	vpav1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
 
 	"castai-agent/internal/services/controller/crd"
@@ -37,7 +36,6 @@ var builder = runtime.SchemeBuilder{
 	networkingv1.AddToScheme,
 	rbacv1.AddToScheme,
 	resourcev1.AddToScheme,
-	vpav1.AddToScheme,
 }
 
 func init() {

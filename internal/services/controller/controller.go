@@ -31,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
-	vpav1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
@@ -1182,7 +1181,7 @@ func getConditionalInformers(
 			groupVersion:    knowngv.VPAAutoscalingV1,
 			resource:        "verticalpodautoscalers",
 			kind:            "VerticalPodAutoscaler",
-			apiType:         reflect.TypeOf(&vpav1.VerticalPodAutoscaler{}),
+			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
 				return df.ForResource(knowngv.VPAAutoscalingV1.WithResource("verticalpodautoscalers")).Informer()
