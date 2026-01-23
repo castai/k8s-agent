@@ -1177,6 +1177,16 @@ func getConditionalInformers(
 				return df.ForResource(knowngv.KEDAV1Alpha1.WithResource("scaledjobs")).Informer()
 			},
 		},
+		{
+			groupVersion:    knowngv.VPAAutoscalingV1,
+			resource:        "verticalpodautoscalers",
+			kind:            "VerticalPodAutoscaler",
+			apiType:         reflect.TypeOf(&unstructured.Unstructured{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(knowngv.VPAAutoscalingV1.WithResource("verticalpodautoscalers")).Informer()
+			},
+		},
 	}
 
 	for _, cmNamespace := range cfg.ConfigMapNamespaces {

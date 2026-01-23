@@ -84,10 +84,10 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
-			expectedReceivedObjectsCount: 40,
+			expectedReceivedObjectsCount: 41,
 		},
 		"All supported objects are found and received in delta with pagination": {
-			expectedReceivedObjectsCount: 40,
+			expectedReceivedObjectsCount: 41,
 			paginationEnabled:            true,
 			pageSize:                     5,
 		},
@@ -95,12 +95,12 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error,%v: another error",
 				policyv1.SchemeGroupVersion.String(), storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 38,
+			expectedReceivedObjectsCount: 39,
 		},
 		"when fetching api resources produces single error should exclude that resource": {
 			apiResourceError: fmt.Errorf("unable to retrieve the complete list of server APIs: %v:"+
 				"stale GroupVersion discovery: some error", storagev1.SchemeGroupVersion.String()),
-			expectedReceivedObjectsCount: 39,
+			expectedReceivedObjectsCount: 40,
 		},
 	}
 
@@ -763,6 +763,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	migrationsDataV1 := emptyObjectData("live.cast.ai", "v1", "Migration", "fake-migration-v1")
 	scaledObjectDataV1Alpha1 := emptyObjectData("keda.sh", "v1alpha1", "ScaledObject", "fake-scaledobject-v1alpha1")
 	scaledJobDataV1Alpha1 := emptyObjectData("keda.sh", "v1alpha1", "ScaledJob", "fake-scaledjob-v1alpha1")
+	vpaV1Data := emptyObjectData("autoscaling.k8s.io", "v1", "VerticalPodAutoscaler", "verticalpodautoscalers-v1")
 
 	datadogExtendedDSReplicaSet := &datadoghqv1alpha1.ExtendedDaemonSetReplicaSet{
 		TypeMeta: metav1.TypeMeta{
@@ -1041,6 +1042,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		{Obj: podMutation},
 		{Obj: unstructuredFromJson(t, recommendationSyncV1Alpha1)},
 		{Obj: hpaV2},
+		{Obj: unstructuredFromJson(t, vpaV1Data)},
 		{Obj: unstructuredFromJson(t, scaledObjectDataV1Alpha1)},
 		{Obj: unstructuredFromJson(t, scaledJobDataV1Alpha1)},
 	}
@@ -1081,6 +1083,17 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 					Group: "autoscaling",
 					Name:  "horizontalpodautoscalers",
 					Kind:  "HorizontalPodAutoscaler",
+					Verbs: []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
+			GroupVersion: "autoscaling.k8s.io/v1",
+			APIResources: []metav1.APIResource{
+				{
+					Group: "autoscaling.k8s.io",
+					Name:  "verticalpodautoscalers",
+					Kind:  "VerticalPodAutoscaler",
 					Verbs: []string{"get", "list", "watch"},
 				},
 			},
@@ -1469,6 +1482,12 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Kind:     "HorizontalPodAutoscaler",
 			Resource: "horizontalpodautoscalers",
 			Data:     hpaV2Data,
+		},
+		{
+			GV:       knowngv.VPAAutoscalingV1,
+			Kind:     "VerticalPodAutoscaler",
+			Resource: "verticalpodautoscalers",
+			Data:     vpaV1Data,
 		},
 		{
 			GV:       storagev1.SchemeGroupVersion,
