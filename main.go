@@ -1,7 +1,10 @@
 package main
 
 import (
+	"fmt"
 	_ "net/http/pprof"
+	"os"
+	"strconv"
 
 	"github.com/KimMachineGun/automemlimit/memlimit"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
@@ -11,9 +14,21 @@ import (
 	"castai-agent/internal/config"
 )
 
+const envGoMemLimitOverride = "GOMEMLIMIT_RATIO"
+
 func init() {
+	memlimitRatio := 0.8
+	if ratioOverride := os.Getenv(envGoMemLimitOverride); ratioOverride != "" {
+		val, err := strconv.ParseFloat(ratioOverride, 64)
+		if err == nil {
+			memlimitRatio = val
+		} else {
+			fmt.Fprintf(os.Stderr, "warning: failed to parse env var %q value %q as float: %v", envGoMemLimitOverride, ratioOverride, err)
+		}
+	}
+
 	_, _ = memlimit.SetGoMemLimitWithOpts(
-		memlimit.WithRatio(0.8),
+		memlimit.WithRatio(memlimitRatio),
 		memlimit.WithProvider(memlimit.ApplyFallback(
 			memlimit.FromCgroup,
 			memlimit.FromSystem,
