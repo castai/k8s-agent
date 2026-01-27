@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	_ "net/http/pprof"
+	"os"
 	"strconv"
 
 	"github.com/KimMachineGun/automemlimit/memlimit"
@@ -11,7 +12,6 @@ import (
 
 	"castai-agent/cmd"
 	"castai-agent/internal/config"
-	"os"
 )
 
 const envGoMemLimitOverride = "GOMEMLIMIT_RATIO"
