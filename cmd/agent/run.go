@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -35,6 +36,7 @@ import (
 	"castai-agent/pkg/castai"
 	castailog "castai-agent/pkg/log"
 	"castai-agent/pkg/services/providers"
+	"castai-agent/pkg/services/providers/types"
 )
 
 const (
@@ -127,7 +129,7 @@ func run(ctx context.Context) error {
 	return err
 }
 
-func runAgentMode(parentCtx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg config.Config, clusterIDChanged func(clusterID string)) error {
+func runAgentMode(parentCtx context.Context, castaiClient castai.Client, log *logrus.Entry, cfg config.Config, clusterIDChanged func(clusterID string)) error {
 	ctx, shutdownController := shutdown.Context(parentCtx, log)
 	defer shutdownController.For("runAgentMode")(nil)
 
@@ -223,13 +225,35 @@ func runAgentMode(parentCtx context.Context, castaiclient castai.Client, log *lo
 		log.WithField("cluster_id", clusterID).Info("cluster ID provided by env variable")
 	}
 
+	var controllerLeaderCh chan bool
+	var leaderAcquiredCh <-chan struct{}
+	if cfg.LeaderElection.Enabled {
+		var leaderElectionCh chan bool
+		leaderElectionCh, controllerLeaderCh, leaderAcquiredCh = fanOutLeaderStatus()
+
+		// Start leader election first — registration must only happen once leadership is acquired
+		// to prevent multiple replicas from racing to register the same cluster during concurrent startups.
+		go shutdown.RunThenTrigger(shutdownController.For("leader election"), false, func() error {
+			return replicas.RunLeaderElection(ctx, log, cfg.LeaderElection, clientset, leaderWatchDog, leaderElectionCh)
+		})
+	}
+
 	if clusterID == "" {
-		reg, err := provider.RegisterCluster(ctx, castaiclient)
-		if err != nil {
-			return fmt.Errorf("registering cluster: %w", err)
+		if leaderAcquiredCh != nil {
+			reg, err := waitForLeadershipAndRegister(ctx, log, leaderAcquiredCh, provider, castaiClient)
+			if err != nil {
+				return err
+			}
+			clusterID = reg.ClusterID
+			log.WithField("cluster_id", clusterID).Infof("cluster registered after acquiring leader lease: %v", reg)
+		} else {
+			reg, err := provider.RegisterCluster(ctx, castaiClient)
+			if err != nil {
+				return fmt.Errorf("registering cluster: %w", err)
+			}
+			clusterID = reg.ClusterID
+			log.WithField("cluster_id", clusterID).Infof("cluster registered: %v", reg)
 		}
-		clusterID = reg.ClusterID
-		log.WithField("cluster_id", clusterID).Infof("cluster registered: %v", reg)
 	}
 
 	// Final check to ensure we don't run without a cluster ID.
@@ -243,58 +267,26 @@ func runAgentMode(parentCtx context.Context, castaiclient castai.Client, log *lo
 		return err
 	}
 
-	if cfg.LeaderElection.Enabled {
-		// Buffered channel to avoid blocking leader election on slow consumers
-		leaderStatusCh := make(chan bool, 10)
-
-		params := &controller.Params{
-			Log:             log,
-			Clientset:       clientset,
-			MetricsClient:   metricsClient,
-			DynamicClient:   dynamicClient,
-			CastaiClient:    castaiclient,
-			Provider:        provider,
-			ClusterID:       clusterID,
-			Config:          cfg,
-			AgentVersion:    agentVersion,
-			HealthzProvider: ctrlHealthz,
-			LeaderStatusCh:  leaderStatusCh,
-		}
-
-		go shutdown.RunThenTrigger(shutdownController.For("controller"), false, func() error {
-			return controller.RunControllerWithRestart(ctx, params)
-		})
-
-		// Run leader election with main context
-		// If leader election returns an error, we shut down the entire app
-		go shutdown.RunThenTrigger(shutdownController.For("leader election"), false, func() error {
-			return replicas.RunLeaderElection(ctx, log, cfg.LeaderElection, clientset, leaderWatchDog, leaderStatusCh)
-		})
-
-		<-ctx.Done()
-		log.Info("shutdown signal received, initiating graceful shutdown")
-	} else {
-		params := &controller.Params{
-			Log:             log,
-			Clientset:       clientset,
-			MetricsClient:   metricsClient,
-			DynamicClient:   dynamicClient,
-			CastaiClient:    castaiclient,
-			Provider:        provider,
-			ClusterID:       clusterID,
-			Config:          cfg,
-			AgentVersion:    agentVersion,
-			HealthzProvider: ctrlHealthz,
-			LeaderStatusCh:  nil,
-		}
-
-		go shutdown.RunThenTrigger(shutdownController.For("controller"), false, func() error {
-			return controller.RunControllerWithRestart(ctx, params)
-		})
-
-		<-ctx.Done()
-		log.Info("shutdown signal received, initiating graceful shutdown")
+	params := &controller.Params{
+		Log:             log,
+		Clientset:       clientset,
+		MetricsClient:   metricsClient,
+		DynamicClient:   dynamicClient,
+		CastaiClient:    castaiClient,
+		Provider:        provider,
+		ClusterID:       clusterID,
+		Config:          cfg,
+		AgentVersion:    agentVersion,
+		HealthzProvider: ctrlHealthz,
+		LeaderStatusCh:  controllerLeaderCh,
 	}
+
+	go shutdown.RunThenTrigger(shutdownController.For("controller"), false, func() error {
+		return controller.RunControllerWithRestart(ctx, params)
+	})
+
+	<-ctx.Done()
+	log.Info("shutdown signal received, initiating graceful shutdown")
 
 	return nil
 }
@@ -399,6 +391,51 @@ func runMetricsEndpoints(cfg config.Config, log *logrus.Entry, startShutdown fun
 
 func portToServerAddr(port int) string {
 	return fmt.Sprintf(":%d", port)
+}
+
+// fanOutLeaderStatus creates three channels for leader election fan-out:
+//   - leaderElectionCh: leader election writes status updates here
+//   - controllerLeaderCh: controller reads the full status stream from here
+//   - leaderAcquiredCh: closed once when leadership is first acquired
+func fanOutLeaderStatus() (leaderElectionCh, controllerLeaderCh chan bool, leaderAcquiredCh <-chan struct{}) {
+	electionCh := make(chan bool, 10)
+	controllerCh := make(chan bool, 10)
+	acquiredCh := make(chan struct{})
+
+	go func() {
+		var once sync.Once
+		for status := range electionCh {
+			if status {
+				once.Do(func() { close(acquiredCh) })
+			}
+			controllerCh <- status
+		}
+		close(controllerCh)
+	}()
+
+	return electionCh, controllerCh, acquiredCh
+}
+
+// waitForLeadershipAndRegister blocks until leadership is acquired (channel closed), then registers the cluster.
+// This prevents multiple replicas from racing to register the same cluster during concurrent startups (e.g. redeployments).
+func waitForLeadershipAndRegister(
+	ctx context.Context,
+	log *logrus.Entry,
+	leaderAcquiredCh <-chan struct{},
+	provider types.Provider,
+	castaiClient castai.Client,
+) (*types.ClusterRegistration, error) {
+	select {
+	case <-leaderAcquiredCh:
+		log.Info("acquired leadership, proceeding with cluster registration")
+		reg, err := provider.RegisterCluster(ctx, castaiClient)
+		if err != nil {
+			return nil, fmt.Errorf("registering cluster: %w", err)
+		}
+		return reg, nil
+	case <-ctx.Done():
+		return nil, fmt.Errorf("context cancelled while waiting for leadership: %w", ctx.Err())
+	}
 }
 
 func saveMetadata(clusterID string, cfg config.Config) error {
