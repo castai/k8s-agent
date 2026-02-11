@@ -250,6 +250,9 @@ type MetricStatus struct {
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.datasourceSummary"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
+// +genclient
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
 // CustomMetricsExporterConfig is the Schema for the custommetrics API
 type CustomMetricsExporterConfig struct {
 	metav1.TypeMeta `json:",inline"`
