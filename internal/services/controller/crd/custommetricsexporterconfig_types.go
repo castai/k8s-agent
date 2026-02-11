@@ -249,7 +249,6 @@ type MetricStatus struct {
 // +kubebuilder:printcolumn:name="Healthy",type="string",JSONPath=".status.conditions[?(@.type=='Healthy')].status"
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.datasourceSummary"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
-
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
