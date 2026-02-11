@@ -271,6 +271,7 @@ type CustomMetricsExporterConfig struct {
 }
 
 // +kubebuilder:object:root=true
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // CustomMetricsExporterConfigList contains a list of CustomMetricsExporterConfig
 type CustomMetricsExporterConfigList struct {
