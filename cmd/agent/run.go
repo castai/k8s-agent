@@ -35,6 +35,7 @@ import (
 	"castai-agent/pkg/castai"
 	castailog "castai-agent/pkg/log"
 	"castai-agent/pkg/services/providers"
+	"castai-agent/pkg/services/providers/types"
 )
 
 const (
@@ -224,7 +225,15 @@ func runAgentMode(parentCtx context.Context, castaiclient castai.Client, log *lo
 	}
 
 	if clusterID == "" {
-		reg, err := provider.RegisterCluster(ctx, castaiclient)
+		registerFn := func(ctx context.Context) (*types.ClusterRegistration, error) {
+			return provider.RegisterCluster(ctx, castaiclient)
+		}
+		var reg *types.ClusterRegistration
+		if cfg.LeaderElection.Enabled {
+			reg, err = replicas.RegisterClusterWithLease(ctx, log, cfg.LeaderElection, clientset, registerFn)
+		} else {
+			reg, err = registerFn(ctx)
+		}
 		if err != nil {
 			return fmt.Errorf("registering cluster: %w", err)
 		}
@@ -243,58 +252,38 @@ func runAgentMode(parentCtx context.Context, castaiclient castai.Client, log *lo
 		return err
 	}
 
+	var leaderStatusCh chan bool
 	if cfg.LeaderElection.Enabled {
 		// Buffered channel to avoid blocking leader election on slow consumers
-		leaderStatusCh := make(chan bool, 10)
+		leaderStatusCh = make(chan bool, 10)
+	}
 
-		params := &controller.Params{
-			Log:             log,
-			Clientset:       clientset,
-			MetricsClient:   metricsClient,
-			DynamicClient:   dynamicClient,
-			CastaiClient:    castaiclient,
-			Provider:        provider,
-			ClusterID:       clusterID,
-			Config:          cfg,
-			AgentVersion:    agentVersion,
-			HealthzProvider: ctrlHealthz,
-			LeaderStatusCh:  leaderStatusCh,
-		}
+	params := &controller.Params{
+		Log:             log,
+		Clientset:       clientset,
+		MetricsClient:   metricsClient,
+		DynamicClient:   dynamicClient,
+		CastaiClient:    castaiclient,
+		Provider:        provider,
+		ClusterID:       clusterID,
+		Config:          cfg,
+		AgentVersion:    agentVersion,
+		HealthzProvider: ctrlHealthz,
+		LeaderStatusCh:  leaderStatusCh,
+	}
 
-		go shutdown.RunThenTrigger(shutdownController.For("controller"), false, func() error {
-			return controller.RunControllerWithRestart(ctx, params)
-		})
+	go shutdown.RunThenTrigger(shutdownController.For("controller"), false, func() error {
+		return controller.RunControllerWithRestart(ctx, params)
+	})
 
-		// Run leader election with main context
-		// If leader election returns an error, we shut down the entire app
+	if cfg.LeaderElection.Enabled {
 		go shutdown.RunThenTrigger(shutdownController.For("leader election"), false, func() error {
 			return replicas.RunLeaderElection(ctx, log, cfg.LeaderElection, clientset, leaderWatchDog, leaderStatusCh)
 		})
-
-		<-ctx.Done()
-		log.Info("shutdown signal received, initiating graceful shutdown")
-	} else {
-		params := &controller.Params{
-			Log:             log,
-			Clientset:       clientset,
-			MetricsClient:   metricsClient,
-			DynamicClient:   dynamicClient,
-			CastaiClient:    castaiclient,
-			Provider:        provider,
-			ClusterID:       clusterID,
-			Config:          cfg,
-			AgentVersion:    agentVersion,
-			HealthzProvider: ctrlHealthz,
-			LeaderStatusCh:  nil,
-		}
-
-		go shutdown.RunThenTrigger(shutdownController.For("controller"), false, func() error {
-			return controller.RunControllerWithRestart(ctx, params)
-		})
-
-		<-ctx.Done()
-		log.Info("shutdown signal received, initiating graceful shutdown")
 	}
+
+	<-ctx.Done()
+	log.Info("shutdown signal received, initiating graceful shutdown")
 
 	return nil
 }
