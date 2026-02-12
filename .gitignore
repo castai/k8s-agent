@@ -6,3 +6,4 @@
 bin
 .env
 /.vscode
+.claude/settings.local.json
