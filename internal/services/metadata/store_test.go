@@ -58,6 +58,30 @@ func TestStoreImpl_StoreMetadataConfigMap(t *testing.T) {
 			expectedError: false,
 		},
 		{
+			name: "should preserve existing keys when patching config map",
+			cfg: config.Config{
+				MetadataStore: &config.MetadataStoreConfig{
+					Enabled:            true,
+					ConfigMapName:      "castai-agent-metadata",
+					ConfigMapNamespace: "default",
+				},
+			},
+			metadata: &Metadata{
+				ClusterID: "test-cluster-id",
+			},
+			existingConfigMap: &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "castai-agent-metadata",
+					Namespace: "default",
+				},
+				Data: map[string]string{
+					"API_URL":  "https://api.example.com",
+					"GRPC_URL": "grpc.example.com:443",
+				},
+			},
+			expectedError: false,
+		},
+		{
 			name: "should not store metadata when store is disabled",
 			cfg: config.Config{
 				MetadataStore: &config.MetadataStoreConfig{
@@ -91,6 +115,16 @@ func TestStoreImpl_StoreMetadataConfigMap(t *testing.T) {
 					configMap, err := clientset.CoreV1().ConfigMaps(tt.cfg.MetadataStore.ConfigMapNamespace).Get(context.Background(), tt.cfg.MetadataStore.ConfigMapName, metav1.GetOptions{})
 					r.NoError(err)
 					r.Equal(tt.metadata.ClusterID, configMap.Data["CLUSTER_ID"])
+
+					// Verify that pre-existing keys are preserved after patch.
+					if tt.existingConfigMap != nil {
+						for k, v := range tt.existingConfigMap.Data {
+							if k == "CLUSTER_ID" {
+								continue
+							}
+							r.Equal(v, configMap.Data[k], "existing key %q should be preserved", k)
+						}
+					}
 				}
 			}
 		})
