@@ -161,30 +161,50 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 				mockDiscovery.EXPECT().ServerGroupsAndResources().Return([]*metav1.APIGroup{}, apiResources, tt.apiResourceError).Maybe()
 			}
 
-			var invocations int64
+			// Accumulate items across multiple SendDelta calls because conditional
+			// informers may sync after the first delta is already sent.
+			var mu sync.Mutex
+			allItems := map[string]*castai.DeltaItem{} // key: "GV::Kind"
+			var satisfied int64
+
 			castaiclient.EXPECT().
 				SendDelta(mock.Anything, clusterID.String(), mock.Anything).
 				RunAndReturn(func(_ context.Context, clusterID string, d *castai.Delta) error {
-					defer atomic.AddInt64(&invocations, 1)
-
 					require.Equal(t, clusterID, d.ClusterID)
 					require.Equal(t, "1.21+", d.ClusterVersion)
 					require.Equal(t, "1.2.3", d.AgentVersion)
-					require.True(t, d.FullSnapshot)
-					require.Equal(t, tt.expectedReceivedObjectsCount, len(d.Items), "number of items in delta")
 
-					for _, expected := range objectsData {
-						expectedGVString := expected.GV.String()
-						actual, found := lo.Find(d.Items, func(item *castai.DeltaItem) bool {
-							return item.Event == castai.EventAdd &&
-								item.Kind == expected.Kind &&
-								item.Data != nil &&
-								strings.Contains(string(*item.Data), expectedGVString) // Hacky but OK given this is for testing purposes.
+					mu.Lock()
+					for _, item := range d.Items {
+						if item.Event == castai.EventAdd && item.Data != nil {
+							key := item.Kind + "::" + string(*item.Data)
+							allItems[key] = item
+						}
+					}
+					collected := len(allItems)
+					mu.Unlock()
 
-						})
-						require.Truef(t, found, "missing object for %q %q", expectedGVString, expected.Kind)
-						require.NotNil(t, actual.Data)
-						require.JSONEq(t, string(expected.Data), string(*actual.Data))
+					if collected >= tt.expectedReceivedObjectsCount {
+						// All items arrived; verify each expected object is present.
+						mu.Lock()
+						defer mu.Unlock()
+						var flatItems []*castai.DeltaItem
+						for _, v := range allItems {
+							flatItems = append(flatItems, v)
+						}
+						for _, expected := range objectsData {
+							expectedGVString := expected.GV.String()
+							actual, found := lo.Find(flatItems, func(item *castai.DeltaItem) bool {
+								return item.Event == castai.EventAdd &&
+									item.Kind == expected.Kind &&
+									item.Data != nil &&
+									strings.Contains(string(*item.Data), expectedGVString)
+							})
+							require.Truef(t, found, "missing object for %q %q", expectedGVString, expected.Kind)
+							require.NotNil(t, actual.Data)
+							require.JSONEq(t, string(expected.Data), string(*actual.Data))
+						}
+						atomic.StoreInt64(&satisfied, 1)
 					}
 
 					return nil
@@ -208,10 +228,10 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 					Labels: map[string]string{},
 				},
 			}
-			provider.EXPECT().FilterSpot(mock.Anything, []*v1.Node{node}).Return([]*v1.Node{node}, nil)
+			provider.EXPECT().FilterSpot(mock.Anything, []*v1.Node{node}).Return([]*v1.Node{node}, nil).Maybe()
 
 			cfg := &config.Controller{
-				Interval:             15 * time.Second,
+				Interval:             1 * time.Second,
 				PrepTimeout:          5 * time.Second,
 				InitialSleepDuration: 10 * time.Millisecond,
 				ConfigMapNamespaces:  []string{v1.NamespaceDefault},
@@ -250,10 +270,12 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 			}()
 
 			wait.Until(func() {
-				if atomic.LoadInt64(&invocations) >= 1 {
+				if atomic.LoadInt64(&satisfied) >= 1 {
 					cancel()
 				}
 			}, 10*time.Millisecond, ctx.Done())
+
+			require.Equal(t, int64(1), atomic.LoadInt64(&satisfied), "timed out waiting for all %d expected items", tt.expectedReceivedObjectsCount)
 		})
 	}
 }
