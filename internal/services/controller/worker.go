@@ -70,8 +70,12 @@ func RunControllerWithRestart(
 			params.LeaderStatusCh,
 		)
 
-		// Start informers
-		ctrl.Start(ctx.Done())
+		// Use a per-iteration context for informers so they are stopped when
+		// triggerRestart cancels Run's child context and this function returns.
+		iterCtx, iterCancel := context.WithCancel(ctx)
+		defer iterCancel()
+
+		ctrl.Start(iterCtx.Done())
 
 		if err := ctrl.Run(ctx); err != nil {
 			params.Log.Errorf("controller run error, will recreate and restart: %v", err)
