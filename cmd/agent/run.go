@@ -239,6 +239,25 @@ func runAgentMode(parentCtx context.Context, castaiclient castai.Client, log *lo
 
 	clusterIDChangedHandler(clusterID)
 
+	// Periodically re-patch the metadata ConfigMap to recover from external overwrites
+	// (e.g., helm upgrade resetting CLUSTER_ID to empty).
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if err := metadataStore.StoreMetadataConfigMap(ctx, &metadata.Metadata{
+					ClusterID: clusterID,
+				}); err != nil {
+					log.Warnf("periodic metadata store failed: %v", err)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
 	if err := saveMetadata(clusterID, cfg); err != nil {
 		return err
 	}
