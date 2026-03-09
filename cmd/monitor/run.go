@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/castai/logging/components"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 	"k8s.io/client-go/kubernetes"
 
 	"castai-agent/internal/config"
@@ -32,41 +35,54 @@ func run(ctx context.Context) error {
 
 	loggingConfig := castailog.Config{
 		SendTimeout: cfg.Log.ExporterSenderTimeout,
+		ExportConfig: components.Config{
+			APIBaseURL:          cfg.API.URL,
+			APIKey:              cfg.API.Key,
+			Component:           "k8s-agent-monitor",
+			Version:             config.VersionInfo.Version,
+			MaxRetries:          3,
+			MaxRetryBackoffWait: 3 * time.Second,
+		},
 	}
-
-	restyClient, err := castai.NewDefaultRestyClient()
-	if err != nil {
-		log.Fatalf("resty client failed: %v", err)
-	}
-
-	deltaHTTPClient, err := castai.NewDefaultDeltaHTTPClient()
-	if err != nil {
-		log.Fatalf("delta http client failed: %v", err)
-	}
-
-	castaiClient := castai.NewClient(log, restyClient, deltaHTTPClient)
 
 	registrator := castai.NewRegistrator()
 	defer registrator.ReleaseWaiters()
 
-	castailog.SetupLogExporter(registrator, remoteLogger, localLog, castaiClient, &loggingConfig)
-	clusterIDHandler := func(clusterID string) {
-		loggingConfig.ClusterID = clusterID
+	logsExportManager := castailog.NewExporterManager()
+
+	clusterIDHandler := func(clusterID string) error {
+		loggingConfig.ExportConfig.ClusterID = clusterID
 		log.Data["cluster_id"] = clusterID
+		if err := logsExportManager.Setup(registrator, remoteLogger, localLog, &loggingConfig); err != nil {
+			return err
+		}
 		registrator.ReleaseWaiters()
+		return nil
 	}
 
-	err = runMonitorMode(ctx, log, cfg, clusterIDHandler)
-	if err != nil {
-		// it is necessary to log error because invoking of logrus exit handlers will terminate the process using os.Exit()
-		// error handling in cobra ("github.com/spf13/cobra") won't be able to log this error
-		remoteLogger.Error(err)
-	}
+	var errg errgroup.Group
+	errg.Go(func() error {
+		if err := logsExportManager.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			return fmt.Errorf("runing logs exporter manager: %v", err)
+		}
+		return nil
+	})
+
+	errg.Go(func() error {
+		err := runMonitorMode(ctx, log, cfg, clusterIDHandler)
+		if err != nil {
+			// it is necessary to log error because invoking of logrus exit handlers will terminate the process using os.Exit()
+			// error handling in cobra ("github.com/spf13/cobra") won't be able to log this error
+			remoteLogger.Error(err)
+		}
+		return nil
+	})
+	err := errg.Wait()
 	defer castailog.InvokeLogrusExitHandlers(err)
 	return err
 }
 
-func runMonitorMode(ctx context.Context, log *logrus.Entry, cfg config.Config, clusterIDChanged func(clusterID string)) error {
+func runMonitorMode(ctx context.Context, log *logrus.Entry, cfg config.Config, clusterIDChanged func(clusterID string) error) error {
 	restconfig, err := cfg.RetrieveKubeConfig(log)
 	if err != nil {
 		return fmt.Errorf("retrieving kubeconfig: %w", err)

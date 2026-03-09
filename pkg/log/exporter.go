@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/castai/logging/components"
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 
@@ -17,33 +18,60 @@ type Exporter interface {
 	Wait()
 }
 
-func SetupLogExporter(registrator *castai.Registrator, logger *logrus.Logger, localLog logrus.FieldLogger, castaiclient castai.Client, cfg *Config) {
-	logExporter := newExporter(registrator, cfg, localLog, castaiclient)
-	logger.AddHook(logExporter)
-	logrus.RegisterExitHandler(logExporter.Wait)
+func NewExporterManager() *ExporterManager {
+	return &ExporterManager{}
 }
 
-func newExporter(registrator *castai.Registrator, cfg *Config, localLog logrus.FieldLogger, client castai.Client) Exporter {
-	return &exporter{
-		registrator: registrator,
-		cfg:         cfg,
-		client:      client,
-		localLog:    localLog,
-		wg:          sync.WaitGroup{},
+type ExporterManager struct {
+	ingestClientBatchClient ingestClient
+}
+
+func (m *ExporterManager) Setup(registrator *castai.Registrator, logger *logrus.Logger, localLog logrus.FieldLogger, cfg *Config) error {
+	ingestClient, err := components.NewAPIClient(cfg.ExportConfig)
+	if err != nil {
+		return err
 	}
+	ingestClientBatchClient := components.NewBatchClient(ingestClient, components.BatchSize(500))
+
+	return m.setup(ingestClientBatchClient, registrator, logger, localLog, cfg)
+}
+
+func (m *ExporterManager) setup(ingestClientBatchClient ingestClient, registrator *castai.Registrator, logger *logrus.Logger, localLog logrus.FieldLogger, cfg *Config) error {
+	logExporter, err := newExporter(registrator, cfg, localLog, ingestClientBatchClient)
+	if err != nil {
+		return err
+	}
+	logger.AddHook(logExporter)
+	logrus.RegisterExitHandler(logExporter.Wait)
+	m.ingestClientBatchClient = ingestClientBatchClient
+	return nil
+}
+
+func (m *ExporterManager) Run(ctx context.Context) error {
+	return m.ingestClientBatchClient.Run(ctx)
+}
+
+func newExporter(registrator *castai.Registrator, cfg *Config, localLog logrus.FieldLogger, ingestClientBatchClient ingestClient) (Exporter, error) {
+	return &exporter{
+		registrator:             registrator,
+		cfg:                     cfg,
+		localLog:                localLog,
+		wg:                      sync.WaitGroup{},
+		ingestClientBatchClient: ingestClientBatchClient,
+	}, nil
 }
 
 type exporter struct {
-	registrator *castai.Registrator
-	localLog    logrus.FieldLogger
-	cfg         *Config
-	client      castai.Client
-	wg          sync.WaitGroup
+	registrator             *castai.Registrator
+	localLog                logrus.FieldLogger
+	cfg                     *Config
+	wg                      sync.WaitGroup
+	ingestClientBatchClient ingestClient
 }
 
 type Config struct {
-	ClusterID   string
-	SendTimeout time.Duration
+	SendTimeout  time.Duration
+	ExportConfig components.Config
 }
 
 func (ex *exporter) Levels() []logrus.Level {
@@ -62,7 +90,7 @@ func (ex *exporter) Fire(entry *logrus.Entry) error {
 	go func(entry *logrus.Entry) {
 		ex.registrator.WaitUntilRegistered()
 		defer ex.wg.Done()
-		ex.sendLogEvent(ex.cfg.ClusterID, entry)
+		ex.sendLogEvent(entry)
 	}(entry)
 
 	return nil
@@ -84,24 +112,20 @@ func (ex *exporter) Wait() {
 	}
 }
 
-func (ex *exporter) sendLogEvent(clusterID string, e *logrus.Entry) {
+func (ex *exporter) sendLogEvent(e *logrus.Entry) {
 	ctx, cancel := context.WithTimeout(context.Background(), ex.cfg.SendTimeout)
 	defer cancel()
 
-	_, err := ex.client.SendLogEvent(
-		ctx,
-		clusterID,
-		&castai.IngestAgentLogsRequest{
-			LogEvent: castai.LogEvent{
-				Level:   e.Level.String(),
-				Time:    e.Time,
-				Message: e.Message,
-				Fields: lo.MapValues(e.Data, func(value interface{}, _ string) string {
-					return fmt.Sprintf("%v", value)
-				}),
-			},
-		})
-	if err != nil {
+	if err := ex.ingestClientBatchClient.IngestLogs(ctx, []components.Entry{
+		{
+			Level:   e.Level.String(),
+			Message: e.Message,
+			Time:    e.Time,
+			Fields: lo.MapValues(e.Data, func(value any, _ string) string {
+				return fmt.Sprintf("%v", value)
+			}),
+		},
+	}); err != nil {
 		ex.localLog.Errorf("failed to send logs: %v", err)
 	}
 }
@@ -115,4 +139,9 @@ func InvokeLogrusExitHandlers(err error) {
 	} else {
 		logrus.Exit(0)
 	}
+}
+
+type ingestClient interface {
+	IngestLogs(ctx context.Context, entries []components.Entry) error
+	Run(ctx context.Context) error
 }
