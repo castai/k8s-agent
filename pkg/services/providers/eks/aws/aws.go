@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -58,6 +59,7 @@ type Provider struct {
 	apiNodeLifecycleDiscoveryEnabled bool
 	registerClusterBuilder           RegisterClusterBuilder
 	spotCache                        map[string]bool
+	spotCacheMu                      sync.RWMutex
 }
 
 func (p *Provider) RegisterCluster(ctx context.Context, client castai.Client) (*types.ClusterRegistration, error) {
@@ -87,6 +89,7 @@ func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node
 	var instanceIDs []string
 	nodesByInstanceID := map[string]*v1.Node{}
 
+	p.spotCacheMu.RLock()
 	for _, node := range nodes {
 		lifecycle := determineLifecycle(node)
 		if lifecycle == NodeLifecycleSpot {
@@ -110,6 +113,7 @@ func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node
 		instanceIDs = append(instanceIDs, instanceID)
 		nodesByInstanceID[instanceID] = node
 	}
+	p.spotCacheMu.RUnlock()
 
 	if len(instanceIDs) == 0 || !p.apiNodeLifecycleDiscoveryEnabled {
 		return ret, nil
@@ -128,7 +132,9 @@ func (p *Provider) FilterSpot(ctx context.Context, nodes []*v1.Node) ([]*v1.Node
 			ret = append(ret, nodesByInstanceID[instanceID])
 		}
 
+		p.spotCacheMu.Lock()
 		p.spotCache[instanceID] = isSpot
+		p.spotCacheMu.Unlock()
 	}
 
 	return ret, nil
