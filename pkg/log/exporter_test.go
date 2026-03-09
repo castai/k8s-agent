@@ -2,6 +2,8 @@ package log
 
 import (
 	"context"
+	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -48,8 +50,9 @@ func TestSetupLogExporter(t *testing.T) {
 		log.Log(logrus.ErrorLevel, "failed to discover account id")
 		time.Sleep(1 * time.Second)
 
-		r.Len(ingestClient.entries, 1)
-		e2 := ingestClient.entries[0]
+		entries := ingestClient.getEntries()
+		r.Len(entries, 1)
+		e2 := entries[0]
 		fields := e2.Fields
 		r.Equal(mockClusterID, fields["cluster_id"])
 		r.Equal("eks", fields["provider"])
@@ -61,14 +64,23 @@ func TestSetupLogExporter(t *testing.T) {
 
 type mockIngestClient struct {
 	entries []components.Entry
+	mu      sync.Mutex
 }
 
 func (m *mockIngestClient) IngestLogs(ctx context.Context, entries []components.Entry) error {
 	m.entries = append(m.entries, entries...)
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	return nil
 }
 
 func (m *mockIngestClient) Run(ctx context.Context) error {
 	return nil
+}
+
+func (m *mockIngestClient) getEntries() []components.Entry {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return slices.Clone(m.entries)
 }
