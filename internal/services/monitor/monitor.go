@@ -15,7 +15,7 @@ import (
 	"castai-agent/internal/config"
 )
 
-func Run(ctx context.Context, log logrus.FieldLogger, clientset *kubernetes.Clientset, metadataFile string, pod config.Pod, clusterIDHandler func(clusterID string)) error {
+func Run(ctx context.Context, log logrus.FieldLogger, clientset *kubernetes.Clientset, metadataFile string, pod config.Pod, clusterIDHandler func(clusterID string) error) error {
 	m := monitor{
 		clientset: clientset,
 		log:       log,
@@ -32,7 +32,9 @@ func Run(ctx context.Context, log logrus.FieldLogger, clientset *kubernetes.Clie
 		case <-ctx.Done():
 			return nil
 		case metadata := <-metadataUpdates:
-			clusterIDHandler(metadata.ClusterID)
+			if err := clusterIDHandler(metadata.ClusterID); err != nil {
+				return err
+			}
 			m.metadataUpdated(ctx, metadata)
 		}
 	}

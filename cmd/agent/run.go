@@ -9,10 +9,12 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/castai/logging/components"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -69,6 +71,14 @@ func run(ctx context.Context) error {
 
 	loggingConfig := castailog.Config{
 		SendTimeout: cfg.Log.ExporterSenderTimeout,
+		ExportConfig: components.Config{
+			APIBaseURL:          cfg.API.URL,
+			APIKey:              cfg.API.Key,
+			Component:           "castai-agent",
+			Version:             config.VersionInfo.Version,
+			MaxRetries:          3,
+			MaxRetryBackoffWait: 3 * time.Second,
+		},
 	}
 
 	if cfg.Log.PrintMemoryUsageEvery != nil {
@@ -109,25 +119,42 @@ func run(ctx context.Context) error {
 	registrator := castai.NewRegistrator()
 	defer registrator.ReleaseWaiters()
 
-	castailog.SetupLogExporter(registrator, remoteLogger, localLog, castaiClient, &loggingConfig)
+	logsExportManager := castailog.NewExporterManager()
 
-	clusterIDHandler := func(clusterID string) {
-		loggingConfig.ClusterID = clusterID
+	clusterIDHandler := func(clusterID string) error {
+		loggingConfig.ExportConfig.ClusterID = clusterID
+		if err := logsExportManager.Setup(registrator, remoteLogger, localLog, &loggingConfig); err != nil {
+			return err
+		}
 		log.Data["cluster_id"] = clusterID
 		registrator.ReleaseWaiters()
+		return nil
 	}
 
-	err = runAgentMode(ctx, castaiClient, log, cfg, clusterIDHandler)
-	if err != nil {
-		// it is necessary to log error because invoking of logrus exit handlers will terminate the process using os.Exit()
-		// error handling in cobra ("github.com/spf13/cobra") won't be able to log this error
-		remoteLogger.Error(err)
-	}
+	var errg errgroup.Group
+	errg.Go(func() error {
+		if err := logsExportManager.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			return fmt.Errorf("running logs exporter manager: %v", err)
+		}
+		return nil
+	})
+	errg.Go(func() error {
+		err = runAgentMode(ctx, castaiClient, log, cfg, clusterIDHandler)
+		if err != nil {
+			// it is necessary to log error because invoking of logrus exit handlers will terminate the process using os.Exit()
+			// error handling in cobra ("github.com/spf13/cobra") won't be able to log this error
+			remoteLogger.Error(err)
+		}
+		return err
+	})
+	err = errg.Wait()
+
+	// TODO(anjmao): Consider removing this defer. There should be no need to call any log.Fatal during run.
 	defer castailog.InvokeLogrusExitHandlers(err)
 	return err
 }
 
-func runAgentMode(parentCtx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg config.Config, clusterIDChanged func(clusterID string)) error {
+func runAgentMode(parentCtx context.Context, castaiclient castai.Client, log *logrus.Entry, cfg config.Config, clusterIDChanged func(clusterID string) error) error {
 	ctx, shutdownController := shutdown.Context(parentCtx, log)
 	defer shutdownController.For("runAgentMode")(nil)
 
@@ -201,14 +228,14 @@ func runAgentMode(parentCtx context.Context, castaiclient castai.Client, log *lo
 
 	metadataStore := metadata.New(clientset, cfg)
 
-	clusterIDChangedHandler := func(clusterID string) {
+	clusterIDChangedHandler := func(clusterID string) error {
 		if err := metadataStore.StoreMetadataConfigMap(ctx, &metadata.Metadata{
 			ClusterID: clusterID,
 		}); err != nil {
 			log.Warnf("failed to store metadata in a config map: %v", err)
 		}
 
-		clusterIDChanged(clusterID)
+		return clusterIDChanged(clusterID)
 	}
 
 	log.Data["provider"] = provider.Name()
@@ -237,7 +264,9 @@ func runAgentMode(parentCtx context.Context, castaiclient castai.Client, log *lo
 		return fmt.Errorf("cluster ID is still empty after initialization")
 	}
 
-	clusterIDChangedHandler(clusterID)
+	if err := clusterIDChangedHandler(clusterID); err != nil {
+		return err
+	}
 
 	if err := saveMetadata(clusterID, cfg); err != nil {
 		return err
