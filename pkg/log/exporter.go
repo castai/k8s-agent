@@ -27,16 +27,24 @@ func NewExporterManager() *ExporterManager {
 type ExporterManager struct {
 	ingestClientBatchClient ingestClient
 	setupDoneChan           chan struct{}
+	setupOnce               sync.Once
 }
 
 func (m *ExporterManager) Setup(registrator *castai.Registrator, logger *logrus.Logger, localLog logrus.FieldLogger, cfg *Config) error {
-	ingestClient, err := components.NewAPIClient(cfg.ExportConfig)
-	if err != nil {
-		return err
-	}
-	ingestClientBatchClient := components.NewBatchClient(ingestClient, components.BatchSize(500))
+	setup := func() error {
+		ingestClient, err := components.NewAPIClient(cfg.ExportConfig)
+		if err != nil {
+			return err
+		}
+		ingestClientBatchClient := components.NewBatchClient(ingestClient, components.BatchSize(500))
 
-	return m.setup(ingestClientBatchClient, registrator, logger, localLog, cfg)
+		return m.setup(ingestClientBatchClient, registrator, logger, localLog, cfg)
+	}
+	var err error
+	m.setupOnce.Do(func() {
+		err = setup()
+	})
+	return err
 }
 
 func (m *ExporterManager) setup(ingestClientBatchClient ingestClient, registrator *castai.Registrator, logger *logrus.Logger, localLog logrus.FieldLogger, cfg *Config) error {
