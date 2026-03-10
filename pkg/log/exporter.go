@@ -19,11 +19,14 @@ type Exporter interface {
 }
 
 func NewExporterManager() *ExporterManager {
-	return &ExporterManager{}
+	return &ExporterManager{
+		setupDoneChan: make(chan struct{}, 1),
+	}
 }
 
 type ExporterManager struct {
 	ingestClientBatchClient ingestClient
+	setupDoneChan           chan struct{}
 }
 
 func (m *ExporterManager) Setup(registrator *castai.Registrator, logger *logrus.Logger, localLog logrus.FieldLogger, cfg *Config) error {
@@ -44,10 +47,16 @@ func (m *ExporterManager) setup(ingestClientBatchClient ingestClient, registrato
 	logger.AddHook(logExporter)
 	logrus.RegisterExitHandler(logExporter.Wait)
 	m.ingestClientBatchClient = ingestClientBatchClient
+	close(m.setupDoneChan)
 	return nil
 }
 
 func (m *ExporterManager) Run(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-m.setupDoneChan:
+	}
 	return m.ingestClientBatchClient.Run(ctx)
 }
 

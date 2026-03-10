@@ -74,7 +74,7 @@ func run(ctx context.Context) error {
 		ExportConfig: components.Config{
 			APIBaseURL:          cfg.API.URL,
 			APIKey:              cfg.API.Key,
-			Component:           "k8s-agent",
+			Component:           "castai-agent",
 			Version:             config.VersionInfo.Version,
 			MaxRetries:          3,
 			MaxRetryBackoffWait: 3 * time.Second,
