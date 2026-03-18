@@ -9,8 +9,12 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 
 	"castai-agent/internal/config"
 	"castai-agent/pkg/services/providers/types"
@@ -18,9 +22,10 @@ import (
 
 func TestRegisterClusterWithLease(t *testing.T) {
 	tests := map[string]struct {
-		registerFn func(ctx context.Context) (*types.ClusterRegistration, error)
-		setupCtx   func() (context.Context, context.CancelFunc)
-		verify     func(t *testing.T, reg *types.ClusterRegistration, err error, clientset *fake.Clientset, cfg config.LeaderElectionConfig)
+		registerFn  func(ctx context.Context) (*types.ClusterRegistration, error)
+		setupCtx    func() (context.Context, context.CancelFunc)
+		setupClient func(clientset *fake.Clientset)
+		verify      func(t *testing.T, reg *types.ClusterRegistration, err error, clientset *fake.Clientset, cfg config.LeaderElectionConfig)
 	}{
 		"registers cluster successfully": {
 			registerFn: func(ctx context.Context) (*types.ClusterRegistration, error) {
@@ -73,6 +78,29 @@ func TestRegisterClusterWithLease(t *testing.T) {
 				require.Nil(t, reg)
 			},
 		},
+		"returns error on context timeout when lease cannot be acquired": {
+			registerFn: func(ctx context.Context) (*types.ClusterRegistration, error) {
+				return &types.ClusterRegistration{ClusterID: "should-not-reach"}, nil
+			},
+			setupCtx: func() (context.Context, context.CancelFunc) {
+				return context.WithTimeout(context.Background(), 3*time.Second)
+			},
+			setupClient: func(clientset *fake.Clientset) {
+				// Simulate RBAC forbidden error on all lease operations
+				clientset.PrependReactor("*", "leases", func(action k8stesting.Action) (bool, runtime.Object, error) {
+					return true, nil, k8serrors.NewForbidden(
+						schema.GroupResource{Group: "coordination.k8s.io", Resource: "leases"},
+						"test-lock-registration",
+						fmt.Errorf("User cannot access leases"),
+					)
+				})
+			},
+			verify: func(t *testing.T, reg *types.ClusterRegistration, err error, clientset *fake.Clientset, cfg config.LeaderElectionConfig) {
+				require.Error(t, err)
+				require.ErrorIs(t, err, context.DeadlineExceeded)
+				require.Nil(t, reg)
+			},
+		},
 	}
 
 	for name, tt := range tests {
@@ -86,6 +114,9 @@ func TestRegisterClusterWithLease(t *testing.T) {
 			}
 
 			clientset := fake.NewClientset()
+			if tt.setupClient != nil {
+				tt.setupClient(clientset)
+			}
 
 			ctx, cancel := tt.setupCtx()
 			defer cancel()

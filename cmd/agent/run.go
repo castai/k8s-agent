@@ -230,7 +230,13 @@ func runAgentMode(parentCtx context.Context, castaiclient castai.Client, log *lo
 		}
 		var reg *types.ClusterRegistration
 		if cfg.LeaderElection.Enabled {
-			reg, err = replicas.RegisterClusterWithLease(ctx, log, cfg.LeaderElection, clientset, registerFn)
+			registerCtx, registerCancel := context.WithTimeout(ctx, 30*time.Second)
+			reg, err = replicas.RegisterClusterWithLease(registerCtx, log, cfg.LeaderElection, clientset, registerFn)
+			registerCancel()
+			if err != nil {
+				log.WithError(err).Warn("failed to register cluster with lease, falling back to direct registration")
+				reg, err = registerFn(ctx)
+			}
 		} else {
 			reg, err = registerFn(ctx)
 		}
