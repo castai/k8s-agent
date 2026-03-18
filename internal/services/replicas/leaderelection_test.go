@@ -320,6 +320,8 @@ func TestRunLeaseWatchdog(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			log := logrus.New()
 			log.SetLevel(logrus.DebugLevel)
 
