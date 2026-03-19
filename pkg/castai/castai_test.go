@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"testing"
@@ -202,6 +203,7 @@ func TestClient_SendDelta(t *testing.T) {
 		require.Equal(t, "key", r.Header.Get(headerAPIKey))
 		require.Equal(t, "application/json", r.Header.Get("Content-Type"))
 		require.Equal(t, "gzip", r.Header.Get("Content-Encoding"))
+		require.Greater(t, r.ContentLength, int64(0), "ContentLength should be set")
 
 		zr, err := gzip.NewReader(r.Body)
 		require.NoError(t, err)
@@ -217,6 +219,53 @@ func TestClient_SendDelta(t *testing.T) {
 	err := c.SendDelta(context.Background(), delta.ClusterID, delta)
 
 	require.NoError(t, err)
+}
+
+func TestSendDelta_ContentLength_SetCorrectly(t *testing.T) {
+	t.Cleanup(config.Reset)
+	t.Cleanup(os.Clearenv)
+
+	httpClient := &http.Client{}
+	httpmock.ActivateNonDefault(httpClient)
+	defer httpmock.Reset()
+
+	c := NewClient(logrus.New(), nil, httpClient)
+
+	data := json.RawMessage(`"data"`)
+	delta := &Delta{
+		ClusterID:      "test-cluster",
+		ClusterVersion: "1.19+",
+		FullSnapshot:   true,
+		Items: []*DeltaItem{
+			{
+				Event:     EventAdd,
+				Kind:      "Pod",
+				Data:      &data,
+				CreatedAt: time.Now().UTC(),
+			},
+		},
+	}
+
+	require.NoError(t, os.Setenv("API_KEY", "key"))
+	require.NoError(t, os.Setenv("API_URL", "example.com"))
+
+	expectedURI := fmt.Sprintf("https://example.com/v1/kubernetes/clusters/%s/agent-deltas", delta.ClusterID)
+
+	var capturedContentLength int64
+	var capturedBody []byte
+
+	httpmock.RegisterResponder(http.MethodPost, expectedURI, func(r *http.Request) (*http.Response, error) {
+		defer r.Body.Close()
+		capturedContentLength = r.ContentLength
+		capturedBody, _ = io.ReadAll(r.Body)
+		return httpmock.NewStringResponse(204, ""), nil
+	})
+
+	err := c.SendDelta(context.Background(), delta.ClusterID, delta)
+	require.NoError(t, err)
+
+	require.Greater(t, capturedContentLength, int64(0), "ContentLength should be set")
+	require.Equal(t, int64(len(capturedBody)), capturedContentLength, "ContentLength should match actual body length")
 }
 
 func TestCreateTLSConfig(t *testing.T) {

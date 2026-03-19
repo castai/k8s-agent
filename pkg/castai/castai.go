@@ -177,34 +177,24 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 		return fmt.Errorf("invalid url: %w", err)
 	}
 
-	pipeReader, pipeWriter := io.Pipe()
-
-	go func() {
-		defer func() {
-			if err := pipeWriter.Close(); err != nil {
-				log.Errorf("closing gzip pipe: %v", err)
-			}
-		}()
-
-		gzipWriter := gzip.NewWriter(pipeWriter)
-		defer func() {
-			if err := gzipWriter.Close(); err != nil {
-				log.Errorf("closing gzip writer: %v", err)
-			}
-		}()
-
-		if err := json.NewEncoder(gzipWriter).Encode(delta); err != nil {
-			log.Errorf("compressing json: %v", err)
-		}
-	}()
+	var buf bytes.Buffer
+	buf.Grow(len(delta.Items) * 200)
+	gz := gzip.NewWriter(&buf)
+	if err := json.NewEncoder(gz).Encode(delta); err != nil {
+		return fmt.Errorf("encoding delta: %w", err)
+	}
+	if err := gz.Close(); err != nil {
+		return fmt.Errorf("closing gzip: %w", err)
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, cfg.TotalSendDeltaTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), pipeReader)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), bytes.NewReader(buf.Bytes()))
 	if err != nil {
 		return fmt.Errorf("creating delta request: %w", err)
 	}
+	req.ContentLength = int64(buf.Len())
 
 	req.Header.Set(headerContentType, "application/json")
 	req.Header.Set(headerContentEncoding, "gzip")
@@ -229,6 +219,14 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 	err = wait.ExponentialBackoffWithContext(ctx, backoff, func(context.Context) (done bool, err error) {
 		numAttempts++
 		log = log.WithField("attempts", numAttempts)
+
+		if numAttempts > 1 && req.GetBody != nil {
+			body, err := req.GetBody()
+			if err != nil {
+				return false, fmt.Errorf("resetting request body for retry: %w", err)
+			}
+			req.Body = body
+		}
 
 		resp, err = c.deltaHTTPClient.Do(req)
 		if err != nil {
