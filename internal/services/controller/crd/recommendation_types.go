@@ -3,6 +3,7 @@ package crd
 import (
 	autoscaling "k8s.io/api/autoscaling/v2"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -19,12 +20,46 @@ type TargetRef struct {
 	APIVersion string `json:"apiVersion,omitempty"`
 }
 
-// ContainerAdjustments represents the adjustments to be made to a Pod container.
+// ContainerAdjustments represents adjustments to be made to a Pod container.
 type ContainerAdjustments struct {
-	ContainerName string          `json:"containerName,omitempty"`
-	Requests      v1.ResourceList `json:"requests,omitempty"`
-	Limits        v1.ResourceList `json:"limits,omitempty"`
-	Env           EnvVars         `json:"env,omitempty"`
+	ContainerName    string            `json:"containerName,omitempty"`
+	Requests         v1.ResourceList   `json:"requests,omitempty"`
+	Limits           v1.ResourceList   `json:"limits,omitempty"`
+	Env              EnvVars           `json:"env,omitempty"`
+	ResourceStrategy *ResourceStrategy `json:"resourceStrategy,omitempty"`
+}
+
+// ResourceStrategyType identifies the resource strategy variant.
+type ResourceStrategyType string
+
+const ResourceStrategyTypeNodeAllocatablePercentage ResourceStrategyType = "NodeAllocatablePercentage"
+
+// ResourceStrategy selects a strategy for dynamic resource sizing.
+type ResourceStrategy struct {
+	Type ResourceStrategyType `json:"type"`
+
+	// +optional
+	NodeAllocatablePercentage *NodeAllocatablePercentage `json:"nodeAllocatablePercentage,omitempty"`
+}
+
+// NodeAllocatablePercentage represents the node allocatable percentage configuration.
+type NodeAllocatablePercentage struct {
+	Requests NodeAllocatableRequests `json:"requests"`
+
+	// +optional
+	Limits *NodeAllocatableLimits `json:"limits,omitempty"`
+}
+
+// NodeAllocatableRequests contains the percentage of node allocatable that the container can consume.
+type NodeAllocatableRequests struct {
+	CPUPercent    int32 `json:"cpuPercent"`
+	MemoryPercent int32 `json:"memoryPercent"`
+}
+
+// NodeAllocatableLimits represents limits on node allocatable resources.
+type NodeAllocatableLimits struct {
+	CPURatio    *resource.Quantity `json:"cpuRatio,omitempty"`
+	MemoryRatio *resource.Quantity `json:"memoryRatio,omitempty"`
 }
 
 type ContainersGrouping []ContainerGrouping
