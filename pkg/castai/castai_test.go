@@ -219,6 +219,61 @@ func TestClient_SendDelta(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestClient_SendDelta_RetryOnTransientError(t *testing.T) {
+	t.Cleanup(config.Reset)
+	t.Cleanup(os.Clearenv)
+
+	require.NoError(t, os.Setenv("API_KEY", "key"))
+	require.NoError(t, os.Setenv("API_URL", "example.com"))
+
+	httpClient := &http.Client{}
+	httpmock.ActivateNonDefault(httpClient)
+	defer httpmock.Reset()
+
+	c := NewClient(logrus.New(), nil, httpClient)
+
+	data := json.RawMessage(`"data"`)
+	delta := &Delta{
+		ClusterID:      uuid.New().String(),
+		ClusterVersion: "1.19+",
+		FullSnapshot:   true,
+		Items: []*DeltaItem{
+			{
+				Event:     EventAdd,
+				Kind:      "Pod",
+				Data:      &data,
+				CreatedAt: time.Now().UTC(),
+			},
+		},
+	}
+
+	expectedURI := fmt.Sprintf("https://example.com/v1/kubernetes/clusters/%s/agent-deltas", delta.ClusterID)
+
+	attempt := 0
+	httpmock.RegisterResponder(http.MethodPost, expectedURI, func(r *http.Request) (*http.Response, error) {
+		attempt++
+		if attempt < 2 {
+			return nil, fmt.Errorf("transient error")
+		}
+
+		defer r.Body.Close()
+		zr, err := gzip.NewReader(r.Body)
+		require.NoError(t, err)
+		defer zr.Close()
+
+		actualDelta := &Delta{}
+		require.NoError(t, json.NewDecoder(zr).Decode(actualDelta))
+		require.Equal(t, delta, actualDelta)
+
+		return httpmock.NewStringResponse(http.StatusOK, ""), nil
+	})
+
+	err := c.SendDelta(context.Background(), delta.ClusterID, delta)
+
+	require.NoError(t, err)
+	require.Equal(t, 2, attempt, "expected one failure and one success")
+}
+
 func TestCreateTLSConfig(t *testing.T) {
 	t.Run("should populate tls.Config RootCAs when valid certificate presented", func(t *testing.T) {
 		r := require.New(t)
