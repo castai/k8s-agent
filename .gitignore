@@ -9,3 +9,4 @@ bin
 .claude/settings.local.json
 .env
 scripts
+test
