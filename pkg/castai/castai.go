@@ -182,8 +182,32 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 
 	var resp *http.Response
 
-	// Retry 3 times with 25ms, 250ms and 2.5s sleep intervals (not accounting for jitter).
-	// A fresh pipe and request are created per attempt — a stream body cannot be replayed.
+	// Assigned to req.GetBody so the HTTP/2 transport can replay on RST_STREAM
+	// retry without buffering. Encode errors close the pipe with the error so
+	// the transport sees a read failure rather than a truncated body.
+	newDeltaPipe := func() (io.ReadCloser, error) {
+		pr, pw := io.Pipe()
+		go func() {
+			var encErr error
+			gz := gzip.NewWriter(pw)
+			if err := json.NewEncoder(gz).Encode(delta); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+				encErr = err
+			}
+			if encErr == nil {
+				if err := gz.Close(); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+					encErr = err
+				}
+			}
+			if encErr != nil {
+				_ = pw.CloseWithError(encErr)
+			} else {
+				_ = pw.Close()
+			}
+		}()
+		return pr, nil
+	}
+
+	// Retry 3 times: 25ms, 250ms, 2.5s.
 	backoff := wait.Backoff{
 		Duration: 25 * time.Millisecond,
 		Factor:   10,
@@ -195,30 +219,10 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 		numAttempts++
 		log := log.WithField("attempts", numAttempts)
 
-		pipeReader, pipeWriter := io.Pipe()
+		body, _ := newDeltaPipe()
 
-		go func() {
-			defer func() {
-				if err := pipeWriter.Close(); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-					log.Errorf("closing gzip pipe: %v", err)
-				}
-			}()
-
-			gzipWriter := gzip.NewWriter(pipeWriter)
-			defer func() {
-				if err := gzipWriter.Close(); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-					log.Errorf("closing gzip writer: %v", err)
-				}
-			}()
-
-			if err := json.NewEncoder(gzipWriter).Encode(delta); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-				log.Errorf("compressing json: %v", err)
-			}
-		}()
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), pipeReader)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), body)
 		if err != nil {
-			_ = pipeReader.CloseWithError(err) // unblock producer goroutine
 			return false, fmt.Errorf("creating delta request: %w", err)
 		}
 
@@ -232,10 +236,11 @@ func (c *client) SendDelta(ctx context.Context, clusterID string, delta *Delta) 
 			req.Header.Set("Host", host)
 		}
 
+		req.GetBody = newDeltaPipe
+
 		resp, err = c.deltaHTTPClient.Do(req)
 		if err != nil {
-			_ = pipeReader.CloseWithError(err) // unblock producer goroutine
-			log.Warnf("failed sending delta request: %v", err)
+			logHTTP2RequestError(log, err)
 			return false, nil
 		}
 		return true, nil
@@ -352,4 +357,23 @@ func readAllString(r io.Reader) (string, error) {
 		return "", err
 	}
 	return buffer.String(), nil
+}
+
+func logHTTP2RequestError(log logrus.FieldLogger, err error) {
+	var se http2.StreamError
+	var ge http2.GoAwayError
+	switch {
+	case errors.As(err, &se):
+		log.WithFields(logrus.Fields{
+			"http2_stream_id":  se.StreamID,
+			"http2_error_code": se.Code,
+		}).Warnf("failed sending delta request: %v", err)
+	case errors.As(err, &ge):
+		log.WithFields(logrus.Fields{
+			"http2_error_code":     ge.ErrCode,
+			"http2_last_stream_id": ge.LastStreamID,
+		}).Warnf("failed sending delta request: %v", err)
+	default:
+		log.Warnf("failed sending delta request: %v", err)
+	}
 }
