@@ -52,8 +52,8 @@ type NodeAllocatablePercentage struct {
 
 // NodeAllocatableRequests contains the percentage of node allocatable that the container can consume.
 type NodeAllocatableRequests struct {
-	CPUPercent    int32 `json:"cpuPercent"`
-	MemoryPercent int32 `json:"memoryPercent"`
+	CPUPercent    *resource.Quantity `json:"cpuPercent"`
+	MemoryPercent *resource.Quantity `json:"memoryPercent"`
 }
 
 // NodeAllocatableLimits represents limits on node allocatable resources.
