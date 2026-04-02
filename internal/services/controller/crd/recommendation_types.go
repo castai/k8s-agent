@@ -89,6 +89,57 @@ type RolloutBehavior struct {
 	// PreferOneByOne indicates whether to prefer one by one pod rollout behavior when possible.
 	// +optional
 	PreferOneByOne *bool `json:"preferOneByOne,omitempty"`
+
+	// DelaySeconds specifies the number of seconds between the next reconciliation during one-by-one rollout
+	// +optional
+	DelaySeconds *int32 `json:"delaySeconds,omitempty"`
+}
+
+// LimitsPolicyType identifies the limit handling strategy for a single resource.
+type LimitsPolicyType string
+
+// ResourceLimitsPolicy defines the limit handling strategy for a single resource.
+// +kubebuilder:validation:XValidation:rule="self.type != 'multiplierLimits' || has(self.multiplier)",message="multiplier is required when type is multiplierLimits"
+type ResourceLimitsPolicy struct {
+	// Type is the limit policy strategy.
+	// +kubebuilder:validation:Enum=keepLimits;multiplierLimits;noLimits;maintainRatio
+	Type LimitsPolicyType `json:"type"`
+	// Multiplier is the factor applied to the recommended request to compute the limit.
+	// Required when Type is multiplierLimits. E.g. "1500m" for 1.5x. Must be >= 1.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="quantity(self).compareTo(quantity('1')) >= 0",message="must be greater than or equal to 1"
+	Multiplier *resource.Quantity `json:"multiplier,omitempty"`
+	// OnlyIfOriginalExist skips setting a limit when the container has no current limit.
+	// +optional
+	OnlyIfOriginalExist *bool `json:"onlyIfOriginalExist,omitempty"`
+	// OnlyIfOriginalLower keeps the existing limit when it is already higher than the computed one.
+	// +optional
+	OnlyIfOriginalLower *bool `json:"onlyIfOriginalLower,omitempty"`
+}
+
+// LimitsPolicy defines per-resource limit handling. CPU and memory can have different policies.
+type LimitsPolicy struct {
+	// CPU defines how the autoscaler handles CPU limits.
+	// +optional
+	CPU *ResourceLimitsPolicy `json:"cpu,omitempty"`
+	// Memory defines how the autoscaler handles memory limits.
+	// +optional
+	Memory *ResourceLimitsPolicy `json:"memory,omitempty"`
+}
+
+// ContainerRuntime identifies the runtime of a container for auto-instrumentation purposes.
+// +kubebuilder:validation:Enum=jvm
+type ContainerRuntime string
+
+// ContainerRuntimeSpec describes the runtime configuration for a single container.
+type ContainerRuntimeSpec struct {
+	// Runtime identifies the container runtime (e.g. jvm).
+	Runtime ContainerRuntime `json:"runtime"`
+
+	// AutoInstrument controls whether the runtime should be automatically instrumented
+	// (e.g. JMX exporter injection for JVM containers).
+	// +optional
+	AutoInstrument bool `json:"autoInstrument,omitempty"`
 }
 
 // RecommendationSpec defines the desired state of Recommendation
@@ -110,6 +161,15 @@ type RecommendationSpec struct {
 
 	// Defines workload settings during post-startup period.
 	PostStartup *PostStartup `json:"postStartup,omitempty"`
+
+	// LimitsPolicy defines per-resource limit handling strategies.
+	// +optional
+	LimitsPolicy *LimitsPolicy `json:"limitsPolicy,omitempty"`
+
+	// RuntimeSpec defines per-container runtime configuration for auto-instrumentation.
+	// Key is the container name.
+	// +optional
+	RuntimeSpec map[string]ContainerRuntimeSpec `json:"runtimeSpec,omitempty"`
 }
 
 // Startup defines workload settings during startup.
