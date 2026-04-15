@@ -68,8 +68,8 @@ type mockIngestClient struct {
 }
 
 func (m *mockIngestClient) IngestLogs(ctx context.Context, entries []components.Entry) error {
-	m.entries = append(m.entries, entries...)
 	m.mu.Lock()
+	m.entries = append(m.entries, entries...)
 	defer m.mu.Unlock()
 
 	return nil

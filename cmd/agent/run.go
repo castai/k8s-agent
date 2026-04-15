@@ -131,7 +131,7 @@ func run(ctx context.Context) error {
 		return nil
 	}
 
-	var errg errgroup.Group
+	errg, ctx := errgroup.WithContext(ctx)
 	errg.Go(func() error {
 		if err := logsExportManager.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			return fmt.Errorf("running logs exporter manager: %v", err)
@@ -144,8 +144,9 @@ func run(ctx context.Context) error {
 			// it is necessary to log error because invoking of logrus exit handlers will terminate the process using os.Exit()
 			// error handling in cobra ("github.com/spf13/cobra") won't be able to log this error
 			remoteLogger.Error(err)
+			return err
 		}
-		return err
+		return nil
 	})
 	err = errg.Wait()
 
