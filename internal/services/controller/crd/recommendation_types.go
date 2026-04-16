@@ -34,12 +34,35 @@ type ResourceStrategyType string
 
 const ResourceStrategyTypeNodeAllocatablePercentage ResourceStrategyType = "NodeAllocatablePercentage"
 
+// ResourceMinMax defines optional min/max bounds for a single resource.
+type ResourceMinMax struct {
+	// Min is the lower bound for requests.
+	// +optional
+	Min *resource.Quantity `json:"min,omitempty"`
+	// Max is the upper bound for requests.
+	// +optional
+	Max *resource.Quantity `json:"max,omitempty"`
+}
+
+// ResourceConstraints defines optional per-resource min/max bounds for requests.
+type ResourceConstraints struct {
+	// +optional
+	CPU *ResourceMinMax `json:"cpu,omitempty"`
+	// +optional
+	Memory *ResourceMinMax `json:"memory,omitempty"`
+}
+
 // ResourceStrategy selects a strategy for dynamic resource sizing.
 type ResourceStrategy struct {
 	Type ResourceStrategyType `json:"type"`
 
 	// +optional
 	NodeAllocatablePercentage *NodeAllocatablePercentage `json:"nodeAllocatablePercentage,omitempty"`
+
+	// Constraints define optional min/max bounds for dynamically resolved requests.
+	// When present, resolved requests are clamped to [min, max].
+	// +optional
+	Constraints *ResourceConstraints `json:"constraints,omitempty"`
 }
 
 // NodeAllocatablePercentage represents the node allocatable percentage configuration.
