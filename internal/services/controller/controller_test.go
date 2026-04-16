@@ -84,10 +84,10 @@ func TestController_ShouldReceiveDeltasBasedOnAvailableResources(t *testing.T) {
 		apiResourceError             error
 	}{
 		"All supported objects are found and received in delta": {
-			expectedReceivedObjectsCount: 41,
+			expectedReceivedObjectsCount: 42,
 		},
 		"All supported objects are found and received in delta with pagination": {
-			expectedReceivedObjectsCount: 41,
+			expectedReceivedObjectsCount: 42,
 			paginationEnabled:            true,
 			pageSize:                     5,
 		},
@@ -904,6 +904,21 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	}
 	podMutationData := asJson(t, podMutation)
 
+	evictorConfig := &crd.EvictorConfig{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "EvictorConfig",
+			APIVersion: crd.EvictorConfigGVR.GroupVersion().String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "default",
+		},
+		Spec: crd.EvictorConfigSpec{
+			ManagementMode: "castai",
+			Enabled:        true,
+		},
+	}
+	evictorConfigData := asJson(t, evictorConfig)
+
 	ingress := &networkingv1.Ingress{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Ingress",
@@ -1090,6 +1105,7 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		{Obj: customMetrics},
 		{Obj: nodeDiskRecommendation},
 		{Obj: podMutation},
+		{Obj: evictorConfig},
 		{Obj: unstructuredFromJson(t, recommendationSyncV1Alpha1)},
 		{Obj: hpaV2},
 		{Obj: unstructuredFromJson(t, vpaV1Data)},
@@ -1378,6 +1394,18 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			},
 		},
 		{
+			GroupVersion: crd.EvictorConfigGVR.GroupVersion().String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group:   crd.EvictorConfigGVR.Group,
+					Name:    crd.EvictorConfigGVR.Resource,
+					Version: crd.EvictorConfigGVR.Version,
+					Kind:    "EvictorConfig",
+					Verbs:   []string{"get", "list", "watch"},
+				},
+			},
+		},
+		{
 			GroupVersion: networkingv1.SchemeGroupVersion.String(),
 			APIResources: []metav1.APIResource{
 				{
@@ -1635,6 +1663,12 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Kind:     "PodMutation",
 			Resource: crd.PodMutationGVR.Resource,
 			Data:     podMutationData,
+		},
+		{
+			GV:       crd.EvictorConfigGVR.GroupVersion(),
+			Kind:     "EvictorConfig",
+			Resource: crd.EvictorConfigGVR.Resource,
+			Data:     evictorConfigData,
 		},
 		{
 			GV:       networkingv1.SchemeGroupVersion,

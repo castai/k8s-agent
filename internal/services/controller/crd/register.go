@@ -25,6 +25,9 @@ var PodMutationsSchemaGroupVersion = schema.GroupVersion{Group: "pod-mutations.c
 
 var PodMutationGVR = PodMutationsSchemaGroupVersion.WithResource("podmutations")
 
+// EvictorConfigGVR is group version resource for evictor config objects
+var EvictorConfigGVR = schema.GroupVersion{Group: "autoscaling.cast.ai", Version: "v1alpha1"}.WithResource("evictorconfigs")
+
 // Register types with the SchemeBuilder
 var (
 	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
@@ -52,6 +55,12 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&PodMutationList{},
 	)
 	metav1.AddToGroupVersion(scheme, PodMutationsSchemaGroupVersion)
+
+	scheme.AddKnownTypes(EvictorConfigGVR.GroupVersion(),
+		&EvictorConfig{},
+		&EvictorConfigList{},
+	)
+	metav1.AddToGroupVersion(scheme, EvictorConfigGVR.GroupVersion())
 
 	return nil
 }
