@@ -1,5 +1,10 @@
 # CAST AI Kubernetes Agent
 
+> [!WARNING]
+> **This repository is archived and no longer maintained.**
+> Development has been migrated to an internal GitLab repository.
+> Please do not submit issues or pull requests here.
+
 A component that connects your Kubernetes cluster to the [CAST AI](https://www.cast.ai) platform to enable Kubernetes automation and cost optimization features.
 
 ## Getting started
