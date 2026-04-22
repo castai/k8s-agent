@@ -2,6 +2,7 @@ package informers
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/samber/lo"
@@ -27,6 +28,7 @@ type PodMetricsInformer interface {
 type metricsWatch struct {
 	resultChan    chan watch.Event
 	closeChan     chan struct{}
+	stopOnce      sync.Once
 	client        versioned.Interface
 	log           logrus.FieldLogger
 	listOptions   metav1.ListOptions
@@ -98,8 +100,10 @@ func (m *metricsWatch) Start(ctx context.Context) {
 }
 
 func (m *metricsWatch) Stop() {
-	m.log.Infof("Stopping pod metrics polling")
-	close(m.closeChan)
+	m.stopOnce.Do(func() {
+		m.log.Infof("Stopping pod metrics polling")
+		close(m.closeChan)
+	})
 }
 
 func (m *metricsWatch) ResultChan() <-chan watch.Event {
@@ -107,25 +111,39 @@ func (m *metricsWatch) ResultChan() <-chan watch.Event {
 }
 
 func NewPodMetricsInformer(log logrus.FieldLogger, client versioned.Interface, tweakListOptions func(options *metav1.ListOptions)) cache.SharedIndexInformer {
-	return cache.NewSharedIndexInformer(
-		&cache.ListWatch{
-			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-				options = withDefaultTimeout(options)
-				tweakListOptions(&options)
+	lw := &cache.ListWatch{
+		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+			options = withDefaultTimeout(options)
+			tweakListOptions(&options)
 
-				return client.MetricsV1beta1().
-					PodMetricses("").
-					List(context.TODO(), options)
-			},
-			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				return NewMetricsWatch(context.TODO(), log, client, options), nil
-			},
-			DisableChunking: true,
+			return client.MetricsV1beta1().
+				PodMetricses("").
+				List(context.TODO(), options)
 		},
+		WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+			return NewMetricsWatch(context.TODO(), log, client, options), nil
+		},
+		DisableChunking: true,
+	}
+	return cache.NewSharedIndexInformer(
+		// Metrics are polled via a custom watch implementation that does not
+		// support the WatchList protocol introduced in client-go v0.35.
+		// Opt out so the reflector falls back to the classic list+watch flow.
+		&noWatchListListerWatcher{lw},
 		&v1beta1.PodMetrics{},
 		time.Second*30,
 		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
 	)
+}
+
+// noWatchListListerWatcher wraps a ListerWatcher and signals to the reflector
+// that the WatchList semantic is not supported, forcing it to use list+watch.
+type noWatchListListerWatcher struct {
+	cache.ListerWatcher
+}
+
+func (n *noWatchListListerWatcher) IsWatchListSemanticsUnSupported() bool {
+	return true
 }
 
 func withDefaultTimeout(options metav1.ListOptions) metav1.ListOptions {
