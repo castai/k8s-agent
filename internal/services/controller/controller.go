@@ -16,6 +16,7 @@ import (
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
@@ -1195,6 +1196,26 @@ func getConditionalInformers(
 			permissionVerbs: []string{"get", "list", "watch"},
 			informerFactory: func() cache.SharedIndexInformer {
 				return df.ForResource(knowngv.VPAAutoscalingV1.WithResource("verticalpodautoscalers")).Informer()
+			},
+		},
+		{
+			groupVersion:    admissionregistrationv1.SchemeGroupVersion,
+			kind:            "ValidatingWebhookConfiguration",
+			resource:        "validatingwebhookconfigurations",
+			apiType:         reflect.TypeOf(&admissionregistrationv1.ValidatingWebhookConfiguration{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Admissionregistration().V1().ValidatingWebhookConfigurations().Informer()
+			},
+		},
+		{
+			groupVersion:    admissionregistrationv1.SchemeGroupVersion,
+			kind:            "MutatingWebhookConfiguration",
+			resource:        "mutatingwebhookconfigurations",
+			apiType:         reflect.TypeOf(&admissionregistrationv1.MutatingWebhookConfiguration{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return f.Admissionregistration().V1().MutatingWebhookConfigurations().Informer()
 			},
 		},
 	}

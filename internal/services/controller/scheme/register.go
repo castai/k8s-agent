@@ -3,6 +3,7 @@ package scheme
 import (
 	datadoghqv1alpha1 "github.com/DataDog/extendeddaemonset/api/v1alpha1"
 	argorollouts "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -36,6 +37,7 @@ var builder = runtime.SchemeBuilder{
 	networkingv1.AddToScheme,
 	rbacv1.AddToScheme,
 	resourcev1.AddToScheme,
+	admissionregistrationv1.AddToScheme,
 }
 
 func init() {

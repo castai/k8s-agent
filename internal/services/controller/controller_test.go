@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -1048,6 +1049,28 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 	}
 	resourceSliceData := asJson(t, resourceSlice)
 
+	validatingWebhook := &admissionregistrationv1.ValidatingWebhookConfiguration{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ValidatingWebhookConfiguration",
+			APIVersion: admissionregistrationv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "validatingwebhook",
+		},
+	}
+	validatingWebhookData := asJson(t, validatingWebhook)
+
+	mutatingWebhook := &admissionregistrationv1.MutatingWebhookConfiguration{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "MutatingWebhookConfiguration",
+			APIVersion: admissionregistrationv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "mutatingwebhook",
+		},
+	}
+	mutatingWebhookData := asJson(t, mutatingWebhook)
+
 	clientset := fake.NewSimpleClientset(
 		node,
 		pod,
@@ -1069,6 +1092,8 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 		resourceClaim,
 		resourceClaimTemplate,
 		resourceSlice,
+		validatingWebhook,
+		mutatingWebhook,
 	)
 
 	dynamicObjects := []*DynamicObject{
@@ -1491,6 +1516,22 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 					Group: resourcev1.GroupName,
 					Name:  "resourceslices",
 					Kind:  "ResourceSlice",
+				},
+			},
+		},
+		{
+			GroupVersion: admissionregistrationv1.SchemeGroupVersion.String(),
+			APIResources: []metav1.APIResource{
+				{
+					Group: "admissionregistration.k8s.io",
+					Name:  "validatingwebhookconfigurations",
+					Kind:  "ValidatingWebhookConfiguration",
+					Verbs: []string{"get", "list", "watch"},
+				},
+				{
+					Group: "admissionregistration.k8s.io",
+					Name:  "mutatingwebhookconfigurations",
+					Kind:  "MutatingWebhookConfiguration",
 					Verbs: []string{"get", "list", "watch"},
 				},
 			},
@@ -1731,6 +1772,18 @@ func loadInitialHappyPathData(t *testing.T, scheme *runtime.Scheme) ([]sampleObj
 			Kind:     "ScaledJob",
 			Resource: "scaledjobs",
 			Data:     scaledJobDataV1Alpha1,
+		},
+		{
+			GV:       admissionregistrationv1.SchemeGroupVersion,
+			Kind:     "ValidatingWebhookConfiguration",
+			Resource: "validatingwebhookconfigurations",
+			Data:     validatingWebhookData,
+		},
+		{
+			GV:       admissionregistrationv1.SchemeGroupVersion,
+			Kind:     "MutatingWebhookConfiguration",
+			Resource: "mutatingwebhookconfigurations",
+			Data:     mutatingWebhookData,
 		},
 	}
 
