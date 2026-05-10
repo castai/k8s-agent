@@ -1,6 +1,6 @@
 module castai-agent
 
-go 1.25.7
+go 1.26.2
 
 tool github.com/vektra/mockery/v3
 
