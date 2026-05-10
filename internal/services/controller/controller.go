@@ -1028,6 +1028,16 @@ func getConditionalInformers(
 			},
 		},
 		{
+			groupVersion:    crd.EvictorConfigGVR.GroupVersion(),
+			resource:        crd.EvictorConfigGVR.Resource,
+			kind:            "EvictorConfig",
+			apiType:         reflect.TypeOf(&crd.EvictorConfig{}),
+			permissionVerbs: []string{"get", "list", "watch"},
+			informerFactory: func() cache.SharedIndexInformer {
+				return df.ForResource(crd.EvictorConfigGVR).Informer()
+			},
+		},
+		{
 			groupVersion:    networkingv1.SchemeGroupVersion,
 			resource:        "ingresses",
 			kind:            "Ingress",
